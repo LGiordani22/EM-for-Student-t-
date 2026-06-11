@@ -1,0 +1,54 @@
+==============================================================================
+  RECOVERY TABLE  —  T = 497
+  Generated 2026-06-06 23:09:48
+==============================================================================
+
+  SCALAR PARAMETERS
+  parameter                     theta_star     theta_hat          bias   rel.err
+  --------------------------------------------------------------------------
+  nu_u                              4.5160        5.5705        +1.0545    23.35%
+  nu_eps                            7.0058        6.4189        -0.5869     8.38%
+  spectral_radius(A)                0.3628        0.2668        -0.0960    26.46%
+
+  EIGENVALUES OF A  (sorted by descending |w|)
+     #              theta_star                 theta_hat
+    ----------------------------------------------------
+     0                +0.36277                  +0.26677
+     1                -0.24413                  -0.19203
+     2                +0.06215                  +0.13516
+
+  DIAGONAL OF Q
+  block           theta_star     theta_hat          bias   rel.err
+  ------------------------------------------------------------
+  real                0.2131        0.5647       +0.3516   165.01%
+  financial           0.6070        0.5028       -0.1042    17.17%
+  other               0.5450        0.6357       +0.0907    16.64%
+
+  LAMBDA — REFERENCE SERIES  (after sign alignment)
+  series          block        j   Lambda_star    Lambda_hat          bias   rel.err
+  ------------------------------------------------------------------------------
+  INDPRO          real         0       +1.0010       +0.6582       -0.3428    34.25%
+  PAYEMS          real         0       +0.1754       +0.1032       -0.0722    41.16%
+  S&P 500         financial    1       +0.0635       +0.0242       -0.0394    61.95%
+  BAAFFM          financial    1       -0.0723       +0.0299       +0.1023   141.39%
+  CPIAUCSL        other        2       -0.8960       -0.9201       -0.0241     2.69%
+  GDPC1           real         0       +0.4279       +0.2747       -0.1532    35.81%
+  UMCSENTx        other        2       +0.0447       +0.0554       +0.0107    23.85%
+  NFCI            financial    1       +0.0274       +0.0563       +0.0288   105.02%
+
+  PROCRUSTES ALIGNMENT  (||Lambda_hat H - Lambda_star||_F / ||Lambda_star||_F)
+  normalised-only (sign+Conv1)           26.691%
+  Procrustes (free 3x3 ortho)            26.691%
+  Procrustes (block-diagonal)             5.741%
+
+  R (IDIOSYNCRATIC VARIANCES)
+  median rel.err = 4.54%   max rel.err = 19.69%
+
+  LATENT-PATH RECOVERY
+  |corr(f_hat_0, F_true_0)|  [real      ]  = 0.9849
+  |corr(f_hat_1, F_true_1)|  [financial ]  = 0.9928
+  |corr(f_hat_2, F_true_2)|  [other     ]  = 0.9705
+  corr(w_u_hat,   w_u_true)                       = +0.5421
+  corr(w_eps_hat, w_eps_true)                     = +0.9229
+
+==============================================================================

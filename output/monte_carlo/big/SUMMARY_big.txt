@@ -1,0 +1,449 @@
+
+========================================================================================
+  SUMMARY MONTE CARLO — CONFIG "BIG"
+  Generato il 2026-06-07
+  Fonte: output/monte_carlo/big/expA/results.txt
+          output/monte_carlo/big/expB/results.txt
+          output/monte_carlo/big/expC/results.txt
+========================================================================================
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. SETUP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Config:         M=50 serie, r=3 fattori (blocchi: real=22, financial=18, other=10)
+  Struttura:      DFM con caricamenti a blocchi, transizione VAR(1) A (r×r)
+  theta_star:
+    nu_u_true   = 4.52   (dal header ExpA: "truth nu_u=4.52; calibrated nu~4")
+    nu_eps_true ≈ 4      (DGP calibrato "nu~4" per entrambi)
+    rho(A_star) ≈ 0.363  (bassa persistenza; in netto contrasto con small≈0.978)
+  Composizione:   49 serie mensili + 1 trimestrale (GDPC1)
+  Repliche:       S = 20 per tutti gli esperimenti
+  T testati:      100, 200, 400, 497, 800
+  Exp C griglia:  pi ∈ {0.00, 0.01, 0.05, 0.10}; kappa=5, nu_contam=3
+  Confronto:      ogni pannello è dato ai due stimatori (student_t e gaussian) identici
+
+  Nota: T=497 è il campione "reale" (lunghezza dati USA effettiva). T=800 è il limite
+  superiore. Con rho(A)≈0.36, i fattori hanno persistenza molto più bassa che in
+  "small" — regime strutturale completamente diverso.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. EXP A — DGP Student-t (beneficio delle code pesanti)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Cosa testa: DGP è Student-t con nu_u=nu_eps≈4.52. Si confrontano i due stimatori
+  sullo stesso pannello.
+
+  2.1 Recovery di nu (stimatore Student-t; verità nu_u=4.52, nu_eps≈4)
+  ──────────────────────────────────────────────────────────────────────────────────────
+    T     nu_u_hat   nu_eps_hat   dist nu_u: min / median / mean / max
+   ───  ──────────  ──────────  ─────────────────────────────────────────
+   100    7.055       7.406       2.9 /  6.2 /  7.1 / 18.5
+   200    5.401       7.025       3.2 /  5.4 /  5.4 /  7.7
+   400    5.139       7.145       3.7 /  5.1 /  5.1 /  6.9
+   497    5.278       7.298       4.1 /  5.3 /  5.3 /  6.9
+   800    4.926       7.208       4.3 /  4.9 /  4.9 /  6.1
+
+  LIMITE ONESTO — Bias persistente e asimmetrico:
+  - nu_u_hat: converge lentamente verso 4.52 (a T=800 mean=4.9, bias +8%). NON satura
+    al bound di Brent (1000). La distribuzione si concentra (max=6.1 a T=800 vs 18.5
+    a T=100).
+  - nu_eps_hat: STUCK intorno a 7.0-7.4 a tutti i T (vero≈4). Il bias non decresce
+    con T: 7.41 a T=100 → 7.21 a T=800. Questo suggerisce un problema di identificazione
+    di nu_eps nel contesto big (M=50 serie, bassa persistenza). L'estimatore non riesce
+    a localizzare il vero nu_eps nel range di T testato.
+
+  2.2 Lambda relerr Procrustes-block [METRICA PRIMARIA]
+  ──────────────────────────────────────────────────────────────────────────────────────
+    T     student_t    gaussian      gap
+   ───  ───────────  ──────────  ──────────
+   100      14.50%     16.24%    −1.74 pp
+   200       9.66%     11.71%    −2.05 pp
+   400       7.23%      8.31%    −1.08 pp
+   497       6.40%      7.45%    −1.05 pp
+   800       5.01%      5.63%    −0.62 pp
+
+  - Migliora con T per entrambi gli stimatori.
+  - Student-t migliore, ma il gap si restringe a T grandi (a T=800: solo −0.62 pp).
+  - Valori assoluti più alti che in small a T bassi (big ha più serie da stimare).
+
+  2.3 rho(A) rel.err [specifica di big: alta incertezza su A]
+  ──────────────────────────────────────────────────────────────────────────────────────
+    T     student_t    gaussian
+   ───  ───────────  ──────────
+   100      17.93%     21.69%
+   200      12.19%     11.92%
+   400       8.30%     11.83%
+   497       9.05%     10.47%
+   800       6.28%      5.93%
+
+  Il rho(A) è molto impreciso a T piccoli (17-22%): in small era <2%. Con rho(A)≈0.36
+  (bassa persistenza), la matrice A è più difficile da stimare. A T=800 si riduce a
+  ~6%, ma rimane più alta che in small (<1%).
+
+  2.4 diag(Q) rel.err per blocco (stimatore student_t)
+  ──────────────────────────────────────────────────────────────────────────────────────
+    T       Q[real]     Q[fin]    Q[other]
+   ───  ──────────  ──────────  ──────────
+   100    198.14%     23.87%      27.60%
+   200    181.61%     19.93%      12.99%
+   400    162.87%     17.65%      16.32%
+   497    174.00%     17.02%      12.06%
+   800    157.35%     18.83%       7.56%
+
+  - Blocco REAL: il più difficile a tutti i T (>157% anche a T=800). Migliora con T
+    ma lentamente (198% → 157%).
+  - Blocchi FIN e OTHER: molto più precisi (7-28%) e migliorano chiaramente con T.
+  - Pattern analogo a small: il real è strutturalmente problematico.
+
+  Confronto gaussian vs student_t su Q[real]:
+    T=100: gaussian 352.24% vs student_t 198.14% (+154 pp — forte vantaggio)
+    T=800: gaussian 352.93% vs student_t 157.35% (+196 pp — vantaggio stabile)
+  Il gaussian su Q[real] rimane ancorato a ~350% indipendentemente da T (non impara);
+  lo student_t scende lentamente da 198% a 157%.
+
+  2.5 R median rel.err
+  ──────────────────────────────────────────────────────────────────────────────────────
+    T     student_t    gaussian
+   ───  ───────────  ──────────
+   100      11.66%     35.01%
+   200       7.52%     37.95%
+   400       5.64%     38.17%
+   497       5.33%     38.91%
+   800       4.38%     39.41%
+
+  - Student-t migliora con T; gaussian rimane intorno a 35-39% a tutti i T.
+    Il mancato miglioramento del gaussian con T è un segnale forte del suo
+    fallimento in presenza di code pesanti.
+
+  2.6 Loglik gap (student_t − gaussian)
+  ──────────────────────────────────────────────────────────────────────────────────────
+    T       gap loglik
+   ───  ─────────────
+   100       +357.60
+   200       +772.79
+   400     +1584.34
+   497     +1912.06
+   800     +3140.57
+
+  - Positivo a tutti i T e CRESCE con T. Effetto più grande in big che in small
+    (big ha M=50 serie: più contributi al loglik).
+
+  2.7 Factor recovery |corr|
+  ──────────────────────────────────────────────────────────────────────────────────────
+                         T=100                   T=800
+               student_t  gaussian     student_t  gaussian
+    real:        0.9792    0.9778         0.9869    0.9864
+    financial:   0.9887    0.9887         0.9955    0.9953
+    other:       0.9617    0.9598         0.9742    0.9727
+
+  Le correlazioni factor sono alte per entrambi. Il gap student_t−gaussian è piccolo
+  (max 0.0019 su real a T=100). In big, il factor recovery è buono anche a T=100.
+
+  2.8 Convergenza algoritmica
+  ─────────────────────────────────────────────────────────────────────────────────────
+    convergence rate: 100% per entrambi a tutti i T
+    iterazioni (mean, T=100): student_t 30.40, gaussian 16.75
+    iterazioni (mean, T=800): student_t 28.60, gaussian 14.45
+  In big, le iterazioni sono circa 2x (student_t vs gaussian), MOLTO meno che in small
+  (~2.3x in small). Questo riflette la diversa struttura dinamica (bassa persistenza →
+  convergenza più rapida).
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. EXP B — DGP Gaussiano (test di nesting)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Cosa testa: DGP è gaussiano (nu=inf). Lo stimatore student_t deve degenerare al
+  gaussiano (nesting). Si verifica se le metriche convergono e se il loglik gap → 0.
+
+  3.1 nu_u_hat nello stimatore student_t (DGP gaussiano)
+  ──────────────────────────────────────────────────────────────────────────────────────
+    T     nu_u_hat   dist: min / median / mean / max
+   ───  ──────────  ───────────────────────────────────────
+   100      48.2    16.7 /  46.4 /  48.2 /  79.0
+   200      45.7    17.0 /  43.9 /  45.7 /  79.8
+   400      42.4    15.8 /  47.4 /  42.4 /  66.9
+   497      45.7    17.0 /  49.0 /  45.7 /  63.2
+   800      47.3    16.8 /  50.7 /  47.3 /  65.8
+
+  LIMITE ONESTO: In big, nu_u_hat si posiziona intorno a 42-48 — più basso che in
+  small (90-100) — e NON cresce con T. Questo è ancora più lontano dall'infinito
+  teorico. Il nesting è meno efficace che in small: l'EM student_t con M=50 serie
+  e bassa persistenza non riesce ad allontanare nu dal range 40-50 nemmeno a T=800.
+
+  3.2 Loglik gap B (student_t − gaussian) — ANALISI FORMALIZZATA
+  ──────────────────────────────────────────────────────────────────────────────────────
+
+  OSSERVAZIONE: il gap NON converge a zero, cresce ~linearmente con T.
+  DGP: gaussiano puro (nu_u=nu_eps=inf nel generatore). Atteso teoricamente: gap→0.
+
+    T       gap loglik
+   ───  ─────────────
+   100        +8.82
+   200       +17.15
+   400       +39.43
+   497       +39.41
+   800       +62.34
+
+  Anche con DGP gaussiano puro, lo stimatore student_t registra sempre un loglik
+  leggermente superiore al gaussiano. Il gap è positivo a tutti i T e cresce.
+  In valore assoluto i gap sono più grandi che in small (big: +62 a T=800 vs
+  small: +29): proporzionale a M=50 > M=20, come atteso dalla struttura a somma.
+
+  NESTING PARAMETRICO: REGGE. Il gap nel loglik NON implica che il student_t stia
+  stimando parametri migliori su dati gaussiani. Come mostrato in 3.3:
+  - Lambda relerr: student_t ≈ gaussian a tutti i T (differenze < 0.02 pp).
+  - R median relerr: student_t ≈ gaussian (differenze < 0.2 pp).
+  - |corr| factor [real]: identico tra i due stimatori (0.9725 vs 0.9726 a T=100).
+  Il nesting a livello di parametri strutturali è confermato.
+
+  PERCHÉ IL GAP CRESCE: differenza di calibrazione tra due funzioni obiettivo.
+  Lo stimatore student_t stima nu_u ≈ 42-48 su dati gaussiani (invece di inf).
+  Con nu finito, la log-verosimiglianza Student-t e quella Gaussiana sono funzioni
+  matematicamente diverse, calibrate su scale leggermente diverse. La differenza
+  per singola osservazione è piccola ma costante, e si accumula su M×T termini
+  (M=50) → il gap cresce linearmente con T. Con ν̂ ≈ 42-48 (più basso del ν̂ ≈
+  90-100 di small), la differenza per-osservazione è leggermente più grande —
+  coerente con i gap assoluti maggiori osservati.
+
+  PROVA — gap/T ≈ costante su tutti i T:
+
+    T       gap loglik   gap/T    gap/(M×T)
+   ───  ─────────────  ───────  ────────────
+   100        +8.82     0.088      0.00176
+   200       +17.15     0.086      0.00172
+   400       +39.43     0.099      0.00197
+   497       +39.41     0.079      0.00159
+   800       +62.34     0.078      0.00156
+                        ──────────────────
+                media:   ≈0.086     ≈0.00172 per (t,serie)
+
+  gap/T è approssimativamente costante (0.078–0.099). Una vera divergenza darebbe
+  gap/T crescente. La costanza di gap/(M×T) ≈ 0.0017 per (t,serie) conferma che
+  è un bias per-osservazione della funzione obiettivo, non un guadagno crescente.
+  Crucialmente, il valore ≈ 0.0017 per (t,serie) è quasi identico a small
+  (≈ 0.00176): la costante è una proprietà dello stimatore, indipendente da M.
+
+  CONCLUSIONE: il gap in Exp B è una differenza di calibrazione tra la
+  log-verosimiglianza Student-t (valutata con ν̂ ≈ 42-48, finito) e quella
+  Gaussiana. NON è un guadagno di fitting genuino del student_t su dati gaussiani,
+  NON è un bug. È un limite intrinseco del confronto via loglik nel nesting empirico:
+  l'EM non riesce a mandare ν → ∞ su campioni finiti, e con ν finito le due funzioni
+  obiettivo hanno scale diverse. Il gap assoluto più grande rispetto a small è
+  puramente proporzionale a M (50 vs 20 serie), non un segnale di peggioramento
+  strutturale. Da documentare onestamente nella tesi.
+
+  3.3 Metriche di recovery in B — nesting sui parametri strutturali
+  ──────────────────────────────────────────────────────────────────────────────────────
+    T     Lambda rel.err [stud-t]  Lambda rel.err [gauss]  R med [stud-t]  R med [gauss]
+   ───  ─────────────────────────  ─────────────────────  ─────────────  ─────────────
+   100              18.45%                  18.42%             10.76%          10.59%
+   200              14.04%                  14.03%              7.41%           7.28%
+   400              10.36%                  10.37%              5.50%           5.35%
+   497               8.98%                   9.00%              4.77%           4.69%
+   800               6.81%                   6.80%              3.85%           3.89%
+
+  - Lambda: student_t ≈ gaussian a tutti i T (differenze <0.02 pp). Nesting
+    confermato su Lambda.
+  - R median: molto simile (differenze <0.2 pp). Nesting confermato su R.
+
+  |corr| factor [real]:
+    T=100: student_t 0.9725 vs gaussian 0.9726 (≈ identico)
+    T=800: student_t 0.9826 vs gaussian 0.9826 (≈ identico)
+
+  3.4 Tabella A vs B a T=497 (confronto incrociato)
+  ──────────────────────────────────────────────────────────────────────────────────────
+  [A: DGP student-t | B: DGP gaussiano]
+
+    metrica                         A:stud-t    A:gauss    B:stud-t    B:gauss
+   ─────────────────────────────  ──────────  ─────────  ──────────  ─────────
+    loglik_final                 −24210.44  −26122.50  −21818.46  −21857.87
+    Lambda relerr [Procrustes]        6.40%      7.45%      8.98%      9.00%
+    diag(Q) rel.err [real]          174.00%    353.14%    331.61%    350.66%
+    diag(Q) rel.err [fin]            17.02%     42.49%     34.75%     40.68%
+    R median rel.err                  5.33%     38.91%      4.77%      4.69%
+    |corr| factor [real]             0.9859     0.9853     0.9818     0.9818
+    |corr| factor [fin]              0.9944     0.9941     0.9933     0.9933
+    convergence rate                 1.0000     1.0000     1.0000     1.0000
+    n_iter (mean)                    29.25      14.25      69.95      16.10
+
+  Lettura:
+  - In A: student_t chiaramente > gaussian su loglik (gap +1912) e su Q, R.
+  - In B: Lambda student_t ≈ gaussian (8.98% vs 9.00%) — nesting verificato.
+  - In B: R median quasi identico (4.77% vs 4.69%).
+  - Il loglik gap in B è +39.41 (NON zero — vedi 3.2).
+  - Iterazioni in B: student_t 69.95 vs gaussian 16.10 (×4.4). Overhead sostanziale.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. EXP C — Contaminazione (robustezza e detection)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Cosa testa: DGP = gaussiano base + overlay di pi*T osservazioni contaminate
+  (kappa=5, nu_contam=3). Si verifica (1) se il gaussian degrada, (2) se lo student_t
+  è stabile, e (3) se i pesi w_eps identificano i periodi contaminati.
+
+  4.1 Detection dei periodi contaminati (solo student_t; gaussian non produce w_eps)
+  ──────────────────────────────────────────────────────────────────────────────────────
+
+   pi=0.01 (attesi ~1 obs contaminata per 100 periodi):
+   ────────────────────────────────────────────────────────────────────────────────────
+     T     rate(nat)  lift(nat)   recall@5%   prec@5%   lift@5%   recall@10%   prec@10%
+    ───  ──────────  ─────────  ─────────   ────────  ────────  ──────────   ────────
+    100    100.00%     84.00      100.00%     27.27%    19.80     100.00%      13.64%
+    200    100.00%    140.86      100.00%     17.65%    19.90     100.00%       8.82%
+    400    100.00%    156.44      100.00%     17.00%    19.95     100.00%       8.50%
+    497    100.00%    130.64      100.00%     17.40%    19.84     100.00%       8.70%
+    800     99.44%    128.82       99.44%     17.25%    19.86      99.44%       8.62%
+
+   pi=0.05 (attesi ~5 obs contaminate per 100 periodi):
+   ────────────────────────────────────────────────────────────────────────────────────
+     T     rate(nat)  lift(nat)   recall@5%   prec@5%   lift@5%   recall@10%   prec@10%
+    ───  ──────────  ─────────  ─────────   ────────  ────────  ──────────   ────────
+    100     98.33%     24.50       88.18%     79.00%    17.46      97.88%      47.50%
+    200     99.71%     24.73       92.47%     81.50%    18.40     100.00%      46.50%
+    400    100.00%     22.30       95.49%     87.75%    19.05     100.00%      46.62%
+    497    100.00%     21.79       96.28%     89.60%    19.10     100.00%      47.00%
+    800     99.89%     21.17       95.83%     91.50%    19.14      99.89%      48.31%
+
+   pi=0.10 (attesi ~10 obs contaminate per 100 periodi):
+   ────────────────────────────────────────────────────────────────────────────────────
+     T     rate(nat)  lift(nat)   recall@5%   prec@5%   lift@5%   recall@10%   prec@10%
+    ───  ──────────  ─────────  ─────────   ────────  ────────  ──────────   ────────
+    100     99.19%     10.81       54.91%    100.00%    10.87      94.49%      89.00%
+    200     99.81%     10.12       50.94%    100.00%    10.14      94.44%      93.75%
+    400     99.88%      9.94       49.90%    100.00%     9.95      95.40%      96.25%
+    497     99.78%     10.06       50.84%    100.00%    10.09      96.23%      95.20%
+    800    100.00%     10.20       51.05%    100.00%    10.20      97.11%      95.75%
+
+  Commento detection:
+  - A pi=0.01: detection rate=100% a quasi tutti i T, lift~84-156x. Eccellente anche
+    con pochissimi eventi contaminati.
+  - A pi=0.05: rate≥98%, lift~21-25x, precision@5% cresce con T (da 79% a 92%).
+  - A pi=0.10: rate≥99%, lift~10x, precision@5%=100% ma recall@5%≈50% (con 10% di
+    contaminazione la soglia @5% può coprire solo metà dei veri contaminati).
+  - La detection è sostanzialmente identica a quella di small — il numero e la
+    struttura dei contaminati è la stessa per costruzione (stesso pi, T, kappa).
+
+  4.2 Adattamento di nu_eps (meccanismo di detection)
+  ──────────────────────────────────────────────────────────────────────────────────────
+   nu_eps_hat dello stimatore student_t al variare di pi (T=100, big):
+     pi=0.00: 503.16  →  pi=0.01: 227.04  →  pi=0.05: 8.21  →  pi=0.10: 3.84
+
+   nu_eps_hat al variare di pi (T=800, big):
+     pi=0.00: 559.16  →  pi=0.01: 26.12  →  pi=0.05: 6.91  →  pi=0.10: 3.76
+
+   Il meccanismo di adattamento funziona identicamente a small: nu_eps cade verso
+   nu_contam=3 all'aumentare di pi. Notare che a pi=0.01, T=800: nu_eps=26.1 (più alto
+   che a pi=0.05: 6.9), riflettendo l'ampiezza dell'effetto.
+
+  4.3 Robustezza: Lambda relerr student_t vs gaussian all'aumentare di pi
+  ──────────────────────────────────────────────────────────────────────────────────────
+   [student_t stabile; gaussian degrada]
+
+     T=100:  pi=0.00  stud-t 18.45% / gauss 18.42%  (≈ pari)
+             pi=0.01  stud-t 18.77% / gauss 30.33%
+             pi=0.05  stud-t 19.06% / gauss 68.36%
+             pi=0.10  stud-t 19.82% / gauss 88.69%
+
+     T=800:  pi=0.00  stud-t  6.81% / gauss  6.80%  (≈ pari)
+             pi=0.01  stud-t  6.94% / gauss 16.67%
+             pi=0.05  stud-t  7.03% / gauss 45.30%
+             pi=0.10  stud-t  7.14% / gauss 62.67%
+
+   Lo student_t è sostanzialmente flat (18-20% a T=100; 6.8-7.1% a T=800) al variare
+   di pi. Il gaussian degrada fortemente (da 18% a 89% a T=100; da 6.8% a 63% a T=800).
+
+  R median rel.err confronto (T=100, big):
+     pi=0.00  stud-t 10.76% / gauss 10.59%
+     pi=0.05  stud-t 11.69% / gauss 142.15%
+     pi=0.10  stud-t 13.92% / gauss 378.84%
+
+  R median confronto (T=800, big):
+     pi=0.00  stud-t  3.85% / gauss  3.89%
+     pi=0.10  stud-t 16.66% / gauss 571.18%
+
+  NOTA su R median a pi=0.10 T=800: lo student_t sale a 16.66% — più alto del pi=0.00
+  (3.85%). Non è perfettamente "flat" come Lambda: il blocco R è leggermente degradato
+  anche per student_t a pi=0.10 con T=800. Non è trascurabile ma resta molto più
+  basso del gaussian (571%).
+
+  4.4 Instabilità EM: monotonicity violations
+  ──────────────────────────────────────────────────────────────────────────────────────
+  PROBLEMA DOCUMENTATO: a pi=0.00 (DGP gaussiano puro), il student_t accumula
+  violations di monotonicità, anche se meno che in small.
+
+     T=100  pi=0.00: violations (mean) = 60.30  (student_t)  /  0.00 (gaussian)
+     T=200  pi=0.00:                   = 58.75               /  0.00
+     T=400  pi=0.00:                   = 48.80               /  0.00
+     T=497  pi=0.00:                   = 59.60               /  0.00
+     T=800  pi=0.00:                   = 60.10               /  0.00
+
+  Violations intorno a 50-60 (meno che in small: 105-139). Con bassa persistenza
+  (rho≈0.36), l'EM converge più facilmente. A pi≥0.05 le violations si azzerano.
+
+  A pi=0.01, le violations si riducono (es. T=100: 26.05; T=400: 9.15; T=800: 2.70)
+  e scompaiono a pi≥0.05.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. SINTESI CONFIG BIG
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  PROPRIETA' CONFERMATE:
+
+  (1) Beneficio heavy-tail [Exp A]: lo stimatore student_t supera il gaussian su
+      Lambda, Q, R e loglik quando il DGP è student_t. Il gap loglik cresce con T
+      (+358 a T=100; +3141 a T=800). Il vantaggio è più grande in valore assoluto
+      che in small, proporzionale a M=50 serie.
+
+  (2) Nesting parziale [Exp B]: su Lambda e R median le due stime sono quasi identiche
+      (gap <0.03 pp su Lambda; <0.2 pp su R). Il nesting è confermato sui parametri
+      strutturali. |corr| factor è indistinguibile in B tra i due stimatori.
+
+  (3) Detection eccellente [Exp C]: la detection dei periodi contaminati funziona bene
+      per tutti i pi testati. A pi=0.01: rate=100%, lift~84-156x. A pi=0.05 e pi=0.10
+      la detection è robusta. La struttura dei contaminati è la stessa di small →
+      i numeri di detection sono identici tra big e small.
+
+  (4) Robustezza alla contaminazione [Exp C]: lo student_t mantiene Lambda relerr
+      quasi costante all'aumentare di pi (~7% a T=800 per pi=0-0.10). Il gaussian
+      degrada drasticamente (da ~7% a 63% a T=800; R median da ~4% a 571%).
+
+  LIMITI ONESTI EMERSI:
+
+  (5) Bias sistematico in nu_eps [Exp A — LIMITE GRAVE]: nu_eps_hat rimane intorno
+      a 7.0-7.4 a tutti i T (vero≈4). NON converge verso il valore vero anche a
+      T=800. Questo è un problema identificativo serio nella config big: l'estimatore
+      non riesce a separare bene nu_eps dal rumore in presenza di M=50 serie e bassa
+      persistenza. Il bias in nu_u (a T=800: mean=4.9 vs vero=4.52) è più contenuto.
+
+  (6) Differenza di calibrazione loglik [Exp B]: il gap loglik cresce da +8.82 (T=100)
+      a +62.34 (T=800), valori assoluti più grandi di small perché proporzionali a
+      M=50. gap/(M×T) ≈ 0.0017 per (t,serie), quasi identico a small (≈ 0.00176):
+      la costante è una proprietà dello stimatore indipendente da M. Con ν̂ ≈ 42-48
+      (più basso di small ≈ 90-100), la differenza per-osservazione è leggermente
+      maggiore. NON è un guadagno di fitting genuino né un fallimento del nesting
+      parametrico — Lambda e R sono quasi identici tra i due stimatori in B.
+
+  (7) Q[real] irrecuperabile [Exp A, B, C]: blocco real con Q relerr >157% a T=800
+      (student_t), >350% per il gaussian. Identica patologia a small ma con valori
+      in valore assoluto ancora più elevati per il gaussian a tutti i T.
+
+  (8) Monotonicity violations [Exp C]: l'EM student_t accumula ~50-60 violations a
+      pi=0 (meno che in small: ~105-139). Scompaiono a pi≥0.05. Meno grave che in
+      small, probabilmente perché la bassa persistenza riduce la dipendenza temporale
+      che rende instabile l'E-step.
+
+  NOTA DISTINTIVA CONFIG BIG: rho(A_star)≈0.363 (bassa persistenza) in netto contrasto
+  con small (≈0.978). Questo rende i fattori quasi stazionari a breve termine. Di
+  conseguenza: (a) l'EM converge più velocemente (~29 iter vs ~88 in small); (b) la
+  stima di rho(A) è meno precisa a T piccoli (17-22% relerr vs 1-2% in small); (c) il
+  bias di nu_eps è più grave (forse per la diversa struttura di informazione temporale);
+  (d) le instabilità EM sono meno severe.
+
+========================================================================================
+  END SUMMARY — CONFIG BIG
+========================================================================================

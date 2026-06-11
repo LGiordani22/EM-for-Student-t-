@@ -1,0 +1,127 @@
+{
+  "config": "small",
+  "description": "USA macroeconomic dataset for the Student-t DFM (First Stage) \u2014 20 series (19 monthly + 1 quarterly). BASELINE configuration: reproduces the original hardcoded dataset_usa.csv bit-for-bit. This JSON is the single source of truth for the series set, blocks, frequencies, transform codes and column order.",
+  "sample_start": "1985-01-31",
+  "sample_end": "2026-05-31",
+  "n_observations": 497,
+  "n_series": 20,
+  "series": [
+    {
+      "name": "INDPRO",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "IPFINAL",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "IPMANSICS",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "PAYEMS",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "MANEMP",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "RPI",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "CMRMTSPLx",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "RETAILx",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "S&P 500",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "S&P PE ratio",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "T10YFFM",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "T1YFFM",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "BAAFFM",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "TB3SMFFM",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "NFCI",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "CPIAUCSL",
+      "block": "other",
+      "freq": "monthly"
+    },
+    {
+      "name": "PCEPI",
+      "block": "other",
+      "freq": "monthly"
+    },
+    {
+      "name": "UMCSENTx",
+      "block": "other",
+      "freq": "monthly"
+    },
+    {
+      "name": "TWEXAFEGSMTHx",
+      "block": "other",
+      "freq": "monthly"
+    },
+    {
+      "name": "GDPC1",
+      "block": "real",
+      "freq": "quarterly"
+    }
+  ],
+  "block_sizes": {
+    "real": 9,
+    "financial": 7,
+    "other": 4
+  },
+  "factor_sizes": {
+    "r_R": 1,
+    "r_F": 1,
+    "r_X": 1,
+    "r_total": 3
+  },
+  "frequency_counts": {
+    "monthly": 19,
+    "quarterly": 1
+  },
+  "transformations_source": "FRED-MD transformation codes for monthly series; log-diff x 100 for GDPC1; levels for NFCI",
+  "standardization": "NOT applied here; performed in em_initialization.py"
+}

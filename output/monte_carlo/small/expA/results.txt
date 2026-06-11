@@ -1,0 +1,175 @@
+
+========================================================================================
+  Experiment A — Heavy-tail benefit  |  T=100, S=20
+  DGP: Student-t (calibrated nu~4)  |  Two estimators on the same panels
+========================================================================================
+  metric                                               student_t      gaussian         gap
+  --------------------------------------------------------------------------------------
+  nu_u_hat  (truth ~4, student_t only)                     4.273  inf (by design)            
+  nu_eps_hat (truth ~4, student_t only)                    5.006  inf (by design)            
+  --------------------------------------------------------------------------------------
+  loglik_final (mean over replications)               -1433.1712    -1678.6330   +245.4619
+  --------------------------------------------------------------------------------------
+  Lambda relerr Procrustes-block [PRIMARY]                10.18%        13.56%     -0.0338
+  rho(A) rel.err                                           1.15%         1.34%     -0.0019
+  diag(Q) rel.err [real]                                 106.64%       286.94%     -1.8030
+  diag(Q) rel.err [fin]                                  141.18%       280.11%     -1.3892
+  diag(Q) rel.err [other]                                 22.97%        98.06%     -0.7509
+  R median rel.err                                        12.88%        71.15%     -0.5827
+  --------------------------------------------------------------------------------------
+  |corr| factor [real]                                    0.9744        0.9729     +0.0016
+  |corr| factor [financial]                               0.9983        0.9972     +0.0012
+  |corr| factor [other]                                   0.9704        0.9440     +0.0264
+  --------------------------------------------------------------------------------------
+  convergence rate                                        1.0000        1.0000     +0.0000
+  iterations (mean)                                      93.4500       42.6500    +50.8000
+========================================================================================
+  Interpretation:
+    loglik gap > 0 (large)  -> Student-t fits the heavy tails better.
+    Q / R rel.err larger for Gaussian -> it inflates covariances
+    (no down-weighting of fat-tailed observations).
+========================================================================================
+
+  nu_u_hat distribution (Student-t estimator, T=100, S=20 finite reps):
+    min=2.8  median=4.4  mean=4.3  max=5.4
+    (truth nu_u=4.08; expect concentration near it, NOT saturation at the Brent bound 1000)
+
+========================================================================================
+  Experiment A — Heavy-tail benefit  |  T=200, S=20
+  DGP: Student-t (calibrated nu~4)  |  Two estimators on the same panels
+========================================================================================
+  metric                                               student_t      gaussian         gap
+  --------------------------------------------------------------------------------------
+  nu_u_hat  (truth ~4, student_t only)                     5.246  inf (by design)            
+  nu_eps_hat (truth ~4, student_t only)                    4.605  inf (by design)            
+  --------------------------------------------------------------------------------------
+  loglik_final (mean over replications)               -2941.5647    -3468.7851   +527.2204
+  --------------------------------------------------------------------------------------
+  Lambda relerr Procrustes-block [PRIMARY]                 7.88%        10.36%     -0.0248
+  rho(A) rel.err                                           1.01%         1.00%     +0.0001
+  diag(Q) rel.err [real]                                 128.62%       291.11%     -1.6249
+  diag(Q) rel.err [fin]                                   97.56%       194.31%     -0.9674
+  diag(Q) rel.err [other]                                 21.03%        93.70%     -0.7267
+  R median rel.err                                         9.49%        80.56%     -0.7106
+  --------------------------------------------------------------------------------------
+  |corr| factor [real]                                    0.9724        0.9703     +0.0021
+  |corr| factor [financial]                               0.9988        0.9983     +0.0005
+  |corr| factor [other]                                   0.9766        0.9654     +0.0112
+  --------------------------------------------------------------------------------------
+  convergence rate                                        1.0000        1.0000     +0.0000
+  iterations (mean)                                      90.5500       40.7500    +49.8000
+========================================================================================
+  Interpretation:
+    loglik gap > 0 (large)  -> Student-t fits the heavy tails better.
+    Q / R rel.err larger for Gaussian -> it inflates covariances
+    (no down-weighting of fat-tailed observations).
+========================================================================================
+
+  nu_u_hat distribution (Student-t estimator, T=200, S=20 finite reps):
+    min=3.6  median=4.7  mean=5.2  max=12.3
+    (truth nu_u=4.08; expect concentration near it, NOT saturation at the Brent bound 1000)
+
+========================================================================================
+  Experiment A — Heavy-tail benefit  |  T=400, S=20
+  DGP: Student-t (calibrated nu~4)  |  Two estimators on the same panels
+========================================================================================
+  metric                                               student_t      gaussian         gap
+  --------------------------------------------------------------------------------------
+  nu_u_hat  (truth ~4, student_t only)                     4.663  inf (by design)            
+  nu_eps_hat (truth ~4, student_t only)                    4.519  inf (by design)            
+  --------------------------------------------------------------------------------------
+  loglik_final (mean over replications)               -5949.9177    -7113.8121  +1163.8944
+  --------------------------------------------------------------------------------------
+  Lambda relerr Procrustes-block [PRIMARY]                 4.73%         7.26%     -0.0252
+  rho(A) rel.err                                           0.57%         0.79%     -0.0022
+  diag(Q) rel.err [real]                                 112.42%       288.63%     -1.7620
+  diag(Q) rel.err [fin]                                   41.20%       100.15%     -0.5895
+  diag(Q) rel.err [other]                                 15.25%        94.45%     -0.7920
+  R median rel.err                                         7.33%        83.87%     -0.7654
+  --------------------------------------------------------------------------------------
+  |corr| factor [real]                                    0.9796        0.9766     +0.0030
+  |corr| factor [financial]                               0.9994        0.9990     +0.0005
+  |corr| factor [other]                                   0.9803        0.9644     +0.0159
+  --------------------------------------------------------------------------------------
+  convergence rate                                        1.0000        1.0000     +0.0000
+  iterations (mean)                                      88.7500       36.7000    +52.0500
+========================================================================================
+  Interpretation:
+    loglik gap > 0 (large)  -> Student-t fits the heavy tails better.
+    Q / R rel.err larger for Gaussian -> it inflates covariances
+    (no down-weighting of fat-tailed observations).
+========================================================================================
+
+  nu_u_hat distribution (Student-t estimator, T=400, S=20 finite reps):
+    min=3.2  median=4.7  mean=4.7  max=6.1
+    (truth nu_u=4.08; expect concentration near it, NOT saturation at the Brent bound 1000)
+
+========================================================================================
+  Experiment A — Heavy-tail benefit  |  T=800, S=20
+  DGP: Student-t (calibrated nu~4)  |  Two estimators on the same panels
+========================================================================================
+  metric                                               student_t      gaussian         gap
+  --------------------------------------------------------------------------------------
+  nu_u_hat  (truth ~4, student_t only)                     4.482  inf (by design)            
+  nu_eps_hat (truth ~4, student_t only)                    4.619  inf (by design)            
+  --------------------------------------------------------------------------------------
+  loglik_final (mean over replications)              -11906.8135   -14203.5359  +2296.7224
+  --------------------------------------------------------------------------------------
+  Lambda relerr Procrustes-block [PRIMARY]                 3.29%         5.00%     -0.0171
+  rho(A) rel.err                                           0.47%         0.38%     +0.0009
+  diag(Q) rel.err [real]                                 106.56%       292.73%     -1.8616
+  diag(Q) rel.err [fin]                                   16.08%        60.66%     -0.4458
+  diag(Q) rel.err [other]                                 11.31%        95.76%     -0.8445
+  R median rel.err                                         5.21%        82.04%     -0.7683
+  --------------------------------------------------------------------------------------
+  |corr| factor [real]                                    0.9814        0.9799     +0.0016
+  |corr| factor [financial]                               0.9998        0.9996     +0.0002
+  |corr| factor [other]                                   0.9817        0.9718     +0.0099
+  --------------------------------------------------------------------------------------
+  convergence rate                                        1.0000        1.0000     +0.0000
+  iterations (mean)                                      85.0000       37.8000    +47.2000
+========================================================================================
+  Interpretation:
+    loglik gap > 0 (large)  -> Student-t fits the heavy tails better.
+    Q / R rel.err larger for Gaussian -> it inflates covariances
+    (no down-weighting of fat-tailed observations).
+========================================================================================
+
+  nu_u_hat distribution (Student-t estimator, T=800, S=20 finite reps):
+    min=4.0  median=4.5  mean=4.5  max=5.2
+    (truth nu_u=4.08; expect concentration near it, NOT saturation at the Brent bound 1000)
+
+========================================================================================
+  Experiment A — Heavy-tail benefit  |  T=497, S=20
+  DGP: Student-t (calibrated nu~4)  |  Two estimators on the same panels
+========================================================================================
+  metric                                               student_t      gaussian         gap
+  --------------------------------------------------------------------------------------
+  nu_u_hat  (truth ~4, student_t only)                     4.660  inf (by design)            
+  nu_eps_hat (truth ~4, student_t only)                    4.626  inf (by design)            
+  --------------------------------------------------------------------------------------
+  loglik_final (mean over replications)               -7409.5164    -8817.3693  +1407.8529
+  --------------------------------------------------------------------------------------
+  Lambda relerr Procrustes-block [PRIMARY]                 4.12%         6.39%     -0.0227
+  rho(A) rel.err                                           0.45%         0.54%     -0.0009
+  diag(Q) rel.err [real]                                 125.08%       291.27%     -1.6619
+  diag(Q) rel.err [fin]                                   28.38%        79.35%     -0.5097
+  diag(Q) rel.err [other]                                 16.80%        96.59%     -0.7979
+  R median rel.err                                         6.32%        84.17%     -0.7785
+  --------------------------------------------------------------------------------------
+  |corr| factor [real]                                    0.9797        0.9773     +0.0025
+  |corr| factor [financial]                               0.9997        0.9994     +0.0003
+  |corr| factor [other]                                   0.9810        0.9674     +0.0136
+  --------------------------------------------------------------------------------------
+  convergence rate                                        1.0000        1.0000     +0.0000
+  iterations (mean)                                      87.2500       35.8500    +51.4000
+========================================================================================
+  Interpretation:
+    loglik gap > 0 (large)  -> Student-t fits the heavy tails better.
+    Q / R rel.err larger for Gaussian -> it inflates covariances
+    (no down-weighting of fat-tailed observations).
+========================================================================================
+
+  nu_u_hat distribution (Student-t estimator, T=497, S=20 finite reps):
+    min=3.3  median=4.8  mean=4.7  max=5.7
+    (truth nu_u=4.08; expect concentration near it, NOT saturation at the Brent bound 1000)

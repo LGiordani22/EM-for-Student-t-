@@ -1,0 +1,57 @@
+# ── Virtual environment ───────────────────────────────────────────────────────
+.venv/
+venv/
+ENV/
+
+# ── Secrets / credenziali ──────────────────────────────────────────────────────
+.env
+*.key
+*.pem
+
+# ── Python build artifacts ─────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+dist/
+build/
+
+# ── Jupyter ────────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ── Archivi di lavoro (non rilevanti per la tesi) ──────────────────────────────
+_archive_pre_config/
+_archive_second_stage/
+
+# ── Claude Code (config locale dell'AI assistant) ─────────────────────────────
+.claude/
+
+# ── OS / IDE ───────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# ── LaTeX — file ausiliari di compilazione (mai in repo) ──────────────────────
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+
+# ── Figure rigenerabili dai notebook ──────────────────────────────────────────
+results/figures/
+
+# ── INCLUSI ESPLICITAMENTE (override, non escludere) ──────────────────────────
+# data/raw/     → 293 MB, 323 vintage FRED-MD, nessun file > 100 MB → inclusi
+# data/processed/ → 8 MB → inclusi
+# output/       → 14 MB → inclusi
+# results/      → escluso results/figures/ (rigenerabili), resto incluso

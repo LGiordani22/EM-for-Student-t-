@@ -1,0 +1,40 @@
+{
+  "name": "small",
+  "description": "USA macroeconomic dataset for the Student-t DFM (First Stage) — 20 series (19 monthly + 1 quarterly). BASELINE configuration: reproduces the original hardcoded dataset_usa.csv bit-for-bit. This JSON is the single source of truth for the series set, blocks, frequencies, transform codes and column order.",
+  "sample_start": "1985-01-01",
+  "output_csv": "dataset_small.csv",
+  "factor_sizes": {
+    "r_R": 1,
+    "r_F": 1,
+    "r_X": 1,
+    "r_total": 3
+  },
+  "current_series": ["GDPC1", "NFCI"],
+  "notes": {
+    "source": "fredmd = sourced from FRED-MD with the FRED-MD transformation code; current = sourced from FRED direct / processed dataset (not in FRED-MD vintages).",
+    "transform_codes": "FRED-MD codes: 1=level, 2=first diff, 3=2nd diff, 4=log, 5=log first diff, 6=log 2nd diff, 7=pct change. For 'current' series transform is null: NFCI is kept as level (weekly -> monthly mean); GDPC1 is log-diff x 100 at quarter-end (handled by download_gdpc1).",
+    "order": "The order of the 'series' array IS the canonical column order (ORDERED_COLS): real block, then financial FRED-MD, then NFCI (financial/current), then other block, then GDPC1 (real/current/quarterly) last."
+  },
+  "series": [
+    {"name": "INDPRO",        "block": "real",      "freq": "monthly",   "source": "fredmd",  "transform": 5},
+    {"name": "IPFINAL",       "block": "real",      "freq": "monthly",   "source": "fredmd",  "transform": 5},
+    {"name": "IPMANSICS",     "block": "real",      "freq": "monthly",   "source": "fredmd",  "transform": 5},
+    {"name": "PAYEMS",        "block": "real",      "freq": "monthly",   "source": "fredmd",  "transform": 5},
+    {"name": "MANEMP",        "block": "real",      "freq": "monthly",   "source": "fredmd",  "transform": 5},
+    {"name": "RPI",           "block": "real",      "freq": "monthly",   "source": "fredmd",  "transform": 5},
+    {"name": "CMRMTSPLx",     "block": "real",      "freq": "monthly",   "source": "fredmd",  "transform": 5},
+    {"name": "RETAILx",       "block": "real",      "freq": "monthly",   "source": "fredmd",  "transform": 5},
+    {"name": "S&P 500",       "block": "financial", "freq": "monthly",   "source": "fredmd",  "transform": 5},
+    {"name": "S&P PE ratio",  "block": "financial", "freq": "monthly",   "source": "fredmd",  "transform": 5},
+    {"name": "T10YFFM",       "block": "financial", "freq": "monthly",   "source": "fredmd",  "transform": 1},
+    {"name": "T1YFFM",        "block": "financial", "freq": "monthly",   "source": "fredmd",  "transform": 1},
+    {"name": "BAAFFM",        "block": "financial", "freq": "monthly",   "source": "fredmd",  "transform": 1},
+    {"name": "TB3SMFFM",      "block": "financial", "freq": "monthly",   "source": "fredmd",  "transform": 1},
+    {"name": "NFCI",          "block": "financial", "freq": "monthly",   "source": "current", "transform": null},
+    {"name": "CPIAUCSL",      "block": "other",     "freq": "monthly",   "source": "fredmd",  "transform": 6},
+    {"name": "PCEPI",         "block": "other",     "freq": "monthly",   "source": "fredmd",  "transform": 6},
+    {"name": "UMCSENTx",      "block": "other",     "freq": "monthly",   "source": "fredmd",  "transform": 2},
+    {"name": "TWEXAFEGSMTHx", "block": "other",     "freq": "monthly",   "source": "fredmd",  "transform": 5},
+    {"name": "GDPC1",         "block": "real",      "freq": "quarterly", "source": "current", "transform": null}
+  ]
+}

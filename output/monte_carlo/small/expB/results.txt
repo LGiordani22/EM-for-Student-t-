@@ -1,0 +1,172 @@
+
+========================================================================================
+  Experiment B — Nesting check  |  T=100, S=20
+  DGP: Gaussian (nu=inf)  |  Two estimators on the same synthetic panels
+========================================================================================
+  metric                                               student_t      gaussian         gap
+  --------------------------------------------------------------------------------------
+  nu_u_hat  (student_t only)                                92.8  N/A (Gaussian)            
+  nu_eps_hat (student_t only)                              504.9  N/A (Gaussian)            
+  --------------------------------------------------------------------------------------
+  loglik_final (mean over replications)               -1135.6317    -1139.1178     +3.4861
+  --------------------------------------------------------------------------------------
+  Lambda relerr Procrustes-block [PRIMARY]                13.26%        12.97%     +0.0030
+  rho(A) rel.err                                           1.70%         1.60%     +0.0010
+  diag(Q) rel.err [real]                                 276.68%       286.86%     -0.1018
+  diag(Q) rel.err [fin]                                  355.81%       355.38%     +0.0043
+  diag(Q) rel.err [other]                                 85.46%        90.05%     -0.0459
+  R median rel.err                                        12.65%        13.33%     -0.0068
+  --------------------------------------------------------------------------------------
+  |corr| factor [real]                                    0.9678        0.9680     -0.0002
+  |corr| factor [financial]                               0.9981        0.9979     +0.0001
+  |corr| factor [other]                                   0.9173        0.9314     -0.0141
+  --------------------------------------------------------------------------------------
+  convergence rate                                        1.0000        1.0000     +0.0000
+  iterations (mean)                                     116.9500       57.6500    +59.3000
+========================================================================================
+
+  nu_u_hat distribution (Student-t estimator, T=100, S=20 finite reps):
+    min=21.4  median=91.9  mean=92.8  max=170.9
+    (Brent upper bound = 1000; expect saturation toward high nu)
+
+========================================================================================
+  Experiment B — Nesting check  |  T=200, S=20
+  DGP: Gaussian (nu=inf)  |  Two estimators on the same synthetic panels
+========================================================================================
+  metric                                               student_t      gaussian         gap
+  --------------------------------------------------------------------------------------
+  nu_u_hat  (student_t only)                                90.9  N/A (Gaussian)            
+  nu_eps_hat (student_t only)                              535.7  N/A (Gaussian)            
+  --------------------------------------------------------------------------------------
+  loglik_final (mean over replications)               -2318.5742    -2326.2350     +7.6608
+  --------------------------------------------------------------------------------------
+  Lambda relerr Procrustes-block [PRIMARY]                10.03%         9.86%     +0.0017
+  rho(A) rel.err                                           1.30%         1.24%     +0.0005
+  diag(Q) rel.err [real]                                 281.74%       290.97%     -0.0923
+  diag(Q) rel.err [fin]                                  202.98%       192.68%     +0.1030
+  diag(Q) rel.err [other]                                 89.12%        93.86%     -0.0474
+  R median rel.err                                         8.59%         8.55%     +0.0004
+  --------------------------------------------------------------------------------------
+  |corr| factor [real]                                    0.9731        0.9731     -0.0001
+  |corr| factor [financial]                               0.9989        0.9987     +0.0002
+  |corr| factor [other]                                   0.9452        0.9527     -0.0075
+  --------------------------------------------------------------------------------------
+  convergence rate                                        1.0000        1.0000     +0.0000
+  iterations (mean)                                     136.3000       47.3500    +88.9500
+========================================================================================
+
+  nu_u_hat distribution (Student-t estimator, T=200, S=20 finite reps):
+    min=21.3  median=88.6  mean=90.9  max=162.0
+    (Brent upper bound = 1000; expect saturation toward high nu)
+
+========================================================================================
+  Experiment B — Nesting check  |  T=400, S=20
+  DGP: Gaussian (nu=inf)  |  Two estimators on the same synthetic panels
+========================================================================================
+  metric                                               student_t      gaussian         gap
+  --------------------------------------------------------------------------------------
+  nu_u_hat  (student_t only)                                99.4  N/A (Gaussian)            
+  nu_eps_hat (student_t only)                              576.9  N/A (Gaussian)            
+  --------------------------------------------------------------------------------------
+  loglik_final (mean over replications)               -4689.6653    -4701.9607    +12.2955
+  --------------------------------------------------------------------------------------
+  Lambda relerr Procrustes-block [PRIMARY]                 6.53%         6.81%     -0.0029
+  rho(A) rel.err                                           1.12%         0.99%     +0.0013
+  diag(Q) rel.err [real]                                 283.84%       290.94%     -0.0710
+  diag(Q) rel.err [fin]                                  145.15%       132.98%     +0.1217
+  diag(Q) rel.err [other]                                 92.37%        96.05%     -0.0368
+  R median rel.err                                         6.20%         6.27%     -0.0007
+  --------------------------------------------------------------------------------------
+  |corr| factor [real]                                    0.9769        0.9769     -0.0000
+  |corr| factor [financial]                               0.9992        0.9990     +0.0003
+  |corr| factor [other]                                   0.9712        0.9641     +0.0070
+  --------------------------------------------------------------------------------------
+  convergence rate                                        1.0000        1.0000     +0.0000
+  iterations (mean)                                     149.4500       44.0500   +105.4000
+========================================================================================
+
+  nu_u_hat distribution (Student-t estimator, T=400, S=20 finite reps):
+    min=56.4  median=97.7  mean=99.4  max=137.1
+    (Brent upper bound = 1000; expect saturation toward high nu)
+
+========================================================================================
+  Experiment B — Nesting check  |  T=800, S=20
+  DGP: Gaussian (nu=inf)  |  Two estimators on the same synthetic panels
+========================================================================================
+  metric                                               student_t      gaussian         gap
+  --------------------------------------------------------------------------------------
+  nu_u_hat  (student_t only)                                91.5  N/A (Gaussian)            
+  nu_eps_hat (student_t only)                              551.9  N/A (Gaussian)            
+  --------------------------------------------------------------------------------------
+  loglik_final (mean over replications)               -9452.3451    -9481.1915    +28.8464
+  --------------------------------------------------------------------------------------
+  Lambda relerr Procrustes-block [PRIMARY]                 4.36%         4.68%     -0.0032
+  rho(A) rel.err                                           0.59%         0.53%     +0.0006
+  diag(Q) rel.err [real]                                 282.46%       291.56%     -0.0910
+  diag(Q) rel.err [fin]                                   95.60%        87.76%     +0.0783
+  diag(Q) rel.err [other]                                 92.65%        96.86%     -0.0421
+  R median rel.err                                         4.33%         4.37%     -0.0004
+  --------------------------------------------------------------------------------------
+  |corr| factor [real]                                    0.9784        0.9785     -0.0001
+  |corr| factor [financial]                               0.9996        0.9994     +0.0001
+  |corr| factor [other]                                   0.9738        0.9682     +0.0056
+  --------------------------------------------------------------------------------------
+  convergence rate                                        1.0000        1.0000     +0.0000
+  iterations (mean)                                     143.2000       44.3500    +98.8500
+========================================================================================
+
+  nu_u_hat distribution (Student-t estimator, T=800, S=20 finite reps):
+    min=18.8  median=93.8  mean=91.5  max=124.7
+    (Brent upper bound = 1000; expect saturation toward high nu)
+
+========================================================================================
+  Experiment B — Nesting check  |  T=497, S=20
+  DGP: Gaussian (nu=inf)  |  Two estimators on the same synthetic panels
+========================================================================================
+  metric                                               student_t      gaussian         gap
+  --------------------------------------------------------------------------------------
+  nu_u_hat  (student_t only)                                93.3  N/A (Gaussian)            
+  nu_eps_hat (student_t only)                              537.8  N/A (Gaussian)            
+  --------------------------------------------------------------------------------------
+  loglik_final (mean over replications)               -5839.1670    -5856.7946    +17.6276
+  --------------------------------------------------------------------------------------
+  Lambda relerr Procrustes-block [PRIMARY]                 5.79%         6.06%     -0.0027
+  rho(A) rel.err                                           1.07%         0.95%     +0.0011
+  diag(Q) rel.err [real]                                 283.37%       291.74%     -0.0837
+  diag(Q) rel.err [fin]                                  136.83%       127.85%     +0.0898
+  diag(Q) rel.err [other]                                 92.62%        96.75%     -0.0413
+  R median rel.err                                         6.10%         6.16%     -0.0007
+  --------------------------------------------------------------------------------------
+  |corr| factor [real]                                    0.9776        0.9776     -0.0000
+  |corr| factor [financial]                               0.9993        0.9992     +0.0002
+  |corr| factor [other]                                   0.9738        0.9673     +0.0065
+  --------------------------------------------------------------------------------------
+  convergence rate                                        1.0000        1.0000     +0.0000
+  iterations (mean)                                     145.5000       44.1000   +101.4000
+========================================================================================
+
+  nu_u_hat distribution (Student-t estimator, T=497, S=20 finite reps):
+    min=20.9  median=91.1  mean=93.3  max=136.1
+    (Brent upper bound = 1000; expect saturation toward high nu)
+
+==============================================================================================================
+  Experiment A vs B  |  T=497  |  A:S=20  B:S=20
+  A: DGP Student-t (calibrated nu~4)   B: DGP Gaussian (nu=inf)
+  Message: in A Student-t beats Gaussian; in B they coincide (nesting).
+==============================================================================================================
+  metric                                          A:stud-t     A:gauss    B:stud-t     B:gauss
+  ---------------------------------------------------------------------------------------------------
+  loglik_final                                  -7409.5164  -8817.3693  -5839.1670  -5856.7946
+  Lambda relerr Procrustes-block                     4.12%       6.39%       5.79%       6.06%
+  diag(Q) rel.err [real]                           125.08%     291.27%     283.37%     291.74%
+  diag(Q) rel.err [fin]                             28.38%      79.35%     136.83%     127.85%
+  R median rel.err                                   6.32%      84.17%       6.10%       6.16%
+  |corr| factor [real]                              0.9797      0.9773      0.9776      0.9776
+  |corr| factor [fin]                               0.9997      0.9994      0.9993      0.9992
+  convergence rate                                  1.0000      1.0000      1.0000      1.0000
+  n_iter                                           87.2500     35.8500    145.5000     44.1000
+==============================================================================================================
+  Interpretation:
+    A: Student-t > Gaussian on loglik (+gap = benefit of tail-robustness)
+    B: Student-t ≈ Gaussian on ALL metrics (nesting confirmed if gap ~ 0)
+==============================================================================================================

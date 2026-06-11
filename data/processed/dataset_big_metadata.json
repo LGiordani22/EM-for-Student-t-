@@ -1,0 +1,277 @@
+{
+  "config": "big",
+  "description": "USA macroeconomic dataset for the Student-t DFM (First Stage) \u2014 50 series (49 monthly + 1 quarterly). EXTENDED configuration: 20 'small' baseline series + 18 additional FRED-MD series + 9 FRED-direct 'current' series + 3 constructed spreads. This JSON is the single source of truth for the series set, blocks, frequencies, transform codes and column order.",
+  "sample_start": "1985-01-31",
+  "sample_end": "2026-06-30",
+  "n_observations": 498,
+  "n_series": 50,
+  "series": [
+    {
+      "name": "INDPRO",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "IPFINAL",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "IPMANSICS",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "PAYEMS",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "MANEMP",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "RPI",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "CMRMTSPLx",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "RETAILx",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "IPCONGD",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "IPDCONGD",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "IPBUSEQ",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "CUMFNS",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "AMDMNOx",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "ANDENOx",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "UNRATE",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "AWHMAN",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "CES0600000007",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "HOUST",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "PERMIT",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "JTSJOL",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "RRSFS",
+      "block": "real",
+      "freq": "monthly"
+    },
+    {
+      "name": "S&P 500",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "S&P PE ratio",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "T10YFFM",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "T1YFFM",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "BAAFFM",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "TB3SMFFM",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "TB3MS",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "GS5",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "GS10",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "BAA",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "AAA",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "VIXCLSx",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "GS2",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "ANFCI",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "NFCI",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "term_spread",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "baa_spread",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "aaa_spread",
+      "block": "financial",
+      "freq": "monthly"
+    },
+    {
+      "name": "CPIAUCSL",
+      "block": "other",
+      "freq": "monthly"
+    },
+    {
+      "name": "PCEPI",
+      "block": "other",
+      "freq": "monthly"
+    },
+    {
+      "name": "UMCSENTx",
+      "block": "other",
+      "freq": "monthly"
+    },
+    {
+      "name": "TWEXAFEGSMTHx",
+      "block": "other",
+      "freq": "monthly"
+    },
+    {
+      "name": "WPSFD49207",
+      "block": "other",
+      "freq": "monthly"
+    },
+    {
+      "name": "CPILFESL",
+      "block": "other",
+      "freq": "monthly"
+    },
+    {
+      "name": "PCEPILFE",
+      "block": "other",
+      "freq": "monthly"
+    },
+    {
+      "name": "IR",
+      "block": "other",
+      "freq": "monthly"
+    },
+    {
+      "name": "IQ",
+      "block": "other",
+      "freq": "monthly"
+    },
+    {
+      "name": "T10YIE",
+      "block": "other",
+      "freq": "monthly"
+    },
+    {
+      "name": "GDPC1",
+      "block": "real",
+      "freq": "quarterly"
+    }
+  ],
+  "block_sizes": {
+    "real": 22,
+    "financial": 18,
+    "other": 10
+  },
+  "factor_sizes": {
+    "r_R": 1,
+    "r_F": 1,
+    "r_X": 1,
+    "r_total": 3
+  },
+  "frequency_counts": {
+    "monthly": 49,
+    "quarterly": 1
+  },
+  "transformations_source": "FRED-MD transformation codes for monthly series; log-diff x 100 for GDPC1; levels for NFCI",
+  "standardization": "NOT applied here; performed in em_initialization.py"
+}

@@ -1,0 +1,1860 @@
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=100, S=20, pi=0.00
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 48.1533            N/A              —
+  nu_eps_hat (estimate)                                503.1567            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3764         0.3781        -0.0017
+  rho(A) rel.err                                         21.21%         20.99%         +0.22%
+  |eig(A_hat)-eig(A*)| Euclid                            0.3563         0.3612        -0.0049
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]               18.45%         18.42%         +0.04%
+  Lambda relerr (sign-normalised only)                   43.06%         43.02%         +0.04%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.0959         2.0953        +0.0006
+  h_financial                                            0.9081         0.9072        +0.0008
+  h_other                                                0.3899         0.3898        +0.0001
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.8862         0.9263        -0.0402
+  diag(Q) estimate [financial]                           0.8060         0.8438        -0.0378
+  diag(Q) estimate [other]                               0.8705         0.9113        -0.0408
+  diag(Q) rel.err [real]                                315.85%        334.70%        -18.85%
+  diag(Q) rel.err [financial]                            32.80%         39.02%         -6.22%
+  diag(Q) rel.err [other]                                59.73%         67.21%         -7.49%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                         10.76%         10.59%         +0.17%
+  R rel.err (max over series)                            65.21%         63.31%         +1.90%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9725         0.9726        -0.0000
+  |corr| factor [financial]                              0.9891         0.9891        -0.0000
+  |corr| factor [other]                                  0.9559         0.9572        -0.0014
+  |cross-corr| real-financial                            0.1234         0.1235        -0.0001
+  |cross-corr| real-other                                0.0828         0.0828        -0.0000
+  |cross-corr| financial-other                           0.0981         0.0988        -0.0007
+  RMSE trajectory [real]                                 1.6008         1.5992        +0.0016
+  RMSE trajectory [financial]                            0.5000         0.4973        +0.0027
+  RMSE trajectory [other]                                1.0699         1.0605        +0.0094
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        5.00%        100.00%        -95.00%
+  w_eps overlap@5%                                        6.00%        100.00%        -94.00%
+  w_u   lift@5% (overlap/chance)                         0.9900        19.8000       -18.8100
+  w_eps lift@5% (overlap/chance)                         1.1880        19.8000       -18.6120
+
+  [Likelihood]
+  loglik_final (mean over reps)                      -4273.4589     -4282.2781        +8.8191
+  loglik_initial (mean)                              -4802.7966     -5003.0155      +200.2189
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     71.1500        19.3500       +51.8000
+  monotonicity violations (mean)                        60.3000         0.0000       +60.3000
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=100, S=20, pi=0.01
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 35.2284            N/A              —
+  nu_eps_hat (estimate)                                227.0392            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3777         0.3597        +0.0180
+  rho(A) rel.err                                         21.97%         23.20%         -1.22%
+  |eig(A_hat)-eig(A*)| Euclid                            0.3940         0.3728        +0.0212
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]               18.77%         30.33%        -11.57%
+  Lambda relerr (sign-normalised only)                   43.14%         62.16%        -19.02%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.0935         1.8251        +0.2684
+  h_financial                                            0.9073         0.7474        +0.1599
+  h_other                                                0.2780         0.5205        -0.2425
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.8639         0.9278        -0.0640
+  diag(Q) estimate [financial]                           0.7860         0.8583        -0.0723
+  diag(Q) estimate [other]                               0.8485         0.9323        -0.0837
+  diag(Q) rel.err [real]                                305.40%        335.41%        -30.02%
+  diag(Q) rel.err [financial]                            29.49%         41.40%        -11.91%
+  diag(Q) rel.err [other]                                55.70%         71.06%        -15.36%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                         11.02%         20.20%         -9.17%
+  R rel.err (max over series)                            64.70%       1457.34%      -1392.64%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9704         0.8721        +0.0983
+  |corr| factor [financial]                              0.9877         0.8646        +0.1232
+  |corr| factor [other]                                  0.9543         0.8589        +0.0954
+  |cross-corr| real-financial                            0.1214         0.1253        -0.0039
+  |cross-corr| real-other                                0.0841         0.0824        +0.0017
+  |cross-corr| financial-other                           0.0993         0.0934        +0.0059
+  RMSE trajectory [real]                                 1.5974         1.4177        +0.1797
+  RMSE trajectory [financial]                            0.5013         0.5843        -0.0830
+  RMSE trajectory [other]                                1.1467         0.9390        +0.2077
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        5.00%        100.00%        -95.00%
+  w_eps overlap@5%                                        5.00%        100.00%        -95.00%
+  w_u   lift@5% (overlap/chance)                         0.9900        19.8000       -18.8100
+  w_eps lift@5% (overlap/chance)                         0.9900        19.8000       -18.8100
+
+  [Contamination detection (Experiment C; Gaussian = nan by design)]
+  # contaminated periods (mean)                          0.7500         0.7500        +0.0000
+  effective T (mean)                                    99.0000        99.0000        +0.0000
+  detection rate  (natural k=n_c)                       100.00%            N/A              —
+  detection lift  (natural k=n_c)                       84.0000            N/A              —
+  detection recall    @5%                               100.00%            N/A              —
+  detection precision @5%                                27.27%            N/A              —
+  detection lift      @5%                               19.8000            N/A              —
+  detection recall    @10%                              100.00%            N/A              —
+  detection precision @10%                               13.64%            N/A              —
+  detection lift      @10%                               9.9000            N/A              —
+
+  [Likelihood]
+  loglik_final (mean over reps)                      -4351.6758     -4680.4487      +328.7729
+  loglik_initial (mean)                              -5071.6395     -5665.0249      +593.3854
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     40.1500        20.3500       +19.8000
+  monotonicity violations (mean)                        26.0500         0.0000       +26.0500
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=100, S=20, pi=0.05
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 24.7445            N/A              —
+  nu_eps_hat (estimate)                                  8.2145            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3865         0.3924        -0.0059
+  rho(A) rel.err                                         24.10%         31.17%         -7.07%
+  |eig(A_hat)-eig(A*)| Euclid                            0.3905         0.5128        -0.1222
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]               19.06%         68.36%        -49.30%
+  Lambda relerr (sign-normalised only)                   43.34%        169.17%       -125.83%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.1027         0.8156        +1.2871
+  h_financial                                            0.9055         0.2934        +0.6120
+  h_other                                                0.5432         0.2519        +0.2913
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.8549         0.9402        -0.0852
+  diag(Q) estimate [financial]                           0.7704         0.8983        -0.1279
+  diag(Q) estimate [other]                               0.8372         0.9681        -0.1309
+  diag(Q) rel.err [real]                                301.20%        341.20%        -40.00%
+  diag(Q) rel.err [financial]                            26.93%         48.00%        -21.07%
+  diag(Q) rel.err [other]                                53.62%         77.64%        -24.02%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                         11.69%        142.15%       -130.46%
+  R rel.err (max over series)                            76.52%       5476.58%      -5400.06%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9578         0.5381        +0.4197
+  |corr| factor [financial]                              0.9822         0.5842        +0.3980
+  |corr| factor [other]                                  0.9437         0.4416        +0.5022
+  |cross-corr| real-financial                            0.1315         0.1073        +0.0243
+  |cross-corr| real-other                                0.0823         0.0808        +0.0014
+  |cross-corr| financial-other                           0.0988         0.1065        -0.0077
+  RMSE trajectory [real]                                 1.5967         0.8505        +0.7462
+  RMSE trajectory [financial]                            0.5076         0.8010        -0.2934
+  RMSE trajectory [other]                                1.0023         0.8543        +0.1479
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        6.00%        100.00%        -94.00%
+  w_eps overlap@5%                                        3.00%        100.00%        -97.00%
+  w_u   lift@5% (overlap/chance)                         1.1880        19.8000       -18.6120
+  w_eps lift@5% (overlap/chance)                         0.5940        19.8000       -19.2060
+
+  [Contamination detection (Experiment C; Gaussian = nan by design)]
+  # contaminated periods (mean)                          4.8500         4.8500        +0.0000
+  effective T (mean)                                    99.0000        99.0000        +0.0000
+  detection rate  (natural k=n_c)                        98.33%            N/A              —
+  detection lift  (natural k=n_c)                       24.4988            N/A              —
+  detection recall    @5%                                88.18%            N/A              —
+  detection precision @5%                                79.00%            N/A              —
+  detection lift      @5%                               17.4588            N/A              —
+  detection recall    @10%                               97.88%            N/A              —
+  detection precision @10%                               47.50%            N/A              —
+  detection lift      @10%                               9.6900            N/A              —
+
+  [Likelihood]
+  loglik_final (mean over reps)                      -4733.8453     -6352.7819     +1618.9366
+  loglik_initial (mean)                              -5990.6343    -24418.3935    +18427.7592
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     21.6000        26.3000        -4.7000
+  monotonicity violations (mean)                         0.0000         0.0000        +0.0000
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=100, S=20, pi=0.10
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 26.5545            N/A              —
+  nu_eps_hat (estimate)                                  3.8445            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3815         0.3136        +0.0679
+  rho(A) rel.err                                         24.43%         38.73%        -14.30%
+  |eig(A_hat)-eig(A*)| Euclid                            0.3998         0.5407        -0.1409
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]               19.82%         88.69%        -68.87%
+  Lambda relerr (sign-normalised only)                   43.63%        241.01%       -197.38%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.1079         0.3514        +1.7566
+  h_financial                                            0.9092         0.0867        +0.8225
+  h_other                                                0.3850        -0.0562        +0.4412
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.8620         0.9350        -0.0731
+  diag(Q) estimate [financial]                           0.7678         0.9171        -0.1492
+  diag(Q) estimate [other]                               0.8355         0.9357        -0.1002
+  diag(Q) rel.err [real]                                304.49%        338.79%        -34.29%
+  diag(Q) rel.err [financial]                            26.50%         51.09%        -24.59%
+  diag(Q) rel.err [other]                                53.31%         71.70%        -18.39%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                         13.92%        378.84%       -364.92%
+  R rel.err (max over series)                            86.75%       7263.92%      -7177.17%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9456         0.3188        +0.6268
+  |corr| factor [financial]                              0.9743         0.2827        +0.6915
+  |corr| factor [other]                                  0.9270         0.2221        +0.7049
+  |cross-corr| real-financial                            0.1322         0.1066        +0.0256
+  |cross-corr| real-other                                0.0836         0.0824        +0.0012
+  |cross-corr| financial-other                           0.0982         0.0891        +0.0092
+  RMSE trajectory [real]                                 1.5857         0.6302        +0.9555
+  RMSE trajectory [financial]                            0.5258         0.8155        -0.2897
+  RMSE trajectory [other]                                1.0543         0.8386        +0.2157
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        8.00%        100.00%        -92.00%
+  w_eps overlap@5%                                        5.00%        100.00%        -95.00%
+  w_u   lift@5% (overlap/chance)                         1.5840        19.8000       -18.2160
+  w_eps lift@5% (overlap/chance)                         0.9900        19.8000       -18.8100
+
+  [Contamination detection (Experiment C; Gaussian = nan by design)]
+  # contaminated periods (mean)                          9.6000         9.6000        +0.0000
+  effective T (mean)                                    99.0000        99.0000        +0.0000
+  detection rate  (natural k=n_c)                        99.19%            N/A              —
+  detection lift  (natural k=n_c)                       10.8069            N/A              —
+  detection recall    @5%                                54.91%            N/A              —
+  detection precision @5%                               100.00%            N/A              —
+  detection lift      @5%                               10.8730            N/A              —
+  detection recall    @10%                               94.49%            N/A              —
+  detection precision @10%                               89.00%            N/A              —
+  detection lift      @10%                               9.3546            N/A              —
+
+  [Likelihood]
+  loglik_final (mean over reps)                      -5181.4252     -7896.8441     +2715.4188
+  loglik_initial (mean)                              -6707.8024    -22689.4095    +15981.6071
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     24.9500        26.2500        -1.3000
+  monotonicity violations (mean)                         1.7500         0.0000        +1.7500
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — TREND across pi  |  T=100, S=20
+  Read each metric LEFT->RIGHT (effect of pi) and student_t-vs-gaussian TOP-vs-BOTTOM.
+  Expected: gaussian error metrics GROW with pi; student_t stays flat; nu_eps_hat falls.
+====================================================================================================
+  metric                              estimator      pi=0.00     pi=0.01     pi=0.05     pi=0.10
+  ------------------------------------------------------------------------------------------------
+  Lambda relerr Procrustes-block      student_t       18.45%      18.77%      19.06%      19.82%
+  Lambda relerr Procrustes-block      gaussian        18.42%      30.33%      68.36%      88.69%
+
+  R median rel.err                    student_t       10.76%      11.02%      11.69%      13.92%
+  R median rel.err                    gaussian        10.59%      20.20%     142.15%     378.84%
+
+  diag(Q) rel.err [real]              student_t      315.85%     305.40%     301.20%     304.49%
+  diag(Q) rel.err [real]              gaussian       334.70%     335.41%     341.20%     338.79%
+
+  diag(Q) rel.err [financial]         student_t       32.80%      29.49%      26.93%      26.50%
+  diag(Q) rel.err [financial]         gaussian        39.02%      41.40%      48.00%      51.09%
+
+  diag(Q) rel.err [other]             student_t       59.73%      55.70%      53.62%      53.31%
+  diag(Q) rel.err [other]             gaussian        67.21%      71.06%      77.64%      71.70%
+
+  nu_eps_hat (adapts down)            student_t     503.1567    227.0392      8.2145      3.8445
+  nu_eps_hat (adapts down)            gaussian             —           —           —           —
+
+  |corr| factor [financial]           student_t       0.9891      0.9877      0.9822      0.9743
+  |corr| factor [financial]           gaussian        0.9891      0.8646      0.5842      0.2827
+
+  detection rate (natural)            student_t            —     100.00%      98.33%      99.19%
+  detection rate (natural)            gaussian             —           —           —           —
+
+  detection lift (natural)            student_t            —     84.0000     24.4988     10.8069
+  detection lift (natural)            gaussian             —           —           —           —
+
+====================================================================================================
+
+====================================================================================================
+  Experiment C — the three predictions  |  T=100  (pi: 0.00 -> 0.10)
+====================================================================================================
+  (1) GAUSSIAN DEGRADES: Lambda / Q / R rel.err should GROW with pi.
+      Lambda relerr            [gaussian]:  pi=0.00 -> 18.42%   pi=0.10 -> 88.69%   [GROWS]
+      diag(Q) relerr [real]    [gaussian]:  pi=0.00 -> 334.70%   pi=0.10 -> 338.79%   [GROWS]
+      R median relerr          [gaussian]:  pi=0.00 -> 10.59%   pi=0.10 -> 378.84%   [GROWS]
+
+  (2) STUDENT-T STABLE: recovery metrics flat, nu_eps_hat ADAPTS (decreases with pi).
+      Lambda relerr            [student_t]: pi=0.00 -> 18.45%   pi=0.10 -> 19.82%   [expect ~flat]
+      R median relerr          [student_t]: pi=0.00 -> 10.76%   pi=0.10 -> 13.92%   [expect ~flat]
+      nu_eps_hat               [student_t]: pi=0.00 -> 503.2   pi=0.10 -> 3.8   [FALLS]
+
+  (3) DETECTION: Student-t flags the TRUE contaminated periods (rate high, lift > 1);
+      Gaussian has constant w_eps_hat -> nan by design.
+      pi=0.01:  student_t detection rate=100.00%  lift=84.00     gaussian rate=nan (no down-weighting)
+      pi=0.05:  student_t detection rate=98.33%  lift=24.50     gaussian rate=nan (no down-weighting)
+      pi=0.10:  student_t detection rate=99.19%  lift=10.81     gaussian rate=nan (no down-weighting)
+====================================================================================================
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=200, S=20, pi=0.00
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 45.7395            N/A              —
+  nu_eps_hat (estimate)                                540.4162            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3379         0.3396        -0.0017
+  rho(A) rel.err                                         15.58%         15.20%         +0.37%
+  |eig(A_hat)-eig(A*)| Euclid                            0.2122         0.1581        +0.0541
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]               14.04%         14.03%         +0.00%
+  Lambda relerr (sign-normalised only)                   42.32%         42.30%         +0.02%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.1267         2.1265        +0.0002
+  h_financial                                            0.9392         0.8141        +0.1251
+  h_other                                                0.1534         0.1525        +0.0009
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.9036         0.9465        -0.0428
+  diag(Q) estimate [financial]                           0.8212         0.8585        -0.0373
+  diag(Q) estimate [other]                               0.8903         0.9295        -0.0392
+  diag(Q) rel.err [real]                                324.06%        344.15%        -20.09%
+  diag(Q) rel.err [financial]                            35.29%         41.44%         -6.14%
+  diag(Q) rel.err [other]                                63.36%         70.55%         -7.20%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                          7.41%          7.28%         +0.12%
+  R rel.err (max over series)                            47.91%         48.86%         -0.96%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9779         0.9780        -0.0000
+  |corr| factor [financial]                              0.9890         0.9890        +0.0000
+  |corr| factor [other]                                  0.9628         0.9640        -0.0013
+  |cross-corr| real-financial                            0.1027         0.1028        -0.0001
+  |cross-corr| real-other                                0.0599         0.0600        -0.0001
+  |cross-corr| financial-other                           0.0860         0.0863        -0.0003
+  RMSE trajectory [real]                                 1.6358         1.6350        +0.0008
+  RMSE trajectory [financial]                            0.5372         0.6097        -0.0724
+  RMSE trajectory [other]                                1.2234         1.2147        +0.0087
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        6.00%        100.00%        -94.00%
+  w_eps overlap@5%                                        5.00%        100.00%        -95.00%
+  w_u   lift@5% (overlap/chance)                         1.1940        19.9000       -18.7060
+  w_eps lift@5% (overlap/chance)                         0.9950        19.9000       -18.9050
+
+  [Likelihood]
+  loglik_final (mean over reps)                      -8688.3326     -8705.4805       +17.1479
+  loglik_initial (mean)                              -9703.9237    -10101.7645      +397.8408
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     69.2000        18.0000       +51.2000
+  monotonicity violations (mean)                        58.7500         0.0000       +58.7500
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=200, S=20, pi=0.01
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 27.1239            N/A              —
+  nu_eps_hat (estimate)                                116.5607            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3372         0.3259        +0.0113
+  rho(A) rel.err                                         15.61%         19.15%         -3.54%
+  |eig(A_hat)-eig(A*)| Euclid                            0.2384         0.2010        +0.0374
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]               14.17%         27.43%        -13.27%
+  Lambda relerr (sign-normalised only)                   42.35%         54.49%        -12.14%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.1267         1.9231        +0.2036
+  h_financial                                            0.9385         0.9089        +0.0295
+  h_other                                                0.1534         0.3153        -0.1619
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.8802         0.9515        -0.0713
+  diag(Q) estimate [financial]                           0.8008         0.8716        -0.0708
+  diag(Q) estimate [other]                               0.8669         0.9371        -0.0703
+  diag(Q) rel.err [real]                                313.04%        346.52%        -33.47%
+  diag(Q) rel.err [financial]                            31.93%         43.60%        -11.67%
+  diag(Q) rel.err [other]                                59.06%         71.95%        -12.89%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                          7.61%         26.44%        -18.82%
+  R rel.err (max over series)                            55.81%       1012.51%       -956.70%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9766         0.9065        +0.0701
+  |corr| factor [financial]                              0.9879         0.9073        +0.0806
+  |corr| factor [other]                                  0.9609         0.8345        +0.1264
+  |cross-corr| real-financial                            0.1029         0.1017        +0.0012
+  |cross-corr| real-other                                0.0594         0.0634        -0.0040
+  |cross-corr| financial-other                           0.0861         0.0929        -0.0068
+  RMSE trajectory [real]                                 1.6337         1.4943        +0.1394
+  RMSE trajectory [financial]                            0.5364         0.4982        +0.0382
+  RMSE trajectory [other]                                1.2150         1.0072        +0.2078
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        6.00%        100.00%        -94.00%
+  w_eps overlap@5%                                        4.00%        100.00%        -96.00%
+  w_u   lift@5% (overlap/chance)                         1.1940        19.9000       -18.7060
+  w_eps lift@5% (overlap/chance)                         0.7960        19.9000       -19.1040
+
+  [Contamination detection (Experiment C; Gaussian = nan by design)]
+  # contaminated periods (mean)                          1.5000         1.5000        +0.0000
+  effective T (mean)                                   199.0000       199.0000        +0.0000
+  detection rate  (natural k=n_c)                       100.00%            N/A              —
+  detection lift  (natural k=n_c)                      140.8608            N/A              —
+  detection recall    @5%                               100.00%            N/A              —
+  detection precision @5%                                17.65%            N/A              —
+  detection lift      @5%                               19.9000            N/A              —
+  detection recall    @10%                              100.00%            N/A              —
+  detection precision @10%                                8.82%            N/A              —
+  detection lift      @10%                               9.9500            N/A              —
+
+  [Likelihood]
+  loglik_final (mean over reps)                      -8850.9000     -9896.5323     +1045.6323
+  loglik_initial (mean)                             -10179.0368    -11365.4053     +1186.3685
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     28.1000        20.4500        +7.6500
+  monotonicity violations (mean)                        13.9000         0.0000       +13.9000
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=200, S=20, pi=0.05
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 25.3860            N/A              —
+  nu_eps_hat (estimate)                                  7.6839            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3350         0.3071        +0.0279
+  rho(A) rel.err                                         16.81%         21.96%         -5.15%
+  |eig(A_hat)-eig(A*)| Euclid                            0.2287         0.3475        -0.1188
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]               14.32%         63.94%        -49.62%
+  Lambda relerr (sign-normalised only)                   42.52%         99.21%        -56.69%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.1377         0.9630        +1.1747
+  h_financial                                            0.9369         0.5890        +0.3479
+  h_other                                                0.1693         0.1902        -0.0209
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.8880         0.9715        -0.0835
+  diag(Q) estimate [financial]                           0.7994         0.9191        -0.1197
+  diag(Q) estimate [other]                               0.8690         0.9576        -0.0887
+  diag(Q) rel.err [real]                                316.70%        355.88%        -39.18%
+  diag(Q) rel.err [financial]                            31.70%         51.42%        -19.72%
+  diag(Q) rel.err [other]                                59.45%         75.72%        -16.27%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                          8.92%        183.45%       -174.53%
+  R rel.err (max over series)                            51.28%       3582.90%      -3531.62%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9648         0.6342        +0.3305
+  |corr| factor [financial]                              0.9831         0.6699        +0.3132
+  |corr| factor [other]                                  0.9506         0.4174        +0.5332
+  |cross-corr| real-financial                            0.1038         0.0938        +0.0100
+  |cross-corr| real-other                                0.0561         0.0577        -0.0016
+  |cross-corr| financial-other                           0.0823         0.0817        +0.0006
+  RMSE trajectory [real]                                 1.6334         0.9582        +0.6752
+  RMSE trajectory [financial]                            0.5410         0.6462        -0.1052
+  RMSE trajectory [other]                                1.2161         0.8150        +0.4011
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        5.00%        100.00%        -95.00%
+  w_eps overlap@5%                                        4.50%        100.00%        -95.50%
+  w_u   lift@5% (overlap/chance)                         0.9950        19.9000       -18.9050
+  w_eps lift@5% (overlap/chance)                         0.8955        19.9000       -19.0045
+
+  [Contamination detection (Experiment C; Gaussian = nan by design)]
+  # contaminated periods (mean)                          9.3000         9.3000        +0.0000
+  effective T (mean)                                   199.0000       199.0000        +0.0000
+  detection rate  (natural k=n_c)                        99.71%            N/A              —
+  detection lift  (natural k=n_c)                       24.7326            N/A              —
+  detection recall    @5%                                92.47%            N/A              —
+  detection precision @5%                                81.50%            N/A              —
+  detection lift      @5%                               18.4022            N/A              —
+  detection recall    @10%                              100.00%            N/A              —
+  detection precision @10%                               46.50%            N/A              —
+  detection lift      @10%                               9.9500            N/A              —
+
+  [Likelihood]
+  loglik_final (mean over reps)                      -9602.9642    -13593.5795     +3990.6153
+  loglik_initial (mean)                             -11633.9381    -16811.6532     +5177.7150
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     21.7500        24.0500        -2.3000
+  monotonicity violations (mean)                         0.0000         0.0000        +0.0000
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=200, S=20, pi=0.10
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 28.7332            N/A              —
+  nu_eps_hat (estimate)                                  3.7315            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3492         0.2693        +0.0800
+  rho(A) rel.err                                         17.56%         39.73%        -22.17%
+  |eig(A_hat)-eig(A*)| Euclid                            0.1459         0.5211        -0.3752
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]               14.55%         86.35%        -71.81%
+  Lambda relerr (sign-normalised only)                   42.53%        155.57%       -113.04%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.1357         0.3236        +1.8121
+  h_financial                                            0.9496         0.0948        +0.8548
+  h_other                                                0.0336         0.0386        -0.0049
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.8926         0.9614        -0.0688
+  diag(Q) estimate [financial]                           0.8003         0.9193        -0.1190
+  diag(Q) estimate [other]                               0.8776         0.9528        -0.0752
+  diag(Q) rel.err [real]                                318.89%        351.16%        -32.27%
+  diag(Q) rel.err [financial]                            31.85%         53.83%        -21.99%
+  diag(Q) rel.err [other]                                61.04%         74.83%        -13.79%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                         15.70%        449.28%       -433.58%
+  R rel.err (max over series)                            67.60%       5996.31%      -5928.71%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9536         0.3229        +0.6307
+  |corr| factor [financial]                              0.9761         0.3802        +0.5959
+  |corr| factor [other]                                  0.9358         0.2669        +0.6689
+  |cross-corr| real-financial                            0.1026         0.0595        +0.0431
+  |cross-corr| real-other                                0.0605         0.0580        +0.0026
+  |cross-corr| financial-other                           0.0868         0.0809        +0.0059
+  RMSE trajectory [real]                                 1.6109         0.5931        +1.0178
+  RMSE trajectory [financial]                            0.5576         0.8660        -0.3084
+  RMSE trajectory [other]                                1.2797         0.7739        +0.5058
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        6.00%        100.00%        -94.00%
+  w_eps overlap@5%                                        4.00%        100.00%        -96.00%
+  w_u   lift@5% (overlap/chance)                         1.1940        19.9000       -18.7060
+  w_eps lift@5% (overlap/chance)                         0.7960        19.9000       -19.1040
+
+  [Contamination detection (Experiment C; Gaussian = nan by design)]
+  # contaminated periods (mean)                         20.1500        20.1500        +0.0000
+  effective T (mean)                                   199.0000       199.0000        +0.0000
+  detection rate  (natural k=n_c)                        99.81%            N/A              —
+  detection lift  (natural k=n_c)                       10.1231            N/A              —
+  detection recall    @5%                                50.94%            N/A              —
+  detection precision @5%                               100.00%            N/A              —
+  detection lift      @5%                               10.1367            N/A              —
+  detection recall    @10%                               94.44%            N/A              —
+  detection precision @10%                               93.75%            N/A              —
+  detection lift      @10%                               9.3963            N/A              —
+
+  [Likelihood]
+  loglik_final (mean over reps)                     -10587.0118    -16748.8793     +6161.8675
+  loglik_initial (mean)                             -13147.4071    -26199.8545    +13052.4474
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     25.9000        28.3500        -2.4500
+  monotonicity violations (mean)                         0.0000         0.0000        +0.0000
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — TREND across pi  |  T=200, S=20
+  Read each metric LEFT->RIGHT (effect of pi) and student_t-vs-gaussian TOP-vs-BOTTOM.
+  Expected: gaussian error metrics GROW with pi; student_t stays flat; nu_eps_hat falls.
+====================================================================================================
+  metric                              estimator      pi=0.00     pi=0.01     pi=0.05     pi=0.10
+  ------------------------------------------------------------------------------------------------
+  Lambda relerr Procrustes-block      student_t       14.04%      14.17%      14.32%      14.55%
+  Lambda relerr Procrustes-block      gaussian        14.03%      27.43%      63.94%      86.35%
+
+  R median rel.err                    student_t        7.41%       7.61%       8.92%      15.70%
+  R median rel.err                    gaussian         7.28%      26.44%     183.45%     449.28%
+
+  diag(Q) rel.err [real]              student_t      324.06%     313.04%     316.70%     318.89%
+  diag(Q) rel.err [real]              gaussian       344.15%     346.52%     355.88%     351.16%
+
+  diag(Q) rel.err [financial]         student_t       35.29%      31.93%      31.70%      31.85%
+  diag(Q) rel.err [financial]         gaussian        41.44%      43.60%      51.42%      53.83%
+
+  diag(Q) rel.err [other]             student_t       63.36%      59.06%      59.45%      61.04%
+  diag(Q) rel.err [other]             gaussian        70.55%      71.95%      75.72%      74.83%
+
+  nu_eps_hat (adapts down)            student_t     540.4162    116.5607      7.6839      3.7315
+  nu_eps_hat (adapts down)            gaussian             —           —           —           —
+
+  |corr| factor [financial]           student_t       0.9890      0.9879      0.9831      0.9761
+  |corr| factor [financial]           gaussian        0.9890      0.9073      0.6699      0.3802
+
+  detection rate (natural)            student_t            —     100.00%      99.71%      99.81%
+  detection rate (natural)            gaussian             —           —           —           —
+
+  detection lift (natural)            student_t            —    140.8608     24.7326     10.1231
+  detection lift (natural)            gaussian             —           —           —           —
+
+====================================================================================================
+
+====================================================================================================
+  Experiment C — the three predictions  |  T=200  (pi: 0.00 -> 0.10)
+====================================================================================================
+  (1) GAUSSIAN DEGRADES: Lambda / Q / R rel.err should GROW with pi.
+      Lambda relerr            [gaussian]:  pi=0.00 -> 14.03%   pi=0.10 -> 86.35%   [GROWS]
+      diag(Q) relerr [real]    [gaussian]:  pi=0.00 -> 344.15%   pi=0.10 -> 351.16%   [GROWS]
+      R median relerr          [gaussian]:  pi=0.00 -> 7.28%   pi=0.10 -> 449.28%   [GROWS]
+
+  (2) STUDENT-T STABLE: recovery metrics flat, nu_eps_hat ADAPTS (decreases with pi).
+      Lambda relerr            [student_t]: pi=0.00 -> 14.04%   pi=0.10 -> 14.55%   [expect ~flat]
+      R median relerr          [student_t]: pi=0.00 -> 7.41%   pi=0.10 -> 15.70%   [expect ~flat]
+      nu_eps_hat               [student_t]: pi=0.00 -> 540.4   pi=0.10 -> 3.7   [FALLS]
+
+  (3) DETECTION: Student-t flags the TRUE contaminated periods (rate high, lift > 1);
+      Gaussian has constant w_eps_hat -> nan by design.
+      pi=0.01:  student_t detection rate=100.00%  lift=140.86     gaussian rate=nan (no down-weighting)
+      pi=0.05:  student_t detection rate=99.71%  lift=24.73     gaussian rate=nan (no down-weighting)
+      pi=0.10:  student_t detection rate=99.81%  lift=10.12     gaussian rate=nan (no down-weighting)
+====================================================================================================
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=400, S=20, pi=0.00
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 42.4205            N/A              —
+  nu_eps_hat (estimate)                                482.1176            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3559         0.3571        -0.0012
+  rho(A) rel.err                                         10.53%         10.54%         -0.01%
+  |eig(A_hat)-eig(A*)| Euclid                            0.1298         0.1314        -0.0016
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]               10.36%         10.37%         -0.01%
+  Lambda relerr (sign-normalised only)                   41.52%         41.51%         +0.02%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.1249         2.1244        +0.0004
+  h_financial                                            1.1854         1.1847        +0.0007
+  h_other                                                0.5353         0.5340        +0.0014
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.9087         0.9572        -0.0485
+  diag(Q) estimate [financial]                           0.8151         0.8588        -0.0437
+  diag(Q) estimate [other]                               0.8881         0.9342        -0.0461
+  diag(Q) rel.err [real]                                326.41%        349.19%        -22.78%
+  diag(Q) rel.err [financial]                            34.30%         41.49%         -7.19%
+  diag(Q) rel.err [other]                                62.96%         71.41%         -8.45%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                          5.50%          5.35%         +0.16%
+  R rel.err (max over series)                            54.51%         54.09%         +0.43%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9811         0.9812        -0.0000
+  |corr| factor [financial]                              0.9920         0.9921        -0.0000
+  |corr| factor [other]                                  0.9643         0.9645        -0.0003
+  |cross-corr| real-financial                            0.0790         0.0790        -0.0001
+  |cross-corr| real-other                                0.0510         0.0510        -0.0001
+  |cross-corr| financial-other                           0.0771         0.0772        -0.0002
+  RMSE trajectory [real]                                 1.6353         1.6345        +0.0007
+  RMSE trajectory [financial]                            0.3663         0.3648        +0.0015
+  RMSE trajectory [other]                                1.0157         1.0113        +0.0044
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        4.75%        100.00%        -95.25%
+  w_eps overlap@5%                                        3.00%        100.00%        -97.00%
+  w_u   lift@5% (overlap/chance)                         0.9476        19.9500       -19.0024
+  w_eps lift@5% (overlap/chance)                         0.5985        19.9500       -19.3515
+
+  [Likelihood]
+  loglik_final (mean over reps)                     -17514.4931    -17553.9229       +39.4298
+  loglik_initial (mean)                             -19494.5388    -20289.8896      +795.3509
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     59.1000        16.2500       +42.8500
+  monotonicity violations (mean)                        48.8000         0.0000       +48.8000
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=400, S=20, pi=0.01
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 22.0944            N/A              —
+  nu_eps_hat (estimate)                                 30.1997            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3558         0.3362        +0.0196
+  rho(A) rel.err                                         10.67%         15.53%         -4.86%
+  |eig(A_hat)-eig(A*)| Euclid                            0.1323         0.1527        -0.0204
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]               10.40%         24.27%        -13.87%
+  Lambda relerr (sign-normalised only)                   41.49%         50.13%         -8.64%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.1227         1.8093        +0.3134
+  h_financial                                            1.1844         0.5807        +0.6037
+  h_other                                                0.5343         0.6637        -0.1294
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.8846         0.9584        -0.0737
+  diag(Q) estimate [financial]                           0.7938         0.8746        -0.0808
+  diag(Q) estimate [other]                               0.8648         0.9422        -0.0775
+  diag(Q) rel.err [real]                                315.13%        349.73%        -34.60%
+  diag(Q) rel.err [financial]                            30.78%         44.09%        -13.30%
+  diag(Q) rel.err [other]                                58.68%         72.89%        -14.21%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                          5.42%         26.49%        -21.07%
+  R rel.err (max over series)                            66.14%       1000.21%       -934.07%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9796         0.9023        +0.0772
+  |corr| factor [financial]                              0.9904         0.8920        +0.0984
+  |corr| factor [other]                                  0.9621         0.8754        +0.0867
+  |cross-corr| real-financial                            0.0787         0.0764        +0.0024
+  |cross-corr| real-other                                0.0513         0.0473        +0.0040
+  |cross-corr| financial-other                           0.0766         0.0693        +0.0073
+  RMSE trajectory [real]                                 1.6313         1.4799        +0.1514
+  RMSE trajectory [financial]                            0.3677         0.7204        -0.3526
+  RMSE trajectory [other]                                1.0101         0.8528        +0.1573
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        5.00%        100.00%        -95.00%
+  w_eps overlap@5%                                        2.25%        100.00%        -97.75%
+  w_u   lift@5% (overlap/chance)                         0.9975        19.9500       -18.9525
+  w_eps lift@5% (overlap/chance)                         0.4489        19.9500       -19.5011
+
+  [Contamination detection (Experiment C; Gaussian = nan by design)]
+  # contaminated periods (mean)                          3.4000         3.4000        +0.0000
+  effective T (mean)                                   399.0000       399.0000        +0.0000
+  detection rate  (natural k=n_c)                       100.00%            N/A              —
+  detection lift  (natural k=n_c)                      156.4413            N/A              —
+  detection recall    @5%                               100.00%            N/A              —
+  detection precision @5%                                17.00%            N/A              —
+  detection lift      @5%                               19.9500            N/A              —
+  detection recall    @10%                              100.00%            N/A              —
+  detection precision @10%                                8.50%            N/A              —
+  detection lift      @10%                               9.9750            N/A              —
+
+  [Likelihood]
+  loglik_final (mean over reps)                     -17855.1042    -20181.6993     +2326.5951
+  loglik_initial (mean)                             -20391.2341    -22794.3144     +2403.0803
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     17.7500        19.5500        -1.8000
+  monotonicity violations (mean)                         4.1500         0.0000        +4.1500
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=400, S=20, pi=0.05
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 25.6408            N/A              —
+  nu_eps_hat (estimate)                                  7.2870            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3556         0.3024        +0.0532
+  rho(A) rel.err                                         10.79%         21.12%        -10.33%
+  |eig(A_hat)-eig(A*)| Euclid                            0.1351         0.3356        -0.2005
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]               10.43%         59.61%        -49.18%
+  Lambda relerr (sign-normalised only)                   41.60%         88.41%        -46.82%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.1303         1.1231        +1.0072
+  h_financial                                            1.1848        -0.1036        +1.2884
+  h_other                                                0.2865        -0.2890        +0.5755
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.8959         0.9738        -0.0779
+  diag(Q) estimate [financial]                           0.8036         0.9018        -0.0982
+  diag(Q) estimate [other]                               0.8777         0.9719        -0.0942
+  diag(Q) rel.err [real]                                320.43%        356.96%        -36.53%
+  diag(Q) rel.err [financial]                            32.39%         48.57%        -16.17%
+  diag(Q) rel.err [other]                                61.06%         78.33%        -17.28%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                          6.93%        209.27%       -202.33%
+  R rel.err (max over series)                            54.67%       3131.98%      -3077.31%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9685         0.6681        +0.3004
+  |corr| factor [financial]                              0.9862         0.7491        +0.2371
+  |corr| factor [other]                                  0.9507         0.5058        +0.4449
+  |cross-corr| real-financial                            0.0823         0.0629        +0.0194
+  |cross-corr| real-other                                0.0520         0.0573        -0.0053
+  |cross-corr| financial-other                           0.0748         0.0709        +0.0039
+  RMSE trajectory [real]                                 1.6282         1.0588        +0.5694
+  RMSE trajectory [financial]                            0.3751         1.1259        -0.7508
+  RMSE trajectory [other]                                1.1529         1.1285        +0.0244
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        4.50%        100.00%        -95.50%
+  w_eps overlap@5%                                        4.50%        100.00%        -95.50%
+  w_u   lift@5% (overlap/chance)                         0.8978        19.9500       -19.0523
+  w_eps lift@5% (overlap/chance)                         0.8978        19.9500       -19.0523
+
+  [Contamination detection (Experiment C; Gaussian = nan by design)]
+  # contaminated periods (mean)                         18.6500        18.6500        +0.0000
+  effective T (mean)                                   399.0000       399.0000        +0.0000
+  detection rate  (natural k=n_c)                       100.00%            N/A              —
+  detection lift  (natural k=n_c)                       22.2963            N/A              —
+  detection recall    @5%                                95.49%            N/A              —
+  detection precision @5%                                87.75%            N/A              —
+  detection lift      @5%                               19.0503            N/A              —
+  detection recall    @10%                              100.00%            N/A              —
+  detection precision @10%                               46.62%            N/A              —
+  detection lift      @10%                               9.9750            N/A              —
+
+  [Likelihood]
+  loglik_final (mean over reps)                     -19325.1777    -28470.1929     +9145.0152
+  loglik_initial (mean)                             -23193.5810    -34514.3852    +11320.8042
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     22.1000        19.1000        +3.0000
+  monotonicity violations (mean)                         0.0000         0.0000        +0.0000
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=400, S=20, pi=0.10
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 29.5140            N/A              —
+  nu_eps_hat (estimate)                                  3.7922            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3644         0.3010        +0.0634
+  rho(A) rel.err                                         10.83%         32.27%        -21.43%
+  |eig(A_hat)-eig(A*)| Euclid                            0.1412         0.3298        -0.1886
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]               10.63%         78.03%        -67.40%
+  Lambda relerr (sign-normalised only)                   41.57%        131.03%        -89.46%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.1297         0.5701        +1.5596
+  h_financial                                            1.1830        -0.0010        +1.1840
+  h_other                                                0.2689         0.1579        +0.1110
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.9049         0.9747        -0.0698
+  diag(Q) estimate [financial]                           0.8067         0.9039        -0.0972
+  diag(Q) estimate [other]                               0.8830         0.9565        -0.0735
+  diag(Q) rel.err [real]                                324.65%        357.39%        -32.74%
+  diag(Q) rel.err [financial]                            32.91%         50.05%        -17.13%
+  diag(Q) rel.err [other]                                62.02%         77.65%        -15.62%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                         16.59%        483.00%       -466.41%
+  R rel.err (max over series)                            59.89%       4912.29%      -4852.41%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9579         0.4369        +0.5210
+  |corr| factor [financial]                              0.9792         0.5518        +0.4274
+  |corr| factor [other]                                  0.9370         0.2295        +0.7074
+  |cross-corr| real-financial                            0.0819         0.0641        +0.0178
+  |cross-corr| real-other                                0.0511         0.0449        +0.0063
+  |cross-corr| financial-other                           0.0759         0.0626        +0.0133
+  RMSE trajectory [real]                                 1.6081         0.7075        +0.9006
+  RMSE trajectory [financial]                            0.3843         0.9576        -0.5732
+  RMSE trajectory [other]                                1.1417         0.7465        +0.3952
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        5.50%        100.00%        -94.50%
+  w_eps overlap@5%                                        4.00%        100.00%        -96.00%
+  w_u   lift@5% (overlap/chance)                         1.0972        19.9500       -18.8528
+  w_eps lift@5% (overlap/chance)                         0.7980        19.9500       -19.1520
+
+  [Contamination detection (Experiment C; Gaussian = nan by design)]
+  # contaminated periods (mean)                         40.6500        40.6500        +0.0000
+  effective T (mean)                                   399.0000       399.0000        +0.0000
+  detection rate  (natural k=n_c)                        99.88%            N/A              —
+  detection lift  (natural k=n_c)                        9.9428            N/A              —
+  detection recall    @5%                                49.90%            N/A              —
+  detection precision @5%                               100.00%            N/A              —
+  detection lift      @5%                                9.9547            N/A              —
+  detection recall    @10%                               95.54%            N/A              —
+  detection precision @10%                               96.38%            N/A              —
+  detection lift      @10%                               9.5305            N/A              —
+
+  [Likelihood]
+  loglik_final (mean over reps)                     -21291.0839    -34243.4893    +12952.4053
+  loglik_initial (mean)                             -25939.6142    -50608.5642    +24668.9500
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     26.6000        20.6500        +5.9500
+  monotonicity violations (mean)                         0.0000         0.0000        +0.0000
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — TREND across pi  |  T=400, S=20
+  Read each metric LEFT->RIGHT (effect of pi) and student_t-vs-gaussian TOP-vs-BOTTOM.
+  Expected: gaussian error metrics GROW with pi; student_t stays flat; nu_eps_hat falls.
+====================================================================================================
+  metric                              estimator      pi=0.00     pi=0.01     pi=0.05     pi=0.10
+  ------------------------------------------------------------------------------------------------
+  Lambda relerr Procrustes-block      student_t       10.36%      10.40%      10.43%      10.63%
+  Lambda relerr Procrustes-block      gaussian        10.37%      24.27%      59.61%      78.03%
+
+  R median rel.err                    student_t        5.50%       5.42%       6.93%      16.59%
+  R median rel.err                    gaussian         5.35%      26.49%     209.27%     483.00%
+
+  diag(Q) rel.err [real]              student_t      326.41%     315.13%     320.43%     324.65%
+  diag(Q) rel.err [real]              gaussian       349.19%     349.73%     356.96%     357.39%
+
+  diag(Q) rel.err [financial]         student_t       34.30%      30.78%      32.39%      32.91%
+  diag(Q) rel.err [financial]         gaussian        41.49%      44.09%      48.57%      50.05%
+
+  diag(Q) rel.err [other]             student_t       62.96%      58.68%      61.06%      62.02%
+  diag(Q) rel.err [other]             gaussian        71.41%      72.89%      78.33%      77.65%
+
+  nu_eps_hat (adapts down)            student_t     482.1176     30.1997      7.2870      3.7922
+  nu_eps_hat (adapts down)            gaussian             —           —           —           —
+
+  |corr| factor [financial]           student_t       0.9920      0.9904      0.9862      0.9792
+  |corr| factor [financial]           gaussian        0.9921      0.8920      0.7491      0.5518
+
+  detection rate (natural)            student_t            —     100.00%     100.00%      99.88%
+  detection rate (natural)            gaussian             —           —           —           —
+
+  detection lift (natural)            student_t            —    156.4413     22.2963      9.9428
+  detection lift (natural)            gaussian             —           —           —           —
+
+====================================================================================================
+
+====================================================================================================
+  Experiment C — the three predictions  |  T=400  (pi: 0.00 -> 0.10)
+====================================================================================================
+  (1) GAUSSIAN DEGRADES: Lambda / Q / R rel.err should GROW with pi.
+      Lambda relerr            [gaussian]:  pi=0.00 -> 10.37%   pi=0.10 -> 78.03%   [GROWS]
+      diag(Q) relerr [real]    [gaussian]:  pi=0.00 -> 349.19%   pi=0.10 -> 357.39%   [GROWS]
+      R median relerr          [gaussian]:  pi=0.00 -> 5.35%   pi=0.10 -> 483.00%   [GROWS]
+
+  (2) STUDENT-T STABLE: recovery metrics flat, nu_eps_hat ADAPTS (decreases with pi).
+      Lambda relerr            [student_t]: pi=0.00 -> 10.36%   pi=0.10 -> 10.63%   [expect ~flat]
+      R median relerr          [student_t]: pi=0.00 -> 5.50%   pi=0.10 -> 16.59%   [expect ~flat]
+      nu_eps_hat               [student_t]: pi=0.00 -> 482.1   pi=0.10 -> 3.8   [FALLS]
+
+  (3) DETECTION: Student-t flags the TRUE contaminated periods (rate high, lift > 1);
+      Gaussian has constant w_eps_hat -> nan by design.
+      pi=0.01:  student_t detection rate=100.00%  lift=156.44     gaussian rate=nan (no down-weighting)
+      pi=0.05:  student_t detection rate=100.00%  lift=22.30     gaussian rate=nan (no down-weighting)
+      pi=0.10:  student_t detection rate=99.88%  lift=9.94     gaussian rate=nan (no down-weighting)
+====================================================================================================
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=800, S=20, pi=0.00
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 47.3129            N/A              —
+  nu_eps_hat (estimate)                                559.1632            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3685         0.3697        -0.0013
+  rho(A) rel.err                                          8.94%          8.85%         +0.10%
+  |eig(A_hat)-eig(A*)| Euclid                            0.0660         0.0659        +0.0001
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]                6.81%          6.80%         +0.00%
+  Lambda relerr (sign-normalised only)                   40.81%         40.80%         +0.01%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.1243         2.1243        +0.0001
+  h_financial                                            1.1784         1.1776        +0.0007
+  h_other                                                0.4072         0.4071        +0.0000
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.9213         0.9611        -0.0398
+  diag(Q) estimate [financial]                           0.8118         0.8481        -0.0363
+  diag(Q) estimate [other]                               0.9008         0.9367        -0.0360
+  diag(Q) rel.err [real]                                332.32%        351.01%        -18.69%
+  diag(Q) rel.err [financial]                            33.75%         39.73%         -5.99%
+  diag(Q) rel.err [other]                                65.28%         71.88%         -6.60%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                          3.85%          3.89%         -0.04%
+  R rel.err (max over series)                            32.52%         54.51%        -21.99%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9826         0.9826        -0.0000
+  |corr| factor [financial]                              0.9941         0.9939        +0.0001
+  |corr| factor [other]                                  0.9662         0.9661        +0.0001
+  |cross-corr| real-financial                            0.0811         0.0811        +0.0000
+  |cross-corr| real-other                                0.0416         0.0416        +0.0000
+  |cross-corr| financial-other                           0.0694         0.0695        -0.0000
+  RMSE trajectory [real]                                 1.6315         1.6312        +0.0003
+  RMSE trajectory [financial]                            0.3457         0.3442        +0.0015
+  RMSE trajectory [other]                                1.0816         1.0776        +0.0040
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        4.50%        100.00%        -95.50%
+  w_eps overlap@5%                                        4.75%        100.00%        -95.25%
+  w_u   lift@5% (overlap/chance)                         0.8989        19.9750       -19.0761
+  w_eps lift@5% (overlap/chance)                         0.9488        19.9750       -19.0262
+
+  [Likelihood]
+  loglik_final (mean over reps)                     -35228.2427    -35290.5812       +62.3385
+  loglik_initial (mean)                             -39128.7290    -40670.3536     +1541.6246
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     70.1000        15.5000       +54.6000
+  monotonicity violations (mean)                        60.1000         0.0000       +60.1000
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=800, S=20, pi=0.01
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 21.8555            N/A              —
+  nu_eps_hat (estimate)                                 26.1175            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3676         0.3655        +0.0021
+  rho(A) rel.err                                          9.07%          9.70%         -0.64%
+  |eig(A_hat)-eig(A*)| Euclid                            0.0667         0.0797        -0.0131
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]                6.94%         16.67%         -9.73%
+  Lambda relerr (sign-normalised only)                   40.79%         48.29%         -7.50%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.1227         1.9678        +0.1549
+  h_financial                                            1.1777         1.0119        +0.1658
+  h_other                                                0.4059         0.3259        +0.0800
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.8887         0.9622        -0.0735
+  diag(Q) estimate [financial]                           0.7822         0.8539        -0.0716
+  diag(Q) estimate [other]                               0.8705         0.9412        -0.0707
+  diag(Q) rel.err [real]                                317.03%        351.54%        -34.51%
+  diag(Q) rel.err [financial]                            28.88%         40.68%        -11.80%
+  diag(Q) rel.err [other]                                59.73%         72.71%        -12.98%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                          4.01%         37.93%        -33.92%
+  R rel.err (max over series)                            66.62%        589.92%       -523.30%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9802         0.9209        +0.0593
+  |corr| factor [financial]                              0.9929         0.9466        +0.0464
+  |corr| factor [other]                                  0.9629         0.9023        +0.0606
+  |cross-corr| real-financial                            0.0812         0.0787        +0.0025
+  |cross-corr| real-other                                0.0414         0.0386        +0.0027
+  |cross-corr| financial-other                           0.0696         0.0653        +0.0043
+  RMSE trajectory [real]                                 1.6279         1.5314        +0.0966
+  RMSE trajectory [financial]                            0.3457         0.4551        -0.1094
+  RMSE trajectory [other]                                1.0768         1.0839        -0.0070
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        4.62%        100.00%        -95.38%
+  w_eps overlap@5%                                        4.50%        100.00%        -95.50%
+  w_u   lift@5% (overlap/chance)                         0.9238        19.9750       -19.0512
+  w_eps lift@5% (overlap/chance)                         0.8989        19.9750       -19.0761
+
+  [Contamination detection (Experiment C; Gaussian = nan by design)]
+  # contaminated periods (mean)                          6.9500         6.9500        +0.0000
+  effective T (mean)                                   799.0000       799.0000        +0.0000
+  detection rate  (natural k=n_c)                        99.44%            N/A              —
+  detection lift  (natural k=n_c)                      128.8211            N/A              —
+  detection recall    @5%                                99.44%            N/A              —
+  detection precision @5%                                17.25%            N/A              —
+  detection lift      @5%                               19.8640            N/A              —
+  detection recall    @10%                              100.00%            N/A              —
+  detection precision @10%                                8.69%            N/A              —
+  detection lift      @10%                               9.9875            N/A              —
+
+  [Likelihood]
+  loglik_final (mean over reps)                     -35956.0002    -41805.3635     +5849.3632
+  loglik_initial (mean)                             -40767.7215    -47002.9766     +6235.2551
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     16.7500        17.9000        -1.1500
+  monotonicity violations (mean)                         2.7000         0.0000        +2.7000
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=800, S=20, pi=0.05
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 26.3978            N/A              —
+  nu_eps_hat (estimate)                                  6.9088            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3684         0.3558        +0.0126
+  rho(A) rel.err                                          9.58%         13.69%         -4.11%
+  |eig(A_hat)-eig(A*)| Euclid                            0.0695         0.1691        -0.0995
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]                7.03%         45.30%        -38.27%
+  Lambda relerr (sign-normalised only)                   40.89%         69.43%        -28.54%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.1295         1.3102        +0.8193
+  h_financial                                            1.1788         0.7826        +0.3962
+  h_other                                                0.2729         0.0436        +0.2293
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.9027         0.9700        -0.0673
+  diag(Q) estimate [financial]                           0.7938         0.8663        -0.0725
+  diag(Q) estimate [other]                               0.8849         0.9593        -0.0744
+  diag(Q) rel.err [real]                                323.61%        355.19%        -31.58%
+  diag(Q) rel.err [financial]                            30.79%         42.73%        -11.95%
+  diag(Q) rel.err [other]                                62.37%         76.03%        -13.66%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                          6.74%        270.64%       -263.90%
+  R rel.err (max over series)                            50.67%       1715.23%      -1664.56%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9699         0.7710        +0.1989
+  |corr| factor [financial]                              0.9879         0.8739        +0.1140
+  |corr| factor [other]                                  0.9532         0.6528        +0.3004
+  |cross-corr| real-financial                            0.0835         0.0693        +0.0142
+  |cross-corr| real-other                                0.0422         0.0388        +0.0034
+  |cross-corr| financial-other                           0.0701         0.0688        +0.0014
+  RMSE trajectory [real]                                 1.6227         1.2206        +0.4021
+  RMSE trajectory [financial]                            0.3562         0.5653        -0.2091
+  RMSE trajectory [other]                                1.1433         1.0151        +0.1282
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        4.50%        100.00%        -95.50%
+  w_eps overlap@5%                                        4.88%        100.00%        -95.12%
+  w_u   lift@5% (overlap/chance)                         0.8989        19.9750       -19.0761
+  w_eps lift@5% (overlap/chance)                         0.9738        19.9750       -19.0012
+
+  [Contamination detection (Experiment C; Gaussian = nan by design)]
+  # contaminated periods (mean)                         38.6500        38.6500        +0.0000
+  effective T (mean)                                   799.0000       799.0000        +0.0000
+  detection rate  (natural k=n_c)                        99.89%            N/A              —
+  detection lift  (natural k=n_c)                       21.1727            N/A              —
+  detection recall    @5%                                95.83%            N/A              —
+  detection precision @5%                                91.50%            N/A              —
+  detection lift      @5%                               19.1425            N/A              —
+  detection recall    @10%                              100.00%            N/A              —
+  detection precision @10%                               48.31%            N/A              —
+  detection lift      @10%                               9.9875            N/A              —
+
+  [Likelihood]
+  loglik_final (mean over reps)                     -39015.5487    -59519.3053    +20503.7566
+  loglik_initial (mean)                             -45838.7348    -72303.7606    +26465.0258
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     22.7500        17.3500        +5.4000
+  monotonicity violations (mean)                         0.0000         0.0000        +0.0000
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=800, S=20, pi=0.10
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 31.8050            N/A              —
+  nu_eps_hat (estimate)                                  3.7627            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3717         0.3497        +0.0220
+  rho(A) rel.err                                          9.41%         17.91%         -8.50%
+  |eig(A_hat)-eig(A*)| Euclid                            0.0672         0.1897        -0.1224
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]                7.14%         62.67%        -55.53%
+  Lambda relerr (sign-normalised only)                   41.00%         91.51%        -50.51%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.1354         0.8646        +1.2708
+  h_financial                                            1.1777        -0.0342        +1.2119
+  h_other                                                0.1401         0.0425        +0.0976
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.9134         0.9733        -0.0599
+  diag(Q) estimate [financial]                           0.8011         0.8700        -0.0689
+  diag(Q) estimate [other]                               0.8952         0.9748        -0.0796
+  diag(Q) rel.err [real]                                328.62%        356.75%        -28.12%
+  diag(Q) rel.err [financial]                            31.99%         43.34%        -11.35%
+  diag(Q) rel.err [other]                                64.27%         78.87%        -14.60%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                         16.66%        571.18%       -554.51%
+  R rel.err (max over series)                            52.48%       2517.67%      -2465.20%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9583         0.6044        +0.3540
+  |corr| factor [financial]                              0.9817         0.8418        +0.1399
+  |corr| factor [other]                                  0.9381         0.4215        +0.5166
+  |cross-corr| real-financial                            0.0861         0.0640        +0.0220
+  |cross-corr| real-other                                0.0423         0.0374        +0.0049
+  |cross-corr| financial-other                           0.0695         0.0691        +0.0004
+  RMSE trajectory [real]                                 1.6107         0.9460        +0.6647
+  RMSE trajectory [financial]                            0.3657         1.1163        -0.7506
+  RMSE trajectory [other]                                1.2033         0.8675        +0.3358
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        4.88%        100.00%        -95.12%
+  w_eps overlap@5%                                        4.25%        100.00%        -95.75%
+  w_u   lift@5% (overlap/chance)                         0.9738        19.9750       -19.0012
+  w_eps lift@5% (overlap/chance)                         0.8489        19.9750       -19.1261
+
+  [Contamination detection (Experiment C; Gaussian = nan by design)]
+  # contaminated periods (mean)                         79.1000        79.1000        +0.0000
+  effective T (mean)                                   799.0000       799.0000        +0.0000
+  detection rate  (natural k=n_c)                       100.00%            N/A              —
+  detection lift  (natural k=n_c)                       10.1965            N/A              —
+  detection recall    @5%                                51.05%            N/A              —
+  detection precision @5%                               100.00%            N/A              —
+  detection lift      @5%                               10.1965            N/A              —
+  detection recall    @10%                               97.11%            N/A              —
+  detection precision @10%                               95.75%            N/A              —
+  detection lift      @10%                               9.6993            N/A              —
+
+  [Likelihood]
+  loglik_final (mean over reps)                     -42723.1483    -70986.4992    +28263.3509
+  loglik_initial (mean)                             -50414.6587   -103495.0616    +53080.4029
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     28.1500        17.1000       +11.0500
+  monotonicity violations (mean)                         0.0000         0.0000        +0.0000
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — TREND across pi  |  T=800, S=20
+  Read each metric LEFT->RIGHT (effect of pi) and student_t-vs-gaussian TOP-vs-BOTTOM.
+  Expected: gaussian error metrics GROW with pi; student_t stays flat; nu_eps_hat falls.
+====================================================================================================
+  metric                              estimator      pi=0.00     pi=0.01     pi=0.05     pi=0.10
+  ------------------------------------------------------------------------------------------------
+  Lambda relerr Procrustes-block      student_t        6.81%       6.94%       7.03%       7.14%
+  Lambda relerr Procrustes-block      gaussian         6.80%      16.67%      45.30%      62.67%
+
+  R median rel.err                    student_t        3.85%       4.01%       6.74%      16.66%
+  R median rel.err                    gaussian         3.89%      37.93%     270.64%     571.18%
+
+  diag(Q) rel.err [real]              student_t      332.32%     317.03%     323.61%     328.62%
+  diag(Q) rel.err [real]              gaussian       351.01%     351.54%     355.19%     356.75%
+
+  diag(Q) rel.err [financial]         student_t       33.75%      28.88%      30.79%      31.99%
+  diag(Q) rel.err [financial]         gaussian        39.73%      40.68%      42.73%      43.34%
+
+  diag(Q) rel.err [other]             student_t       65.28%      59.73%      62.37%      64.27%
+  diag(Q) rel.err [other]             gaussian        71.88%      72.71%      76.03%      78.87%
+
+  nu_eps_hat (adapts down)            student_t     559.1632     26.1175      6.9088      3.7627
+  nu_eps_hat (adapts down)            gaussian             —           —           —           —
+
+  |corr| factor [financial]           student_t       0.9941      0.9929      0.9879      0.9817
+  |corr| factor [financial]           gaussian        0.9939      0.9466      0.8739      0.8418
+
+  detection rate (natural)            student_t            —      99.44%      99.89%     100.00%
+  detection rate (natural)            gaussian             —           —           —           —
+
+  detection lift (natural)            student_t            —    128.8211     21.1727     10.1965
+  detection lift (natural)            gaussian             —           —           —           —
+
+====================================================================================================
+
+====================================================================================================
+  Experiment C — the three predictions  |  T=800  (pi: 0.00 -> 0.10)
+====================================================================================================
+  (1) GAUSSIAN DEGRADES: Lambda / Q / R rel.err should GROW with pi.
+      Lambda relerr            [gaussian]:  pi=0.00 -> 6.80%   pi=0.10 -> 62.67%   [GROWS]
+      diag(Q) relerr [real]    [gaussian]:  pi=0.00 -> 351.01%   pi=0.10 -> 356.75%   [GROWS]
+      R median relerr          [gaussian]:  pi=0.00 -> 3.89%   pi=0.10 -> 571.18%   [GROWS]
+
+  (2) STUDENT-T STABLE: recovery metrics flat, nu_eps_hat ADAPTS (decreases with pi).
+      Lambda relerr            [student_t]: pi=0.00 -> 6.81%   pi=0.10 -> 7.14%   [expect ~flat]
+      R median relerr          [student_t]: pi=0.00 -> 3.85%   pi=0.10 -> 16.66%   [expect ~flat]
+      nu_eps_hat               [student_t]: pi=0.00 -> 559.2   pi=0.10 -> 3.8   [FALLS]
+
+  (3) DETECTION: Student-t flags the TRUE contaminated periods (rate high, lift > 1);
+      Gaussian has constant w_eps_hat -> nan by design.
+      pi=0.01:  student_t detection rate=99.44%  lift=128.82     gaussian rate=nan (no down-weighting)
+      pi=0.05:  student_t detection rate=99.89%  lift=21.17     gaussian rate=nan (no down-weighting)
+      pi=0.10:  student_t detection rate=100.00%  lift=10.20     gaussian rate=nan (no down-weighting)
+====================================================================================================
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=497, S=20, pi=0.00
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 45.7472            N/A              —
+  nu_eps_hat (estimate)                                578.7002            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3593         0.3604        -0.0011
+  rho(A) rel.err                                          9.52%          9.14%         +0.38%
+  |eig(A_hat)-eig(A*)| Euclid                            0.0881         0.0759        +0.0122
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]                8.98%          9.00%         -0.02%
+  Lambda relerr (sign-normalised only)                   41.37%         41.36%         +0.01%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.1368         2.1366        +0.0002
+  h_financial                                            1.1842         1.1833        +0.0009
+  h_other                                               -0.0018        -0.0021        +0.0003
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.9198         0.9603        -0.0406
+  diag(Q) estimate [financial]                           0.8179         0.8539        -0.0360
+  diag(Q) estimate [other]                               0.8977         0.9358        -0.0382
+  diag(Q) rel.err [real]                                331.61%        350.66%        -19.05%
+  diag(Q) rel.err [financial]                            34.75%         40.68%         -5.93%
+  diag(Q) rel.err [other]                                64.71%         71.72%         -7.00%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                          4.77%          4.69%         +0.08%
+  R rel.err (max over series)                            43.37%         52.00%         -8.62%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9818         0.9818        -0.0000
+  |corr| factor [financial]                              0.9933         0.9933        +0.0000
+  |corr| factor [other]                                  0.9657         0.9658        -0.0001
+  |cross-corr| real-financial                            0.0788         0.0789        -0.0000
+  |cross-corr| real-other                                0.0457         0.0457        -0.0000
+  |cross-corr| financial-other                           0.0770         0.0772        -0.0003
+  RMSE trajectory [real]                                 1.6484         1.6480        +0.0005
+  RMSE trajectory [financial]                            0.3602         0.3581        +0.0020
+  RMSE trajectory [other]                                1.2932         1.2888        +0.0043
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        5.00%        100.00%        -95.00%
+  w_eps overlap@5%                                        3.80%        100.00%        -96.20%
+  w_u   lift@5% (overlap/chance)                         0.9920        19.8400       -18.8480
+  w_eps lift@5% (overlap/chance)                         0.7539        19.8400       -19.0861
+
+  [Likelihood]
+  loglik_final (mean over reps)                     -21818.4641    -21857.8705       +39.4065
+  loglik_initial (mean)                             -24280.3167    -25262.2453      +981.9286
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     69.9500        16.1000       +53.8500
+  monotonicity violations (mean)                        59.6000         0.0000       +59.6000
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=497, S=20, pi=0.01
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 22.0254            N/A              —
+  nu_eps_hat (estimate)                                 25.7064            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3589         0.3465        +0.0124
+  rho(A) rel.err                                          9.74%         12.86%         -3.12%
+  |eig(A_hat)-eig(A*)| Euclid                            0.1101         0.1224        -0.0124
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]                9.10%         19.15%        -10.05%
+  Lambda relerr (sign-normalised only)                   41.38%         52.42%        -11.03%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.1369         2.0067        +0.1302
+  h_financial                                            1.1833         0.9235        +0.2598
+  h_other                                                0.0028        -0.2150        +0.2178
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.8884         0.9605        -0.0721
+  diag(Q) estimate [financial]                           0.7889         0.8647        -0.0758
+  diag(Q) estimate [other]                               0.8682         0.9381        -0.0700
+  diag(Q) rel.err [real]                                316.91%        350.73%        -33.81%
+  diag(Q) rel.err [financial]                            29.98%         42.47%        -12.49%
+  diag(Q) rel.err [other]                                59.31%         72.14%        -12.84%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                          4.80%         30.97%        -26.17%
+  R rel.err (max over series)                            63.03%        929.75%       -866.72%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9803         0.9273        +0.0530
+  |corr| factor [financial]                              0.9921         0.9063        +0.0858
+  |corr| factor [other]                                  0.9633         0.9072        +0.0560
+  |cross-corr| real-financial                            0.0782         0.0768        +0.0015
+  |cross-corr| real-other                                0.0444         0.0402        +0.0042
+  |cross-corr| financial-other                           0.0770         0.0755        +0.0015
+  RMSE trajectory [real]                                 1.6461         1.5591        +0.0870
+  RMSE trajectory [financial]                            0.3602         0.4836        -0.1234
+  RMSE trajectory [other]                                1.2872         1.3573        -0.0702
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        5.00%        100.00%        -95.00%
+  w_eps overlap@5%                                        4.00%        100.00%        -96.00%
+  w_u   lift@5% (overlap/chance)                         0.9920        19.8400       -18.8480
+  w_eps lift@5% (overlap/chance)                         0.7936        19.8400       -19.0464
+
+  [Contamination detection (Experiment C; Gaussian = nan by design)]
+  # contaminated periods (mean)                          4.3500         4.3500        +0.0000
+  effective T (mean)                                   496.0000       496.0000        +0.0000
+  detection rate  (natural k=n_c)                       100.00%            N/A              —
+  detection lift  (natural k=n_c)                      130.6429            N/A              —
+  detection recall    @5%                               100.00%            N/A              —
+  detection precision @5%                                17.40%            N/A              —
+  detection lift      @5%                               19.8400            N/A              —
+  detection recall    @10%                              100.00%            N/A              —
+  detection precision @10%                                8.70%            N/A              —
+  detection lift      @10%                               9.9200            N/A              —
+
+  [Likelihood]
+  loglik_final (mean over reps)                     -22273.8173    -25521.8166     +3247.9993
+  loglik_initial (mean)                             -25375.9833    -29478.0077     +4102.0245
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     18.1000        17.1500        +0.9500
+  monotonicity violations (mean)                         4.1000         0.0000        +4.1000
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=497, S=20, pi=0.05
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 25.6994            N/A              —
+  nu_eps_hat (estimate)                                  7.0630            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3578         0.3421        +0.0158
+  rho(A) rel.err                                         10.03%         13.77%         -3.74%
+  |eig(A_hat)-eig(A*)| Euclid                            0.0916         0.1834        -0.0918
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]                9.18%         43.65%        -34.47%
+  Lambda relerr (sign-normalised only)                   41.45%         75.90%        -34.45%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.1425         1.5313        +0.6112
+  h_financial                                            1.1833         0.1027        +1.0806
+  h_other                                                0.0121         0.3349        -0.3228
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.8991         0.9682        -0.0691
+  diag(Q) estimate [financial]                           0.7986         0.8751        -0.0765
+  diag(Q) estimate [other]                               0.8793         0.9611        -0.0818
+  diag(Q) rel.err [real]                                321.92%        354.36%        -32.44%
+  diag(Q) rel.err [financial]                            31.57%         44.18%        -12.61%
+  diag(Q) rel.err [other]                                61.35%         76.36%        -15.01%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                          7.00%        216.04%       -209.04%
+  R rel.err (max over series)                            55.85%       1631.51%      -1575.66%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9701         0.7559        +0.2142
+  |corr| factor [financial]                              0.9868         0.8832        +0.1036
+  |corr| factor [other]                                  0.9534         0.6517        +0.3017
+  |cross-corr| real-financial                            0.0834         0.0790        +0.0044
+  |cross-corr| real-other                                0.0465         0.0502        -0.0038
+  |cross-corr| financial-other                           0.0760         0.0783        -0.0023
+  RMSE trajectory [real]                                 1.6399         1.2042        +0.4357
+  RMSE trajectory [financial]                            0.3698         1.0409        -0.6711
+  RMSE trajectory [other]                                1.2832         0.8669        +0.4163
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        4.60%        100.00%        -95.40%
+  w_eps overlap@5%                                        5.20%        100.00%        -94.80%
+  w_u   lift@5% (overlap/chance)                         0.9126        19.8400       -18.9274
+  w_eps lift@5% (overlap/chance)                         1.0317        19.8400       -18.8083
+
+  [Contamination detection (Experiment C; Gaussian = nan by design)]
+  # contaminated periods (mean)                         23.5000        23.5000        +0.0000
+  effective T (mean)                                   496.0000       496.0000        +0.0000
+  detection rate  (natural k=n_c)                       100.00%            N/A              —
+  detection lift  (natural k=n_c)                       21.7936            N/A              —
+  detection recall    @5%                                96.28%            N/A              —
+  detection precision @5%                                89.60%            N/A              —
+  detection lift      @5%                               19.1014            N/A              —
+  detection recall    @10%                              100.00%            N/A              —
+  detection precision @10%                               47.00%            N/A              —
+  detection lift      @10%                               9.9200            N/A              —
+
+  [Likelihood]
+  loglik_final (mean over reps)                     -24111.1199    -35389.5344    +11278.4145
+  loglik_initial (mean)                             -28502.3214    -44217.5641    +15715.2426
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     21.9500        19.7000        +2.2500
+  monotonicity violations (mean)                         0.0000         0.0000        +0.0000
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — FULL metric table  |  T=497, S=20, pi=0.10
+  DGP: Gaussian base (nu=inf) + contamination overlay (kappa=5, nu_contam=3)
+  Two estimators on identical synthetic panels
+====================================================================================================
+  metric                                              student_t       gaussian      gap (t-g)
+  --------------------------------------------------------------------------------------------------
+
+  [Heavy-tail parameters (Student-t estimator; Gaussian = inf by design)]
+  nu_u_hat   (estimate)                                 30.6701            N/A              —
+  nu_eps_hat (estimate)                                  3.8097            N/A              —
+
+  [Spectral radius of A]
+  rho(A) (estimate)                                      0.3606         0.3114        +0.0492
+  rho(A) rel.err                                         10.18%         23.41%        -13.23%
+  |eig(A_hat)-eig(A*)| Euclid                            0.1241         0.2396        -0.1155
+
+  [Loading matrix Lambda]
+  Lambda relerr Procrustes-block [PRIMARY]                9.25%         61.73%        -52.47%
+  Lambda relerr (sign-normalised only)                   41.53%        100.72%        -59.19%
+
+  [Block-diagonal Procrustes scale factors]
+  h_real                                                 2.1472         1.0271        +1.1201
+  h_financial                                            1.1838         0.1643        +1.0195
+  h_other                                                0.0132        -0.0565        +0.0697
+
+  [Q diagonal per block]
+  diag(Q) estimate [real]                                0.9127         0.9763        -0.0636
+  diag(Q) estimate [financial]                           0.8069         0.8868        -0.0800
+  diag(Q) estimate [other]                               0.8891         0.9689        -0.0798
+  diag(Q) rel.err [real]                                328.31%        358.15%        -29.83%
+  diag(Q) rel.err [financial]                            32.93%         46.11%        -13.18%
+  diag(Q) rel.err [other]                                63.14%         77.78%        -14.64%
+
+  [R (idiosyncratic variances)]
+  R rel.err (median over series)                         16.31%        498.85%       -482.54%
+  R rel.err (max over series)                            58.14%       3172.18%      -3114.04%
+
+  [Factor recovery]
+  |corr| factor [real]                                   0.9564         0.6484        +0.3080
+  |corr| factor [financial]                              0.9815         0.7373        +0.2442
+  |corr| factor [other]                                  0.9388         0.4743        +0.4646
+  |cross-corr| real-financial                            0.0791         0.0646        +0.0144
+  |cross-corr| real-other                                0.0427         0.0507        -0.0080
+  |cross-corr| financial-other                           0.0763         0.0733        +0.0030
+  RMSE trajectory [real]                                 1.6273         0.9909        +0.6363
+  RMSE trajectory [financial]                            0.3775         0.8932        -0.5157
+  RMSE trajectory [other]                                1.2732         0.9440        +0.3292
+
+  [Weight recovery (Student-t specific)]
+  w_u   overlap@5%                                        4.20%        100.00%        -95.80%
+  w_eps overlap@5%                                        4.20%        100.00%        -95.80%
+  w_u   lift@5% (overlap/chance)                         0.8333        19.8400       -19.0067
+  w_eps lift@5% (overlap/chance)                         0.8333        19.8400       -19.0067
+
+  [Contamination detection (Experiment C; Gaussian = nan by design)]
+  # contaminated periods (mean)                         49.6500        49.6500        +0.0000
+  effective T (mean)                                   496.0000       496.0000        +0.0000
+  detection rate  (natural k=n_c)                        99.78%            N/A              —
+  detection lift  (natural k=n_c)                       10.0625            N/A              —
+  detection recall    @5%                                50.84%            N/A              —
+  detection precision @5%                               100.00%            N/A              —
+  detection lift      @5%                               10.0872            N/A              —
+  detection recall    @10%                               96.23%            N/A              —
+  detection precision @10%                               95.20%            N/A              —
+  detection lift      @10%                               9.5464            N/A              —
+
+  [Likelihood]
+  loglik_final (mean over reps)                     -26445.5098    -42646.1199    +16200.6101
+  loglik_initial (mean)                             -31501.4548    -62137.5616    +30636.1068
+
+  [Algorithmic reliability]
+  convergence rate                                      100.00%        100.00%         +0.00%
+  iterations (mean)                                     27.2000        15.3500       +11.8500
+  monotonicity violations (mean)                         0.0000         0.0000        +0.0000
+
+  [other aggregate keys (uncurated)]
+  diagQ_star_fin                                         0.6070         0.6070        +0.0000
+  diagQ_star_other                                       0.5450         0.5450        +0.0000
+  diagQ_star_real                                        0.2131         0.2131        +0.0000
+====================================================================================================
+
+====================================================================================================
+  Experiment C — TREND across pi  |  T=497, S=20
+  Read each metric LEFT->RIGHT (effect of pi) and student_t-vs-gaussian TOP-vs-BOTTOM.
+  Expected: gaussian error metrics GROW with pi; student_t stays flat; nu_eps_hat falls.
+====================================================================================================
+  metric                              estimator      pi=0.00     pi=0.01     pi=0.05     pi=0.10
+  ------------------------------------------------------------------------------------------------
+  Lambda relerr Procrustes-block      student_t        8.98%       9.10%       9.18%       9.25%
+  Lambda relerr Procrustes-block      gaussian         9.00%      19.15%      43.65%      61.73%
+
+  R median rel.err                    student_t        4.77%       4.80%       7.00%      16.31%
+  R median rel.err                    gaussian         4.69%      30.97%     216.04%     498.85%
+
+  diag(Q) rel.err [real]              student_t      331.61%     316.91%     321.92%     328.31%
+  diag(Q) rel.err [real]              gaussian       350.66%     350.73%     354.36%     358.15%
+
+  diag(Q) rel.err [financial]         student_t       34.75%      29.98%      31.57%      32.93%
+  diag(Q) rel.err [financial]         gaussian        40.68%      42.47%      44.18%      46.11%
+
+  diag(Q) rel.err [other]             student_t       64.71%      59.31%      61.35%      63.14%
+  diag(Q) rel.err [other]             gaussian        71.72%      72.14%      76.36%      77.78%
+
+  nu_eps_hat (adapts down)            student_t     578.7002     25.7064      7.0630      3.8097
+  nu_eps_hat (adapts down)            gaussian             —           —           —           —
+
+  |corr| factor [financial]           student_t       0.9933      0.9921      0.9868      0.9815
+  |corr| factor [financial]           gaussian        0.9933      0.9063      0.8832      0.7373
+
+  detection rate (natural)            student_t            —     100.00%     100.00%      99.78%
+  detection rate (natural)            gaussian             —           —           —           —
+
+  detection lift (natural)            student_t            —    130.6429     21.7936     10.0625
+  detection lift (natural)            gaussian             —           —           —           —
+
+====================================================================================================
+
+====================================================================================================
+  Experiment C — the three predictions  |  T=497  (pi: 0.00 -> 0.10)
+====================================================================================================
+  (1) GAUSSIAN DEGRADES: Lambda / Q / R rel.err should GROW with pi.
+      Lambda relerr            [gaussian]:  pi=0.00 -> 9.00%   pi=0.10 -> 61.73%   [GROWS]
+      diag(Q) relerr [real]    [gaussian]:  pi=0.00 -> 350.66%   pi=0.10 -> 358.15%   [GROWS]
+      R median relerr          [gaussian]:  pi=0.00 -> 4.69%   pi=0.10 -> 498.85%   [GROWS]
+
+  (2) STUDENT-T STABLE: recovery metrics flat, nu_eps_hat ADAPTS (decreases with pi).
+      Lambda relerr            [student_t]: pi=0.00 -> 8.98%   pi=0.10 -> 9.25%   [expect ~flat]
+      R median relerr          [student_t]: pi=0.00 -> 4.77%   pi=0.10 -> 16.31%   [expect ~flat]
+      nu_eps_hat               [student_t]: pi=0.00 -> 578.7   pi=0.10 -> 3.8   [FALLS]
+
+  (3) DETECTION: Student-t flags the TRUE contaminated periods (rate high, lift > 1);
+      Gaussian has constant w_eps_hat -> nan by design.
+      pi=0.01:  student_t detection rate=100.00%  lift=130.64     gaussian rate=nan (no down-weighting)
+      pi=0.05:  student_t detection rate=100.00%  lift=21.79     gaussian rate=nan (no down-weighting)
+      pi=0.10:  student_t detection rate=99.78%  lift=10.06     gaussian rate=nan (no down-weighting)
+====================================================================================================
