@@ -37,6 +37,7 @@ desktop.ini
 .idea/
 
 # ── LaTeX — file ausiliari di compilazione (mai in repo) ──────────────────────
+# NB: il SORGENTE docs/*.tex e il PDF docs/*.pdf NON sono esclusi → vanno in repo.
 *.aux
 *.log
 *.out
@@ -46,6 +47,8 @@ desktop.ini
 *.blg
 *.fls
 *.fdb_latexmk
+*.lof
+*.lot
 
 # ── Figure rigenerabili dai notebook ──────────────────────────────────────────
 results/figures/
