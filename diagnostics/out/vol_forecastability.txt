@@ -1,0 +1,120 @@
+================================================================================
+FORECASTABILITY DELLA VOLATILITA' (scale 1/w) — w ONESTO vs ORACOLO
+================================================================================
+fit full-sample small student_t  T=497  (1985-01-31..2026-05-31)  S=200000 draws/densita'
+nu_u=4.080  nu_eps=4.400  GDP nat mean=+0.646 std=1.041
+Proxy vol: L_eps=-log(w_eps_qe), L_u=-mean log(w_u) sui 3 mesi. L grande=regime turbolento.
+w forecastato = exp(-Lhat); regressori SOLO laggati (no realizzato del trimestre).
+
+--------------------------------------------------------------------------------
+REGRESSIONI DI FORECAST (full-sample coeff, regressori laggati)
+--------------------------------------------------------------------------------
+
+[NFCI-only]
+  L_eps ~ ['NFCI_prev']:  R2=0.125  const=+0.392(t=+5.6)  NFCI_prev=+0.554(t=+4.8)
+  L_u   ~ ['NFCI_prev']:  R2=0.083  const=+0.209(t=+5.1)  NFCI_prev=+0.259(t=+3.8)
+
+[AR+NFCI]
+  L_eps ~ ['L_eps_lag1', 'NFCI_prev']:  R2=0.234  const=+0.239(t=+3.3)  L_eps_lag1=+0.362(t=+4.8)  NFCI_prev=+0.319(t=+2.7)
+  L_u   ~ ['L_u_lag1', 'NFCI_prev']:  R2=0.183  const=+0.126(t=+2.9)  L_u_lag1=+0.345(t=+4.4)  NFCI_prev=+0.134(t=+1.9)
+
+================================================================================
+2008Q4 CRISI (finanziaria)   [2008-12-31]   realizzato = -2.213 nat
+  NFCI trimestre target=+2.792  NFCI trimestre PRECEDENTE (predittore)=+0.950
+  w_eps:  smoothed(oracolo)=0.0830   forecast[NFCI-only]=0.3992   forecast[AR+NFCI]=0.2981   (prior~1)
+  w_u  :  smoothed(oracolo)~=0.1282  forecast[NFCI-only]=0.6346   forecast[AR+NFCI]=0.4757   (prior~1)
+  caso                    std(nat)      q05      q01         PIT
+  w-PRIOR (Gamma)            0.631    -1.58    -2.22     0.01014  DENTRO
+  w-FORECAST[NFCI-only]      0.701    -1.74    -2.22     0.01052  DENTRO
+  w-FORECAST[AR+NFCI]        0.812    -1.92    -2.49     0.02311  DENTRO
+  w-SMOOTHED (oracolo)       1.529    -3.10    -4.15     0.14506  DENTRO
+
+================================================================================
+2009Q1 (coda crisi fin.)   [2009-03-31]   realizzato = -1.141 nat
+  NFCI trimestre target=+2.161  NFCI trimestre PRECEDENTE (predittore)=+2.792
+  w_eps:  smoothed(oracolo)=0.1264   forecast[NFCI-only]=0.1440   forecast[AR+NFCI]=0.1310   (prior~1)
+  w_u  :  smoothed(oracolo)~=0.3283  forecast[NFCI-only]=0.3938   forecast[AR+NFCI]=0.2989   (prior~1)
+  caso                    std(nat)      q05      q01         PIT
+  w-PRIOR (Gamma)            0.633    -1.23    -1.85     0.06312  DENTRO
+  w-FORECAST[NFCI-only]      1.133    -2.09    -2.87     0.21102  DENTRO
+  w-FORECAST[AR+NFCI]        1.198    -2.20    -3.03     0.22457  DENTRO
+  w-SMOOTHED (oracolo)       1.285    -2.35    -3.22     0.24022  DENTRO
+
+================================================================================
+2020Q1 (onset Covid, reale)   [2020-03-31]   realizzato = -1.325 nat
+  NFCI trimestre target=-0.328  NFCI trimestre PRECEDENTE (predittore)=-0.552
+  w_eps:  smoothed(oracolo)=0.0712   forecast[NFCI-only]=0.9169   forecast[AR+NFCI]=1.0130   (prior~1)
+  w_u  :  smoothed(oracolo)~=0.4038  forecast[NFCI-only]=0.9363   forecast[AR+NFCI]=0.9621   (prior~1)
+  caso                    std(nat)      q05      q01         PIT
+  w-PRIOR (Gamma)            0.630    -0.40    -1.02     0.00511  DENTRO
+  w-FORECAST[NFCI-only]      0.480    -0.20    -0.53     0.00006  FUORI
+  w-FORECAST[AR+NFCI]        0.461    -0.17    -0.49     0.00001  FUORI
+  w-SMOOTHED (oracolo)       1.559    -1.98    -3.07     0.11045  DENTRO
+
+================================================================================
+2020Q2 CRISI Covid (reale)   [2020-06-30]   realizzato = -8.204 nat
+  NFCI trimestre target=-0.075  NFCI trimestre PRECEDENTE (predittore)=-0.328
+  w_eps:  smoothed(oracolo)=0.0268   forecast[NFCI-only]=0.8099   forecast[AR+NFCI]=0.3356   (prior~1)
+  w_u  :  smoothed(oracolo)~=0.0304  forecast[NFCI-only]=0.8835   forecast[AR+NFCI]=0.6740   (prior~1)
+  caso                    std(nat)      q05      q01         PIT
+  w-PRIOR (Gamma)            0.634    -1.53    -2.15     0.00001  FUORI
+  w-FORECAST[NFCI-only]      0.516    -1.38    -1.73     0.00000  FUORI
+  w-FORECAST[AR+NFCI]        0.757    -1.78    -2.28     0.00000  FUORI
+  w-SMOOTHED (oracolo)       3.103    -5.65    -7.80     0.00702  DENTRO
+
+================================================================================
+SINTESI
+================================================================================
+                             realizzato  NFCI_prev  PIT_prior  PIT_oracle  std_prior  std_oracle  PIT_fc_NFCI-only  std_fc_NFCI-only  PIT_fc_AR+NFCI  std_fc_AR+NFCI
+trimestre                                                                                                                                                           
+2008Q4 CRISI (finanziaria)     -2.21334    0.95000    0.01014     0.14506    0.63090     1.52925           0.01052           0.70140         0.02311         0.81223
+2009Q1 (coda crisi fin.)       -1.14136    2.79222    0.06312     0.24022    0.63330     1.28520           0.21102           1.13302         0.22457         1.19784
+2020Q1 (onset Covid, reale)    -1.32506   -0.55202    0.00511     0.11045    0.62983     1.55917           0.00006           0.48042         0.00001         0.46053
+2020Q2 CRISI Covid (reale)     -8.20432   -0.32767    0.00001     0.00702    0.63365     3.10314           0.00000           0.51590         0.00000         0.75667
+
+--------------------------------------------------------------------------------
+LETTURA (PIT = percentile del realizzato nella densita'):
+  PIT in [0.005,0.5] = crollo DENTRO la coda con massa usabile.
+  Confronto chiave: w-FORECAST cattura come l'oracolo, o resta
+  vicino al prior (compressione)?
+
+================================================================================
+VERDETTO
+================================================================================
+La vol (scale 1/w) E' forecastable, ma SOLO quando il driver finanziario
+e' presente e gia' osservabile (NFCI laggato). Distinzione netta:
+
+FINANZIARIA (2008-09): NFCI guida con ~1 anno di anticipo. Il w onesto
+  allarga la densita' in tempo e nella direzione giusta.
+  - 2009Q1: w-FORECAST ~= ORACOLO (w_eps fc 0.14 vs oracolo 0.126; std
+    1.13-1.20 vs 1.29; PIT 0.21-0.22 vs 0.24). La vol e' PIENAMENTE
+    forecastata: NFCI era gia' esploso (+2.79) nel trimestre precedente.
+  - 2008Q4: cattura PARZIALE. Direzione giusta (std 0.63->0.81, PIT
+    0.010->0.023) ma frazione dell'oracolo (std 1.53). NFCI_prev=+0.95
+    segnalava, ma il grosso del salto NFCI (->2.79) e' DENTRO il Q4.
+    Nota: -2.21 era gia' a PIT~1%% col prior -> 2008Q4 e' un test debole
+    di 'cattura crollo' (il nowcast puntuale non era catastrofico).
+
+REALE (2020): NFCI non esplode mai (prev -0.55 a Q1, -0.33 a Q2). Il
+  driver finanziario NON c'e' -> il w onesto NON anticipa.
+  - 2020Q1 onset: INVISIBILE ex-ante. w fc ~=1 (regime calmo), densita'
+    addirittura piu' stretta del prior (std 0.46-0.48). PIT -> ~1e-5
+    (FUORI). L'oracolo avrebbe dato PIT 0.11.
+  - 2020Q2: anche con la PERSISTENZA AR (sa che Q1 era estremo) il w
+    onesto allarga solo a std 0.76 vs i 3.10 dell'oracolo -> il -8.20
+    resta FUORI (PIT~0) sotto OGNI forecast. Solo l'oracolo backward
+    (PIT 0.007) lo cattura.
+
+IMPLICAZIONE per la stochastic volatility:
+  (b) con w ONESTO cattura ancora la crisi FINANZIARIA (il 2008-09) ->
+  una SV guidata da condizioni finanziarie (NFCI) e' utile in real-time
+  per il tail risk di origine finanziaria: allarga la densita' PRIMA.
+  NON risolve il 2020: lo shock reale e' strutturalmente non-
+  forecastabile dalle condizioni finanziarie, e la sola persistenza
+  arriva tardi (dopo l'onset) e insufficiente. Il 2020 resta
+  catturabile solo col senno di poi (oracolo).
+  CAVEAT a favore della forecastability (e il verdetto regge lo stesso):
+  coeff. full-sample e termine AR da w smoothed (mite leakage). Anche
+  cosi' il 2020 fallisce -> verdetto conservativo.
+
+figura -> C:\Users\giord\OneDrive\Desktop\Tesi Lorenzo\diagnostics\out\vol_forecastability.png
