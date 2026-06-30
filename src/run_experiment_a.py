@@ -60,7 +60,7 @@ if str(_SRC_DIR) not in sys.path:
 
 from config_utils import parse_config_args                # noqa: E402
 from data_loader import load_config                       # noqa: E402
-from em_main import load_dfm_fit                          # noqa: E402
+from em.em_main import load_dfm_fit                          # noqa: E402
 from monte_carlo import (                                  # noqa: E402
     run_grid, load_grid_results,
     run_one_replication,

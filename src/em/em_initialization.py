@@ -734,7 +734,7 @@ def initialize_theta(
         * ``Q_eigenvalues`` — eigenvalues of Q (list of floats, ascending).
     """
     # ── locate project root and resolve dataset path ──────────────────────────
-    _project_root = str(pathlib.Path(__file__).resolve().parent.parent)
+    _project_root = str(pathlib.Path(__file__).resolve().parent.parent.parent)
     if dataset_path is None:
         if config_name is None:
             raise ValueError(
@@ -934,7 +934,7 @@ def load_standardized_data(
     explicit and protects against silent dataset drift between two runs.
     """
     # ── locate dataset and metadata files ─────────────────────────────────────
-    _project_root = pathlib.Path(__file__).resolve().parent.parent
+    _project_root = pathlib.Path(__file__).resolve().parent.parent.parent
     if dataset_path is None:
         raise ValueError(
             "load_standardized_data requires dataset_path. "
@@ -990,7 +990,7 @@ if __name__ == "__main__":
     # ── parse config flag ─────────────────────────────────────────────────────
     import pathlib
     import sys as _sys_main
-    _src_dir = str(pathlib.Path(__file__).resolve().parent)
+    _src_dir = str(pathlib.Path(__file__).resolve().parent.parent)
     if _src_dir not in _sys_main.path:
         _sys_main.path.insert(0, _src_dir)
     from config_utils import parse_config_args, resolve_output_path, get_project_root

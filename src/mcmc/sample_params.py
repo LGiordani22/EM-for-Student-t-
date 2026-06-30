@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from em_m_step import (
+from em.em_m_step import (
     compute_weighted_moments,
     _BLOCK_TO_COL,
     _MM_WEIGHTS,

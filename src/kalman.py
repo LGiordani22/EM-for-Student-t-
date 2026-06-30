@@ -1502,7 +1502,7 @@ if __name__ == "__main__":
     # E-step and M-step.  The selection matrices depend ONLY on the NaN
     # pattern (preserved by standardisation), so this section is functionally
     # equivalent to using the raw panel, just consistent with the rest.
-    from em_initialization import load_standardized_data  # noqa: PLC0415
+    from em.em_initialization import load_standardized_data  # noqa: PLC0415
     _meta_path_sel = resolve_output_path("processed", "theta_initial_metadata.json", _cfg)
     Y_raw, _mean_raw, _std_raw, _series_names_sel = load_standardized_data(
         dataset_path=str(csv_path),

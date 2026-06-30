@@ -1787,8 +1787,8 @@ def run_em(
     ...                              step_s["P_lag_new"], r=3)
     """
     # Import here to avoid a circular import at module load time.
-    from em_e_step import run_e_step                       # noqa: E402
-    from em_m_step import run_m_step                       # noqa: E402
+    from em.em_e_step import run_e_step                       # noqa: E402
+    from em.em_m_step import run_m_step                       # noqa: E402
 
     # Lazy defaults from data_loader (same convention as run_m_step).
     if (block_map is None) or (freq_list is None) or (ordered_cols is None):
@@ -2487,7 +2487,7 @@ if __name__ == "__main__":
     import sys
 
     # ── parse config flag + optional --max-iter ───────────────────────────────
-    _src_dir = str(pathlib.Path(__file__).resolve().parent)
+    _src_dir = str(pathlib.Path(__file__).resolve().parent.parent)
     if _src_dir not in sys.path:
         sys.path.insert(0, _src_dir)
     from config_utils import parse_config_args, resolve_output_path, get_project_root
@@ -2511,9 +2511,9 @@ if __name__ == "__main__":
     _fingerprint_self_test()
 
     from data_loader       import load_config as _dl_load_config   # noqa: E402
-    from em_e_step         import run_e_step                       # noqa: E402
-    from em_initialization import load_standardized_data           # noqa: E402
-    from em_m_step         import run_m_step                       # noqa: E402
+    from em.em_e_step         import run_e_step                       # noqa: E402
+    from em.em_initialization import load_standardized_data           # noqa: E402
+    from em.em_m_step         import run_m_step                       # noqa: E402
 
     _cfg_dict    = _dl_load_config(_cfg)
     BLOCK        = _cfg_dict["BLOCK"]

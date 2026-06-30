@@ -70,7 +70,7 @@ def load_warm_init(config_name: str = "small") -> dict:
     """
     from config_utils import resolve_output_path
     from data_loader import load_config
-    from em_main import load_dfm_fit
+    from em.em_main import load_dfm_fit
 
     cfg = load_config(config_name)
     ordered_cols = cfg["ORDERED_COLS"]

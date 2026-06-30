@@ -1116,7 +1116,7 @@ if __name__ == "__main__":
     import pandas as pd
 
     # ── parse config flag ─────────────────────────────────────────────────────
-    _src_dir = str(pathlib.Path(__file__).resolve().parent)
+    _src_dir = str(pathlib.Path(__file__).resolve().parent.parent)
     if _src_dir not in sys.path:
         sys.path.insert(0, _src_dir)
     from config_utils import parse_config_args, resolve_output_path, get_project_root
@@ -1130,7 +1130,7 @@ if __name__ == "__main__":
     if str(src_dir) not in sys.path:
         sys.path.insert(0, str(src_dir))
 
-    from em_initialization import load_standardized_data              # noqa: E402
+    from em.em_initialization import load_standardized_data              # noqa: E402
     from kalman            import build_all_selection_matrices, run_kalman  # noqa: E402
     from data_loader       import load_config as _dl_load_config      # noqa: E402
     FREQ = _dl_load_config(_cfg)["FREQ"]

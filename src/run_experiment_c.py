@@ -96,7 +96,7 @@ if str(_SRC_DIR) not in sys.path:
 
 from config_utils import parse_config_args                      # noqa: E402
 from data_loader import BLOCK, FREQ, ORDERED_COLS, load_config  # noqa: E402
-from em_main import fit_dfm, load_dfm_fit                       # noqa: E402
+from em.em_main import fit_dfm, load_dfm_fit                       # noqa: E402
 from simulate_dfm import simulate_dfm                           # noqa: E402
 from monte_carlo_recovery import (                              # noqa: E402
     init_theta_from_synthetic,

@@ -1973,7 +1973,7 @@ if __name__ == "__main__":
     import pandas as pd
 
     # ── parse config flag ─────────────────────────────────────────────────────
-    _src_dir = str(pathlib.Path(__file__).resolve().parent)
+    _src_dir = str(pathlib.Path(__file__).resolve().parent.parent)
     if _src_dir not in sys.path:
         sys.path.insert(0, _src_dir)
     from config_utils import parse_config_args, resolve_output_path, get_project_root
@@ -1988,8 +1988,8 @@ if __name__ == "__main__":
         sys.path.insert(0, str(src_dir))
 
     from data_loader       import load_config as _dl_load_config  # noqa: E402
-    from em_e_step         import run_e_step                      # noqa: E402
-    from em_initialization import load_standardized_data          # noqa: E402
+    from em.em_e_step         import run_e_step                      # noqa: E402
+    from em.em_initialization import load_standardized_data          # noqa: E402
     from kalman            import build_all_selection_matrices     # noqa: E402
 
     _cfg_dict    = _dl_load_config(_cfg)

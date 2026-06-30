@@ -36,8 +36,8 @@ _SRC = pathlib.Path(__file__).resolve().parent.parent
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from em_e_step import compute_d_eps, compute_d_u, compute_weights          # noqa: E402
-from em_m_step import (                                                     # noqa: E402
+from em.em_e_step import compute_d_eps, compute_d_u, compute_weights          # noqa: E402
+from em.em_m_step import (                                                     # noqa: E402
     compute_weighted_moments,
     update_A_Q,
     update_Lambda,

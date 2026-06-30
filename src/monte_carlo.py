@@ -89,7 +89,7 @@ if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
 from data_loader  import BLOCK, FREQ, ORDERED_COLS                  # noqa: E402
-from em_main      import fit_dfm, load_dfm_fit, _theta_fingerprint  # noqa: E402
+from em.em_main      import fit_dfm, load_dfm_fit, _theta_fingerprint  # noqa: E402
 from simulate_dfm import simulate_dfm                               # noqa: E402
 
 from monte_carlo_recovery import (                                  # noqa: E402

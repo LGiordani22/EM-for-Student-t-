@@ -30,11 +30,11 @@ from src.data_loader import BLOCK, FREQ, ORDERED_COLS, load_config
 from src.config_utils import parse_config_args
 from src.forecast.panel_builder import build_panel
 from src.forecast.nowcast_engine import _quarter_end, _REF_SERIES
-from em_initialization import (
+from em.em_initialization import (
     standardize, mm_fill_quarterly, gaussian_fill_ragged,
     pca_initialization, compute_theta_initial,
 )
-from em_main import fit_dfm
+from em.em_main import fit_dfm
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

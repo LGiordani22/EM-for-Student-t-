@@ -128,7 +128,7 @@ def test_kronecker():
 
 def test_em_crosscheck(theta, freq_list, block_map, ordered_cols, r):
     print("\n[3] EM cross-check on a short panel (MCMC mean ~ EM point)")
-    from em_main import fit_dfm
+    from em.em_main import fit_dfm
     from monte_carlo_recovery import init_theta_from_synthetic
 
     sim = simulate_dfm(theta=theta, T=250, freq_list=freq_list, block_map=block_map,

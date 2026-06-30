@@ -72,14 +72,14 @@ _SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _SRC_DIR not in sys.path:
     sys.path.insert(0, _SRC_DIR)
 
-from em_initialization import (             # noqa: E402  (after sys.path tweak)
+from em.em_initialization import (             # noqa: E402  (after sys.path tweak)
     standardize,
     mm_fill_quarterly,
     gaussian_fill_ragged,
     pca_initialization,
     compute_theta_initial,
 )
-from em_main import fit_dfm                  # noqa: E402
+from em.em_main import fit_dfm                  # noqa: E402
 
 # ─── Constants for the GDP extraction (match em_main / kalman) ────────────────
 _BLOCK_ORDER: list[str] = ["real", "financial", "other"]

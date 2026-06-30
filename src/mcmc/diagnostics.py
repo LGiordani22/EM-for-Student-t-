@@ -167,7 +167,7 @@ def run_recovery_mcmc(
     if _src not in sys.path:
         sys.path.insert(0, _src)
     from data_loader import load_config
-    from em_main import fit_dfm
+    from em.em_main import fit_dfm
     from simulate_dfm import simulate_dfm
     from monte_carlo_recovery import procrustes_block_diagonal
 
@@ -376,7 +376,7 @@ def run_recovery_mcmc_sv(
     if _src not in sys.path:
         sys.path.insert(0, _src)
     from data_loader import load_config
-    from em_main import fit_dfm
+    from em.em_main import fit_dfm
     from monte_carlo_recovery import procrustes_block_diagonal
     from mcmc.simulate_sv import simulate_dfm_sv
 
@@ -657,7 +657,7 @@ def run_recovery_mcmc_leverage(
     if _src not in sys.path:
         sys.path.insert(0, _src)
     from data_loader import load_config
-    from em_main import fit_dfm
+    from em.em_main import fit_dfm
     from monte_carlo_recovery import procrustes_block_diagonal
     from mcmc.simulate_sv import simulate_dfm_sv
 
