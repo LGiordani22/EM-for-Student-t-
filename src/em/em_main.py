@@ -330,8 +330,8 @@ def _fingerprint_self_test() -> None:
 #     both for how much the estimated factor moves over time (the
 #     DOMINANT term — the smoothed factor swings noticeably across the
 #     business cycle) and for the residual filtering uncertainty (a
-#     small correction).  On this dataset, sample-variance ~ 5 dominates
-#     the posterior-variance ~ 0.15 by more than an order of magnitude.
+#     small correction).  The sample-variance term dominates the
+#     posterior-variance term by more than an order of magnitude.
 #
 #     This makes the factor dimensionless and directly comparable across
 #     blocks.  A one-unit move in f^k now means "one sample standard
@@ -1042,7 +1042,7 @@ def apply_convention_1(
       recessions and expansions.
     - The *mean posterior variance* measures the residual filtering
       uncertainty — how unsure the smoother still is about the factor
-      after seeing all the data.  This term is small (~0.15) because
+      after seeing all the data.  This term is small because
       the smoother is very informative.
 
     Together they are the *full* marginal variance of the factor.
@@ -1070,12 +1070,11 @@ def apply_convention_1(
     **Numerical hierarchy of the two terms (this dataset).**
 
     On the project's panel at the smoothed factors of :math:`\theta^{(1)}`:
-    the sample-variance term is ~5 per factor and the mean posterior
-    variance is ~0.15.  The ratio is ~33, so the sample-variance term
-    dominates by more than an order of magnitude.  The total-variance
-    rescaling is therefore *effectively* a sample-standard-deviation
-    rescaling, with a small correction (~3% of the standard deviation)
-    that accounts for the residual filtering uncertainty.
+    the sample-variance term dominates the mean posterior variance by
+    more than an order of magnitude.  The total-variance rescaling is
+    therefore *effectively* a sample-standard-deviation rescaling, with
+    a small correction that accounts for the residual filtering
+    uncertainty.
 
     **Why D = diag(1 / scale), not diag(scale).**
 

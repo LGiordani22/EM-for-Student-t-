@@ -760,9 +760,9 @@ def run_recovery(
     # initialisation places the starting point such that the path through
     # parameter space crosses the narrow unstable band (nu ~ 5) more smoothly
     # — or avoids the critical point entirely — compared with the real-data fit.
-    # The synthetic recovery also converges faster (~74–85 iterations vs ~110
-    # for the real fit), giving the EM less opportunity to linger near the
-    # instability.  The phenomenon is confined to a narrow nu range and depends
+    # The synthetic recovery also converges faster than the real fit, giving
+    # the EM less opportunity to linger near the instability.  The phenomenon
+    # is confined to a narrow nu range and depends
     # sensitively on both the starting point and the realised data; a different
     # seed or sample size could easily produce a violation.
 

@@ -540,7 +540,9 @@ def compute_weights(
         \hat{w}^{\varepsilon}_t \;=\;
         \frac{\nu_\varepsilon + m_t}{\nu_\varepsilon + d^{\varepsilon}_t}.
 
-    The numerator is constant in t (only depends on nu_eps and m_t).
+    The numerator depends only on nu_eps and the observation count
+    m_t (so it varies with t only through how many series are observed,
+    not through the data values).
     The denominator is ``nu_eps + Mahalanobis residual``: a month with
     large d_eps (outlier) gets a weight much smaller than 1 -- the
     M-step will automatically down-weight that observation.  A month
@@ -1316,14 +1318,13 @@ that the Student-t mechanism will down-weight.""")
     print("""
 INTERPRETATION — d_u top months:
 With correctly standardised data, COVID April 2020 is the #1
-outlier on the factor-side residual as well (d_u ~ 255), and by
-a very large margin: the second-highest d_u is only ~ 38. This
-contrasts with d_eps, where COVID (#1, d_eps ~ 347) leads by a
-much smaller margin over the runner-up (~ 248). So COVID
-dominates BOTH channels, but it is RELATIVELY even more extreme
-on the factor-innovation channel: the pandemic shock was so
-abrupt that the latent factor moved in a way the VAR dynamics
-could not anticipate at all.
+outlier on the factor-side residual as well, and by a very large
+margin over the second-highest d_u. This contrasts with d_eps,
+where COVID also leads but by a smaller relative margin over the
+runner-up. So COVID dominates BOTH channels, but it is RELATIVELY
+even more extreme on the factor-innovation channel: the pandemic
+shock was so abrupt that the latent factor moved in a way the VAR
+dynamics could not anticipate at all.
 
 The two residuals still capture distinct information. d_eps
 flags months where the OBSERVATIONS disagree with the factor
@@ -1486,30 +1487,29 @@ independently.""")
 INTERPRETATION — down-weighting and the Gaussian limit:
 
 (a) Idiosyncratic down-weighting (w_eps): outlier months receive
-much smaller weights than normal months. COVID April 2020 gets
-w_eps ~ 0.08 versus ~ 1.2 for a typical month — about 15 times
-smaller than a typical month. In the M-step, this observation
-will contribute roughly 15 times less to the parameter updates,
-so a single extreme data point does not dominate estimation.
-This is the core robustness property of the Student-t DFM.
+much smaller weights than normal months. COVID April 2020 gets a
+far smaller w_eps than a typical month, so in the M-step it
+contributes proportionally less to the parameter updates and a
+single extreme data point does not dominate estimation. This is
+the core robustness property of the Student-t DFM.
 
 (b) Factor-side down-weighting (w_u): on correctly standardised
 data the factor-side down-weighting of COVID is now very strong,
-w_u ~ 0.05, because COVID is the #1 factor-innovation outlier
-(by a wide margin). Normal months can get w_u > 1
+w_u well below 1, because COVID is the #1 factor-innovation
+outlier (by a wide margin). Normal months can get w_u > 1
 (up-weighting): when d_u < r, the month is more informative than
 average and is weighted up. The mechanism is symmetric around
 the typical residual.
 
 (c) Gaussian limit: as nu -> infinity the weights collapse to 1
-and no down-weighting occurs. With nu = 10000 we already observe
-max|w - 1| < 0.03. This confirms that the Student-t DFM NESTS the
+and no down-weighting occurs. With nu = 10000 the weights are
+already essentially 1. This confirms that the Student-t DFM NESTS the
 Gaussian DFM (Banbura-Modugno 2014) as the limiting case nu ->
 infinity. The heavy-tailed model is therefore a strict
 generalisation: it reduces to the Gaussian one when the data show
 no excess kurtosis, and departs from it (down-weighting outliers)
 when they do. This is the empirical motivation discussed in
-Section 1 of the thesis (excess kurtosis in ~89% of the series).""")
+Section 1 of the thesis (excess kurtosis in most of the series).""")
 
     # ── 17. Summary statistics for all four weight arrays ────────────────────
     print("\n" + "=" * 64)

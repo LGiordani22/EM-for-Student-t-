@@ -481,7 +481,7 @@ def build_all_selection_matrices(Y: np.ndarray) -> list[np.ndarray]:
         H_t     = W_t @ Lambda_tilde           (m_t x 5r effective loading)
         S_t     = H_t @ P_{t|t-1} @ H_t.T + W_t @ R_tilde @ W_t.T   (m_t x m_t)
 
-    **Characteristic m_t values in our dataset (M=20: 19 monthly + 1 quarterly).**
+    **Characteristic m_t values (small-config example, M=20: 19 monthly + 1 quarterly).**
     m_t=20: quarter-end month, all series observed (richest information set).
     m_t=19: non-quarter-end month, GDP structurally absent (quarterly mask).
     m_t<19: ragged edge near sample end, one or more monthly series not yet released.
@@ -1529,21 +1529,21 @@ if __name__ == "__main__":
 INTERPRETATION OF m_t (number of observed series at time t)
 ============================================================
 
-In our dataset (M = 20 series: 19 monthly + 1 quarterly GDP),
-the number of observed series m_t at each month takes a small
-set of characteristic values, each with a clear structural
-meaning:
+In the small-config dataset (M = 20 series: 19 monthly + 1
+quarterly GDP), the number of observed series m_t at each month
+takes a small set of characteristic values, each with a clear
+structural meaning:
 
 - m_t = 20: a quarter-end month (March, June, September,
   December) in the interior of the sample, where all 19 monthly
   series AND the quarterly GDP are observed. This is the richest
-  information set. (~163 months)
+  information set.
 
 - m_t = 19: a non-quarter-end month in the interior of the
   sample. All 19 monthly series are observed, but GDP is absent
   because it is only released at quarter-end. This is the
   "quarterly mask": GDP is structurally missing 2 out of every
-  3 months by design, not by ragged edge. (~330 months)
+  3 months by design, not by ragged edge.
 
 - m_t = 18 (or other intermediate values near the sample end):
   ragged edge. One or two monthly series with longer publication
@@ -1869,44 +1869,41 @@ characteristics that reflect both their economic content and
 the initial parameters theta^(0):
 
 REAL FACTOR (f[0]):
-- Stays close to zero in normal times (std ~ 2.3), with small
-  fluctuations.
-- Shows a milder dip during the 2008-2009 Great Recession
-  (f[0] ~ -5.5 at the trough).
-- Shows a MASSIVE spike during the 2020 COVID crash
-  (f[0] ~ -38 in April 2020), the largest movement in the
-  sample by far, followed by a sharp positive rebound.
-- A value of ~ -38 on a series with std ~ 2.3 is roughly a
-  16-sigma event — a textbook outlier, and exactly why the
-  Student-t down-weighting matters: a Gaussian likelihood
-  treats this point as a literal 16-sigma realisation and lets
-  it dominate parameter estimates.
-- This "near-zero with rare large spikes" behaviour reflects
-  the high innovation variance (Q[0,0] ~ 5.2) combined with
-  low persistence (the real-block companion eigenvalue is
-  small): shocks are large but quickly die out, so the factor
-  reverts rapidly to zero.
+- Stays close to zero in normal times, with small fluctuations.
+- Shows a milder dip during the 2008-2009 Great Recession.
+- Shows a MASSIVE spike during the 2020 COVID crash (April 2020),
+  the largest movement in the sample by far, followed by a sharp
+  positive rebound.
+- That spike sits many standard deviations away from the typical
+  fluctuation — a textbook outlier, and exactly why the Student-t
+  down-weighting matters: a Gaussian likelihood treats it as a
+  literal many-sigma realisation and lets it dominate parameter
+  estimates.
+- This "near-zero with rare large spikes" behaviour reflects a
+  high innovation variance combined with low persistence (the
+  real-block companion eigenvalue is small): shocks are large but
+  quickly die out, so the factor reverts rapidly to zero.
 
 FINANCIAL FACTOR (f[1]):
-- Highly persistent and cyclical, ranging roughly between -4
-  and +3 over the sample.
+- Highly persistent and cyclical, swinging over a moderate band
+  across the sample.
 - Rises during periods of financial stress / tight conditions
   and falls in calm periods.
-- This smooth, trending behaviour reflects low innovation
-  variance (Q[1,1] ~ 0.26) combined with high persistence
-  (the dominant VAR eigenvalue ~0.95 loads on this factor):
-  small shocks accumulate into long swings.
+- This smooth, trending behaviour reflects a low innovation
+  variance combined with high persistence (the dominant VAR
+  eigenvalue, close to 1, loads on this factor): small shocks
+  accumulate into long swings.
 - Recall that f[1] is driven mainly by credit and term spreads
   (T10YFFM, BAAFFM, etc.), so it should be read as a
   "spread / financial-stress" factor rather than a stock-market
   level.
 
 OTHER FACTOR (f[2]):
-- Noisy and mean-reverting around zero (range ~ ±4), with no
-  strong trend.
+- Noisy and mean-reverting around zero, with no strong trend.
 - This reflects its content (volatile monthly inflation
   differences, CPI/PCE), which are intrinsically noisy at the
-  monthly frequency (Q[2,2] ~ 1.86, low persistence).
+  monthly frequency (moderate innovation variance, low
+  persistence).
 
 RAGGED EDGE (last months, April-May 2026):
 - Only NFCI (a financial-block series) is observed at the very
@@ -2115,9 +2112,8 @@ properties are visible in the results:
 
 4. FILTER AND SMOOTHER NEARLY COINCIDE. With correctly
    standardised data, the posterior factor uncertainty is small
-   relative to the signal (V_f / E_f^2 ~ 0.03), so the filtered
-   and smoothed paths are nearly identical (mean trace reduction
-   ~ 0.05). This is a sign of precise factor estimation: the
+   relative to the signal, so the filtered and smoothed paths are
+   nearly identical. This is a sign of precise factor estimation: the
    filter is already confident using past data alone, and future
    information adds little. (Under the earlier mis-scaled data
    the two paths diverged strongly — that divergence was an

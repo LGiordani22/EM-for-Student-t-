@@ -64,10 +64,10 @@ from src.data_loader import BLOCK, FREQ, ORDERED_COLS, load_config
 from src.forecast.panel_builder import build_panel
 from src.forecast.data_import import gdp_available_through
 
-# The First-Stage estimation machine lives in the flat src/ modules, which
-# import one another with BARE module names lazily (e.g. `from em_e_step import
-# run_e_step` inside run_em).  Put src/ on sys.path so those lazy imports
-# resolve when fit_dfm runs.
+# The First-Stage estimation machine lives under src/ (shared infra at the root,
+# the EM engine in the em/ package), with some modules importing one another
+# lazily (e.g. `from em.em_e_step import run_e_step` inside run_em).  Put src/ on
+# sys.path so those imports resolve when fit_dfm runs.
 _SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _SRC_DIR not in sys.path:
     sys.path.insert(0, _SRC_DIR)

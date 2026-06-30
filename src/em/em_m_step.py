@@ -526,10 +526,10 @@ def update_Lambda(
     A denominator below a tolerance threshold indicates a degenerate
     situation (the block-factor is essentially zero throughout the
     observation set of the row, or all weights vanish).  This is not
-    expected to occur with the present dataset (T = 497, observation
-    sets of size ~165 for the quarterly row and ~330+ for the
-    monthly rows), but we raise an explicit ``RuntimeError`` if it
-    does, rather than silently producing inf/nan.
+    expected to occur with the datasets used here (the per-row
+    observation sets — smaller for the quarterly row, larger for the
+    monthly rows — are far from empty), but we raise an explicit
+    ``RuntimeError`` if it does, rather than silently producing inf/nan.
     """
     T, M = Y.shape
     if len(ordered_cols) != M:

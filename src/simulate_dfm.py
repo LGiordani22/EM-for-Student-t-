@@ -2066,8 +2066,9 @@ if __name__ == "__main__":
 
     SEED_C = 4242
     # Mirror the simulate_observations gaussian-limit branch when rebuilding the
-    # baseline draws (nu_eps_star is finite ~4.39 in practice, so the gamma
-    # branch is taken; the guard keeps the reconstruction correct regardless).
+    # baseline draws (nu_eps_star is finite in practice — the calibrated fit is
+    # heavy-tailed — so the gamma branch is taken; the guard keeps the
+    # reconstruction correct regardless).
     _gauss_eps = np.isinf(nu_eps_star) or nu_eps_star > _NU_GAUSSIAN_THRESHOLD
     LamM = Lambda_star[m_idx, :]                          # monthly-row loadings
 

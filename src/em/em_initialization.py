@@ -94,8 +94,8 @@ def standardize(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
     (NaN ignored) rather than from any imputed values.  This ensures
     that the location and scale statistics reflect the true sample
     distribution, not an artefact of the fill procedure.  In
-    particular, GDPC1 statistics are computed from the ~165 observed
-    quarterly values, not from the ~497 monthly slots.
+    particular, GDPC1 statistics are computed from the observed
+    quarterly values only, not from the more numerous monthly slots.
 
     **Inverse transform:**
     The returned (mean, std) tuple allows the inverse transformation
