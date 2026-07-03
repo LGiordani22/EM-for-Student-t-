@@ -1484,23 +1484,38 @@ def compute_elbo_correction(
 
     # ── Factor-innovation weights (u) ─────────────────────────────────────────
     if not np.isinf(nu_u):
-        w_u_bar    = float(np.mean(w_u))
-        logw_u_bar = float(np.mean(log_w_u))
+        # The first period has no factor-side innovation (f_{-1} is outside the
+        # sample; the initial state is treated diffusely via Sigma_0).  Its
+        # weight w_u[0] is imputed to the PRIOR (mean 1, shape nu_u/2), whereas
+        # the genuine posteriors at t>=1 have shape (nu_u + r)/2.  Summing the
+        # entropy with the constant genuine shape over a t=0 term whose true
+        # posterior is the prior would leave a spurious O(1/T), nu-dependent
+        # offset that does NOT cancel in Delta_W = -KL(q || p).  We therefore
+        # sum the factor-side ELBO over the T-1 genuine transitions only
+        # (t = 1, ..., T-1), consistent with T_eff = T-1 in the Q-update and
+        # with the nu_u FOC: the boundary t=0 is treated identically across the
+        # whole factor-side M-step.
+        w_u_g     = w_u[1:]                     # (T-1,) genuine posterior means
+        log_w_u_g = log_w_u[1:]                 # (T-1,) genuine posterior log-means
+        T_u       = w_u_g.shape[0]              # = T - 1
 
-        # Term (2): T * E_q[log Gamma(w_u_t; nu_u/2, nu_u/2)]
-        term2_u = T * (
+        w_u_bar    = float(np.mean(w_u_g))
+        logw_u_bar = float(np.mean(log_w_u_g))
+
+        # Term (2): T_u * E_q[log Gamma(w_u_t; nu_u/2, nu_u/2)]
+        term2_u = T_u * (
             (nu_u / 2.0) * np.log(nu_u / 2.0)
             - _sc_gammaln(nu_u / 2.0)
             + (nu_u / 2.0 - 1.0) * logw_u_bar
             - (nu_u / 2.0) * w_u_bar
         )
 
-        # Term (3): sum_t H[Gamma(alpha_u, beta_u_t)]
+        # Term (3): sum_t H[Gamma(alpha_u, beta_u_t)] over the T_u genuine terms
         # alpha_u = (nu_u + r)/2 is CONSTANT in t
         alpha_u = (nu_u + r) / 2.0
         term3_u = (
-            T * (alpha_u * (1.0 - _sc_digamma(alpha_u)) + _sc_gammaln(alpha_u))
-            + T * logw_u_bar
+            T_u * (alpha_u * (1.0 - _sc_digamma(alpha_u)) + _sc_gammaln(alpha_u))
+            + T_u * logw_u_bar
         )
 
         correction += term2_u + term3_u

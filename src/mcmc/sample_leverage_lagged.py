@@ -68,6 +68,8 @@ from mcmc.sample_vol import _inv_sqrt_spd
 from mcmc.sample_leverage import (
     _draw_phi_lev,
     _draw_sigma2_lev,
+    dominant_dir_z,
+    draw_rho_common,
     draw_rho_scalar,
     draw_rho_vec,
 )
@@ -281,6 +283,7 @@ def sample_volatility_block_leverage_lagged(
     offset: float = 1e-6,
     prop_sigma2: float = 0.20,
     prop_rho: float = 0.06,
+    common_lev_scalar: bool = True,
     omori: dict = OMORI10,
     inv_sqrt_spd=None,
     **_ignored,
@@ -335,11 +338,14 @@ def sample_volatility_block_leverage_lagged(
     phi_u = _draw_phi_lev(logh_u_new, zeta_u, has_tr_u, s2_u, rho2_u, rng)
     s2_u, a1 = _draw_sigma2_lev(logh_u_new, zeta_u, has_tr_u, phi_u, rho2_u, s2_u,
                                 prior_a, prior_b, prop_sigma2, rng)
-    # Family C: rho vector on leverage-bearing transitions (k_t = sigma * g_{t-1})
+    # Family C: rho on leverage-bearing transitions (k_t = sigma * g_{t-1}).
+    # General case = free r-vector; adopted specialization = scalar along the
+    # identified dominant direction g (subsec:common-lev-identif).
     eta_u = logh_u_new[1:] - phi_u * logh_u_new[:-1]      # (T-1,)
     lev_u = has_tr_u[1:]
     K_u = (np.sqrt(s2_u) * g_u[:-1])[lev_u]               # (n_lev, r)
-    rho_u, ar = draw_rho_vec(rho_u, eta_u[lev_u], K_u, s2_u, prop_rho, rng)
+    g_dom = dominant_dir_z(F, Qinv_half) if (common_lev_scalar and r > 1) else None
+    rho_u, ar = draw_rho_common(rho_u, eta_u[lev_u], K_u, s2_u, prop_rho, rng, g_dom)
     acc["sigma2"] += a1; acc["rho_u"] = ar
     sv_u_new = np.array([0.0, phi_u, s2_u])
 

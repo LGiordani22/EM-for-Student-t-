@@ -28,8 +28,18 @@ base block (``sample_vol.sample_volatility_block``) to keep that path bit-identi
 
 Config-aware: ``r``, ``M`` and the per-series structure come from the inputs.
 The common factor carries an ``r``-vector leverage ``rho`` (constraint
-``rho'rho < 1``); each idiosyncratic series carries a scalar ``rho_i``
-(``|rho_i| < 1``).
+``rho'rho < 1``) as the *general derivation*; each idiosyncratic series carries a
+scalar ``rho_i`` (``|rho_i| < 1``).
+
+Adopted common-leverage specialization (``common_lev_scalar=True``, default):
+only the projection of ``rho`` onto the identified dominant direction ``g`` is
+sampled — a single scalar magnitude, ``rho = m g`` with ``|m| < 1`` — because a
+low-dimensional common factor identifies only that one combination; the ``r-1``
+orthogonal directions are unexercised and, if left free, produce a convergent
+false positive.  This is the *vector posterior restricted to the line* ``{m g}``
+(no re-derivation).  Set ``common_lev_scalar=False`` to recover the free-vector
+sampler.  Theory / motivation: ``subsec:common-lev-identif``.  ``r = 1`` and the
+idiosyncratic scalars are unaffected (no orthogonal directions exist).
 """
 
 from __future__ import annotations
@@ -241,6 +251,45 @@ def draw_rho_vec(rho_cur, eta, K, sigma2, prop_sd, rng):
     return rho_cur, 0
 
 
+def dominant_dir_z(F, Qinv_half):
+    r"""Dominant direction of the sampled common-factor path, expressed in the
+    whitened leverage-regressor space (where ``rho_u`` / ``z^u`` live).
+
+    Leading eigenvector ``g_f`` of the factor Gram ``F'F`` (the essentially
+    one-dimensional direction the low-dimensional common factor exercises),
+    mapped through the whitening ``Qinv_half`` and unit-normalised with a fixed
+    sign convention (largest-magnitude component positive) so the direction is
+    deterministic across sweeps.  Theory: ``subsec:common-lev-identif``.
+    """
+    _, V = np.linalg.eigh(F.T @ F)                 # ascending eigenvalues
+    g = Qinv_half @ V[:, -1]
+    g = g / np.linalg.norm(g)
+    g *= np.sign(g[int(np.argmax(np.abs(g)))])
+    return g
+
+
+def draw_rho_common(rho_cur, eta, K, sigma2, prop_sd, rng, g=None):
+    r"""Common-factor leverage draw.
+
+    ``g is None`` — the **general case**: the free ``r``-vector ``rho`` on
+    ``rho'rho<1`` (``draw_rho_vec``, the derivation of Family~C).
+
+    ``g`` given (unit ``r``-vector) — the **adopted specialization** to the
+    identified scalar: sample only the *magnitude* ``m`` along the fixed
+    dominant direction ``g`` and return ``rho = m g``.  Because ``g`` is unit,
+    ``eta - K(m g) = eta - m(Kg)`` and ``1 - (mg)'(mg) = 1 - m^2``, so this is
+    *exactly* the vector posterior restricted to the line ``{m g}`` — one
+    identified leverage correlation, no unexercised orthogonal directions
+    (``subsec:common-lev-identif``).  Returns ``(rho_vec, n_accept)``.
+    """
+    if g is None:
+        return draw_rho_vec(rho_cur, eta, K, sigma2, prop_sd, rng)
+    kk = K @ g                                     # (n_lev,) scalar regressor
+    m_cur = float(np.asarray(rho_cur) @ g)
+    m_new, a = draw_rho_scalar(m_cur, eta, kk, sigma2, prop_sd, rng)
+    return m_new * g, a
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Orchestrator: step (b) + Family B + Family C for all M+1 processes (Branch A)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -264,6 +313,7 @@ def sample_volatility_block_leverage(
     prop_path: float = 0.25,
     prop_sigma2: float = 0.20,
     prop_rho: float = 0.06,
+    common_lev_scalar: bool = True,
     inv_sqrt_spd=None,
 ) -> dict:
     r"""
@@ -313,10 +363,13 @@ def sample_volatility_block_leverage(
     phi_u = _draw_phi_lev(logh_u_new, zeta_u, has_u, s2_u, rho2_u, rng)
     s2_u, a1 = _draw_sigma2_lev(logh_u_new, zeta_u, has_u, phi_u, rho2_u, s2_u,
                                 prior_a, prior_b, prop_sigma2, rng)
-    # Family C: rho (vector) on the leverage-bearing transitions t = 1..T-1
+    # Family C: rho on the leverage-bearing transitions t = 1..T-1.  General
+    # case = free r-vector (draw_rho_vec); adopted specialization = scalar along
+    # the identified dominant direction g (subsec:common-lev-identif).
     eta_u = logh_u_new[1:] - phi_u * logh_u_new[:-1]        # (T-1,)
     K_u = np.sqrt(s2_u) * z_u[1:]                           # k_t = sigma * z^u_t (T-1, r)
-    rho_u, ar = draw_rho_vec(rho_u, eta_u, K_u, s2_u, prop_rho, rng)
+    g_dom = dominant_dir_z(F, Qinv_half) if (common_lev_scalar and r > 1) else None
+    rho_u, ar = draw_rho_common(rho_u, eta_u, K_u, s2_u, prop_rho, rng, g_dom)
     acc["sigma2"] += a1; acc["rho_u"] = ar
     sv_u_new = np.array([0.0, phi_u, s2_u])
 

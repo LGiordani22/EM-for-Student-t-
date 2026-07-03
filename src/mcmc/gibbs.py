@@ -114,6 +114,7 @@ def fit_dfm_mcmc(
     lev_prop_path: float = 0.25,
     lev_prop_sigma2: float = 0.20,
     lev_prop_rho: float = 0.06,
+    common_lev_scalar: bool = True,
     store_states: bool = False,
     store_vol: bool = False,
     verbose: bool = True,
@@ -238,7 +239,7 @@ def fit_dfm_mcmc(
                 sv_u, sv_eps, rho_u, rho_eps, rng,
                 prior_a=sv_prior_a, prior_b=sv_prior_b,
                 prop_path=lev_prop_path, prop_sigma2=lev_prop_sigma2,
-                prop_rho=lev_prop_rho,
+                prop_rho=lev_prop_rho, common_lev_scalar=common_lev_scalar,
             )
             h_u, h_eps = vb["h_u"], vb["h_eps"]
             logh_u, logh_eps = vb["logh_u"], vb["logh_eps"]
@@ -337,6 +338,7 @@ def fit_dfm_mcmc(
         "n_iter": n_iter, "burn_in": burn_in, "thin": thin, "n_keep": keep,
         "seed": seed, "T": T, "M": M, "r": r,
         "update_nu": update_nu, "sv": sv, "leverage": leverage, "timing": timing,
+        "common_lev_scalar": common_lev_scalar,
         "wall_clock_s": time.time() - t0,
     }
     if leverage and acc_count > 0:

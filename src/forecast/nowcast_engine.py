@@ -268,7 +268,7 @@ def _run_date(as_of: str, target_quarter: str, scenario: str) -> None:
     std_gdp = res["student_t"]["std_gdp_train"]
     print(f"\n  training-scale GDP (this vintage): mean = {mean_gdp:+.4f}, "
           f"std = {std_gdp:.4f}")
-    print(f"    (expected expanding-window std, NOT the ~1.04 full-sample value)")
+    print(f"    (expected expanding-window std, NOT the full-sample value)")
 
     realized = _realized_gdp(target_qe)
     realized_z = (realized - mean_gdp) / std_gdp if std_gdp else float("nan")

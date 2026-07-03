@@ -21,7 +21,8 @@ B) CURRENT (revised) GDPC1 and NFCI, which are NOT in FRED-MD
    -> get_current_vintage(series_id, as_of_date)
 
    These two are read from the CURRENT processed dataset that data_loader.py
-   builds (data/processed/dataset_usa.csv), so they are bit-for-bit identical
+   builds (data/processed/dataset_<config>.csv, e.g. dataset_small.csv), so
+   they are bit-for-bit identical
    to the in-sample series and need no extra FRED/ALFRED download.  They carry
    the data_loader transform already (GDPC1: log-diff*100 at quarter-end;
    NFCI: monthly-mean level).
@@ -651,7 +652,8 @@ __all__ = [
 # Run from the project root with:   python -m src.forecast.data_import
 #
 # All tests are local: FRED-MD reads the on-disk vintage files; GDPC1/NFCI read
-# the current processed dataset (data/processed/dataset_usa.csv).  No network.
+# the current processed dataset (data/processed/dataset_<config>.csv, default
+# dataset_small.csv).  No network.
 
 def _hr(title: str) -> None:
     """Print a section header."""

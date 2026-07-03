@@ -279,7 +279,7 @@ if __name__ == "__main__":
         panels[d] = build_panel(d)
         _diagnose(d, panels[d])
 
-    _hr("FORMAT CHECK  (panel 2024-12 vs dataset_usa.csv)")
+    _hr("FORMAT CHECK  (panel 2024-12 vs dataset_small.csv)")
     _check_format(panels["2024-12"], insample)
 
     _hr("REAL-TIME CHECK  (2006-01 vs 2006-02: ragged edge must advance)")
