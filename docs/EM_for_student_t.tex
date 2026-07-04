@@ -17780,7 +17780,7 @@ $\mA$ \ ($r\times r$)            & VAR(1) transition of the factors      & matri
 $\mQ$ \ ($r\times r$)            & factor-innovation covariance          & inverse-Wishart          & inverse-Wishart (updated) & direct (Gibbs)\\
 $\mL$ \ ($M\times r$)            & loadings (factors $\to$ series)       & matrix-Normal            & matrix-Normal (updated)   & direct (Gibbs)\\
 $\mR=(r_i)$ \ ($M$)              & idiosyncratic variances               & inverse-Gamma            & inverse-Gamma (updated)   & direct (Gibbs)\\[4pt]
-\multicolumn{5}{@{}l}{\emph{Log-volatility AR(1), one per process ($M{+}1$) --- Family~B (near-conjugate)}}\\[2pt]
+\multicolumn{5}{@{}l}{\emph{Log-volatility AR(1), one per process ($M{+}r$) --- Family~B (near-conjugate)}}\\[2pt]
 $\mu$                           & log-vol level --- \textbf{fixed $=0$} (identification) & ---             & ---                       & not drawn\\
 $\phi$                          & log-vol persistence, $|\phi|<1$       & Normal, trunc.\ to $(-1,1)$ & Normal (trunc.), updated  & direct (Gaussian, truncated)\\
 $\sigma_\eta^2$                 & log-vol innovation variance           & inverse-Gamma            & inverse-Gamma (updated)   & direct; light MH under leverage\\
@@ -17811,7 +17811,7 @@ the per-family conditionals (Families~A--D) are also derived.}
 \textbf{Symbol} & \textbf{Role} & \textbf{Prior (support)} & \textbf{Posterior (after data)} & \textbf{Conditional draw}\\
 \midrule
 \multicolumn{5}{@{}l}{\emph{Leverage and tails --- Families~C, D (non-conjugate)}}\\[2pt]
-$\boldsymbol\rho$ \ ($r$); $\rho_{\varepsilon,i}$ \ ($M$) & level/vol leverage correlations & supported on $\{\boldsymbol\rho'\boldsymbol\rho<1\}$, $\{|\rho_i|<1\}$ & non-standard (no closed family) & \textbf{Metropolis}\\[4pt]
+$\rho_i$ \ ($r$); $\rho_{\varepsilon,i}$ \ ($M$) & level/vol leverage correlations & supported on $\{|\rho_i|<1\}$, $\{|\rho_{\varepsilon,i}|<1\}$ & non-standard (no closed family) & \textbf{Metropolis}\\[4pt]
 $\nu_u,\ \nu_\varepsilon$       & Student-$t$ degrees of freedom        & proper on $(2,\infty)$   & non-standard (log-concave) & \textbf{griddy-Gibbs}\\
 \bottomrule
 \end{tabular}
@@ -17835,8 +17835,8 @@ a prior); what differs is the \emph{algebra} of the resulting conditional.}
 \textbf{Symbol} & \textbf{Role (dynamic latent state)} & \textbf{Drawn by (full conditional)} & \textbf{Step type}\\
 \midrule
 $f_{1:T}$ & factor path & FFBS simulation smoother (forward filter, backward sample) & direct (Gibbs)\\
-$h^u_{1:T},\,h^\varepsilon_{1:T}$ \ (no leverage) & log-volatility paths ($M{+}1$ processes) & KSC mixture $+$ FFBS on the linearised state & direct (Gibbs, auxiliary)\\
-$h^u_{1:T},\,h^\varepsilon_{1:T}$ \ (leverage) & log-volatility paths ($M{+}1$ processes) & single-move \textbf{Metropolis} (Branch~A); Omori mixture $+$ FFBS (Branch~B) & MH / direct\\
+$h^u_{1:T},\,h^\varepsilon_{1:T}$ \ (no leverage) & log-volatility paths ($M{+}r$ processes) & KSC mixture $+$ FFBS on the linearised state & direct (Gibbs, auxiliary)\\
+$h^u_{1:T},\,h^\varepsilon_{1:T}$ \ (leverage) & log-volatility paths ($M{+}r$ processes) & single-move \textbf{Metropolis} (Branch~A); Omori mixture $+$ FFBS (Branch~B) & MH / direct\\
 $w^u_{1:T},\,w^\varepsilon_{1:T}$ & Student-$t$ tail weights & direct Gamma draw (Gaussian--Gamma conjugacy) & direct (Gibbs)\\
 \bottomrule
 \end{tabular}
@@ -19627,7 +19627,7 @@ $d_t=\operatorname{sign}(e_t)$, yet the leverage correlation is with the
 conditioning information.
 
 These two obstacles --- a state-dependent drift and a discarded sign ---
-attend equally each of the $M+1$ volatility processes, and they admit two
+attend equally each of the $M+r$ volatility processes, and they admit two
 distinct resolutions, each paired with one of the two timing conventions
 of the asymmetry section. Rather than settle the matter here, we treat it
 in full once the weights block is in place: the section ``Two Routes for
@@ -20268,7 +20268,7 @@ to it as the sensible baseline.
 \begin{itemize}
 \item \textbf{Closed form, no tuning.} Step (c) stays an exact, vectorised
       Gamma draw --- one of the two friendliest blocks of the sweep ---
-      identical across branches and across the $M+1$ processes. Nothing has
+      identical across branches and across the $M+r$ processes. Nothing has
       to be tuned, and the identification of the degrees of freedom $\nu$
       flows cleanly from the conjugate sufficient statistics
       $\mathbb E[\log w_t]=\psi(\alpha)-\log\beta$.
@@ -20461,11 +20461,11 @@ We use proper, weakly informative, conjugate-where-possible priors:
       and the innovation variance, with the persistence $\phi$ restricted
       to the stationary region $|\phi|<1$ (e.g.\ a normal truncated to
       $(-1,1)$, or a Beta prior on $(\phi+1)/2$).
-\item \textbf{Leverage correlations} $\rho$ (common, vector) and
-      $\rho_{\varepsilon,i}$ (scalar): priors supported on the admissible
-      region --- $|\rho_{\varepsilon,i}|<1$ for each series and
-      $\boldsymbol\rho'\boldsymbol\rho<1$ for the common block --- for
-      instance a uniform or a transformed-normal law on that set.
+\item \textbf{Leverage correlations} $\rho_i$ (common, one per factor) and
+      $\rho_{\varepsilon,i}$ (one per series): scalar priors supported on the
+      admissible region --- $|\rho_i|<1$ for each common factor and
+      $|\rho_{\varepsilon,i}|<1$ for each series --- for instance a uniform or
+      a transformed-normal law on $(-1,1)$.
 \item \textbf{Degrees of freedom} $\nu_u,\nu_\varepsilon$: a proper prior
       on $(2,\infty)$ (so the variance exists), e.g.\ an exponential or a
       uniform on a bounded range.
@@ -20895,16 +20895,20 @@ enormous next to the per-period movement of $\log h_t$, whose innovation
 variance $\sigma_\eta^2$ is typically a few hundredths. Each period thus
 carries a very noisy reading of the latent volatility, the sample of first
 differences from which $\sigma_\eta^2$ is inferred is correspondingly noisy,
-and the likelihood for $\sigma_\eta^2$ is flat over a wide range. (The common
-factor mitigates this only mildly: it supplies $r$ such readings per period,
-averaging the error down by $\sqrt r$.) In this regime an over-tight prior is
+and the likelihood for $\sigma_\eta^2$ is flat over a wide range. (Under the
+per-factor volatility of Specification~II this is \emph{not} mitigated on the
+common side: each common volatility $h^u_{i,t}$ is read through a \emph{single}
+log-square per period, its own factor's, exactly as each idiosyncratic one is
+--- the $\sqrt r$-averaging that a \emph{scalar} common volatility once enjoyed,
+from its $r$ simultaneous readings, is gone.) In this regime an over-tight
+prior is
 \emph{not} innocuous --- it dominates a weak likelihood and pulls the posterior
 toward the prior mean, visibly compressing the estimated volatility of
 volatility. The remedy is a deliberately \emph{weakly informative} prior: a
 small prior sample size (a heavy-tailed $\mathcal{IG}$, shape near $2$) with a
 prior mean placed at a plausible log-volatility innovation variance rather than
 near zero, so that the data --- weak as they are --- still drive the estimate.
-The same prior is used for all $M+1$ processes. This is a property of the
+The same prior is used for all $M+r$ processes. This is a property of the
 \emph{volatility-of-volatility} parameter specifically; the persistence $\phi$,
 identified by the autocorrelation of the path, is far better determined.
 Worth noting is \emph{how} the prior acts: with $T$ large its additive
@@ -20924,8 +20928,8 @@ condition $x_1\sim\mathcal N(\mu,\sigma_\eta^2/(1-\phi^2))$ contributes one
 extra factor to the likelihood of $(\mu,\phi,\sigma_\eta^2)$; it is either
 included (a small Metropolis correction) or, as is common, conditioned upon
 by starting the regression at $t=2$. This draw is performed independently
-for each of the $M+1$ processes --- the common $h^u$ and each idiosyncratic
-$h^\varepsilon_i$ --- with its own residuals and its own
+for each of the $M+r$ processes --- the $r$ common $h^u_i$ and each
+idiosyncratic $h^\varepsilon_i$ --- with its own residuals and its own
 $(\mu,\phi,\sigma_\eta^2)$.
 
 \paragraph{Specialisation under the identification convention $\mu=0$.}
@@ -20944,11 +20948,11 @@ b_\eta+\tfrac12\mathrm{SSR})$ and
 $\phi\mid\sigma_\eta^2,\cdot\sim\mathcal N$ truncated to $|\phi|<1$, with
 the stationary start $x_1\sim\mathcal N(0,\sigma_\eta^2/(1-\phi^2))$. The
 parameter $\mu$ is not sampled; only $(\phi,\sigma_\eta^2)$ are, for each
-of the $M+1$ processes. (Leaving $\mu$ free instead would let it wander
+of the $M+r$ processes. (Leaving $\mu$ free instead would let it wander
 along the level/scale ridge of Section~\ref{sec:sv-variants}, with $\mQ$ or
 $r_i$ drifting in compensation --- the redundancy the convention removes.)
 
-\subsection{Family C --- the leverage correlations \texorpdfstring{$\rho,\rho_{\varepsilon,i}$}{rho}}
+\subsection{Family C --- the leverage correlations \texorpdfstring{$\rho_i,\rho_{\varepsilon,i}$}{rho}}
 \label{subsec:param-familyC}
 
 \paragraph{Intuition: which prior, how the data enter, how we draw.} The
@@ -20957,9 +20961,9 @@ for a structural reason worth stating up front: $\rho$ sits in two places at
 once --- in the \emph{drift} of the volatility innovation \emph{and} inside
 its $(1-\rho^2)$ \emph{variance} --- so no prior can absorb both and keep the
 posterior in a textbook family. We therefore place a prior simply
-\emph{supported on the admissible region} ($|\rho_{\varepsilon,i}|<1$ per
-series, $\boldsymbol\rho'\boldsymbol\rho<1$ for the common block) --- a uniform
-or transformed-normal law --- and the data enter through the realised
+\emph{supported on the admissible region} ($|\rho_i|<1$ per common factor,
+$|\rho_{\varepsilon,i}|<1$ per series) --- a uniform or transformed-normal
+law --- and the data enter through the realised
 volatility innovations of the \emph{sampled} path. Sampling is by
 \emph{Metropolis} in either timing, but the texture differs and it is the
 choice of branch that fixes it. \emph{Contemporaneous (Branch~A):} $\rho$
@@ -21052,14 +21056,16 @@ and indicators makes the conditional mean \emph{linear} in $\rho$,
 (Gaussian-proposal or transformed) Metropolis move attains a high
 acceptance rate.
 
-For the common factor the same logic applies to the vector
-$\boldsymbol\rho$ --- with $\rho^2$ replaced by $\boldsymbol\rho'\boldsymbol\rho$
-in \eqref{eq:param-rho-cond} --- the draw being restricted to the admissible
-region $\boldsymbol\rho'\boldsymbol\rho<1$; for each idiosyncratic series it
-is the scalar $\rho_{\varepsilon,i}$. This family is new, and it inherits the
-branch dependence of the volatility block rather than admitting a single
-universal sampler. The \emph{sampling} logic is thus shared by the vector and
-the scalar.
+Under Option~A the common leverage is not a vector but $r$ \emph{scalar}
+correlations $\rho_1,\dots,\rho_r$, so the scalar conditional
+\eqref{eq:param-rho-cond} applies to \emph{each} common factor unchanged ---
+with $\rho_i$, its own innovations $\eta^u_{i,t}$, and a regressor built from
+the raw shock $z^u_{i,t}$ --- exactly as it does to each idiosyncratic
+$\rho_{\varepsilon,i}$. Every leverage draw is thus one and the same scalar
+Metropolis move, repeated over the $M+r$ channels; there is no vector draw and
+no $\boldsymbol\rho'\boldsymbol\rho<1$ region. This family is new, and it
+inherits the branch dependence of the volatility block rather than admitting a
+single universal sampler.
 
 \subsection{Family D --- the degrees of freedom \texorpdfstring{$\nu_u,\nu_\varepsilon$}{nu}}
 \label{subsec:param-familyD}
@@ -21209,9 +21215,10 @@ grid.
 \paragraph{D2-a (common volatility only).} Drop the idiosyncratic
 volatility. In step~(b) the idiosyncratic part of the volatility sampler is
 omitted and the $h^\varepsilon_{i,t}$ are frozen at $1$; the sampler runs
-only for the common path $h^u$. Correspondingly, Family~B of step~(d) is
-drawn only for the single process $h^u$ rather than for all $M+1$.
-Everything else --- states, tails, Families~A,~C,~D --- is unchanged.
+only for the $r$ common paths $h^u_i$ (the joint $r$-dimensional block).
+Correspondingly, Family~B of step~(d) is drawn only for the $r$ common
+processes rather than for all $M+r$. Everything else --- states, tails,
+Families~A,~C,~D --- is unchanged.
 
 \paragraph{D1-a (Gaussian, pure stochastic volatility).} Switch the tail
 multiplier off, $w\equiv1$. The whole weights block, step~(c) of
@@ -21319,7 +21326,7 @@ current model            & \checkmark & ---        & ---        & Gamma $w$    &
 $\text{D1}\times\text{D2}$ cell as a restriction of the master sweep.
 \checkmark${}={}$active; ${}={}$--- omitted (the state frozen at $h\equiv1$,
 or the block not executed); ``$h^u$''/``all'' ${}={}$ Family~B drawn for the
-common process only / for all $M+1$ processes; ``outlier ind./par.''
+$r$ common processes only / for all $M+r$ processes; ``outlier ind./par.''
 ${}={}$ the weights and $\nu$ blocks replaced by the outlier indicators and
 their parameters. $\dagger$: Family~C and the step-(b) leverage correction
 are active \emph{only} if $\rho\neq0$; when they are, the cell splits
