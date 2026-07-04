@@ -16103,25 +16103,36 @@ factor and, under scope D2-b, each idiosyncratic component --- so that no
 series is singled out.
 
 \smallskip
-\noindent\emph{Common factor.} In the standardized form
-$u_t=\sqrt{\mathbf H^u_t}\,\mQ^{1/2}z^u_t$ of the previous subsection, the level
-shock $z^u_t\in\mathbb R^r$ and the common log-volatility innovation
-$\eta^u_t$ of \eqref{eq:sv-logvol-u} --- previously independent --- are
-given the joint Gaussian law
+\noindent\emph{Common factor.} We attach the leverage by \textbf{Option~A},
+adopted above: each factor's own \emph{raw} base shock $z^u_{i,t}$ --- the
+standardized innovation of factor equation $i$, before the contemporaneous
+mixing by $\mQ^{1/2}$ --- is correlated with the log-volatility innovation
+$\eta^u_{i,t}$ of \emph{that same factor's} volatility, one independent
+channel per factor. In the standardized form
+$u_t=\sqrt{\mathbf H^u_t}\,\mQ^{1/2}z^u_t$ with $z^u_t\in\mathbb R^r$ the raw
+base shocks, and with the $r$ log-volatility innovations $\eta^u_{i,t}$ of
+\eqref{eq:sv-logvol-u} --- previously independent of the level --- Option~A
+couples them factor by factor,
 \[
-\begin{pmatrix} z^u_t \\[2pt] \eta^u_t \end{pmatrix}
+\begin{pmatrix} z^u_{i,t} \\[2pt] \eta^u_{i,t} \end{pmatrix}
 \;\sim\;
 \mathcal N\!\left(
 \begin{pmatrix} 0 \\[2pt] 0 \end{pmatrix},\;
-\begin{pmatrix} \mathbf I_r & \sigma_u\,\boldsymbol\rho \\[2pt] \sigma_u\,\boldsymbol\rho' & \sigma_u^2 \end{pmatrix}
+\begin{pmatrix} 1 & \sigma_{u,i}\,\rho_i \\[2pt] \sigma_{u,i}\,\rho_i & \sigma_{u,i}^2 \end{pmatrix}
 \right),
-\qquad \boldsymbol\rho \in \mathbb R^r,\quad \boldsymbol\rho'\boldsymbol\rho < 1,
+\qquad \rho_i \in (-1,1),\quad i=1,\dots,r,
 \]
-so that $\mathrm{Corr}(z^u_{j,t},\eta^u_t)=\rho_j$ for each factor $j$.
-The diagonal block $\mathbf I_r$ is the (standardized) covariance of the
-level shock, $\sigma_u^2$ that of the log-volatility innovation, and the
-off-diagonal $\sigma_u\boldsymbol\rho$ carries the leverage --- the only
-new object relative to the symmetric model.
+independently across $i$, so that $\mathrm{Corr}(z^u_{i,t},\eta^u_{i,t})=\rho_i$
+and $\mathrm{Corr}(z^u_{k,t},\eta^u_{i,t})=0$ for $k\neq i$: the stacked
+cross-covariance
+$\mathrm{Cov}(z^u_t,\eta^u_t)=\mathrm{diag}(\sigma_{u,1}\rho_1,\dots,\sigma_{u,r}\rho_r)$
+is \emph{diagonal}, and $\mQ^{1/2}$ enters only downstream, when the
+leveraged base shocks are assembled into $u_t$. This is precisely the
+raw-innovation coupling \eqref{eq:lev-attach-A}: structurally
+\emph{identical} to the idiosyncratic couplings below --- a scalar level
+shock correlated with a scalar volatility innovation --- now one per factor
+rather than one per series. The alternative, Option~B on the structural
+shocks, was set out and declined above.
 
 \smallskip
 \noindent\emph{Idiosyncratic components.} The same coupling attaches to
@@ -16144,25 +16155,25 @@ with $\mathrm{Corr}(z^\varepsilon_{i,t},\eta^\varepsilon_{i,t})=\rho_{\varepsilo
 $w^u_t,w^\varepsilon_t$ remain independent of everything else.
 
 \smallskip
-In each block the constraint ($\boldsymbol\rho'\boldsymbol\rho<1$ for the
-factor, $|\rho_{\varepsilon,i}|<1$ for series $i$) is exactly
-positive-definiteness of the stacked covariance: the Schur complement is
-$\sigma_u^2(1-\boldsymbol\rho'\boldsymbol\rho)>0$, respectively
+In each channel the constraint --- $|\rho_i|<1$ for common factor $i$,
+$|\rho_{\varepsilon,i}|<1$ for series $i$ --- is exactly
+positive-definiteness of the corresponding $2\times2$ covariance, with Schur
+complement $\sigma_{u,i}^2(1-\rho_i^2)>0$, respectively
 $\sigma_{\varepsilon,i}^2(1-\rho_{\varepsilon,i}^2)>0$. This is the
 correlated-error, or ``leverage,'' stochastic-volatility specification
 studied by Jacquier, Polson and Rossi (2004) and Yu (2005). The leverage
-sign is \emph{negative}, $\rho_j,\rho_{\varepsilon,i}<0$: a negative level
+sign is \emph{negative}, $\rho_i,\rho_{\varepsilon,i}<0$: a negative level
 shock ($z<0$, the economy or a series contracting) is accompanied by a
 positive log-volatility innovation ($\eta>0$, volatility rising), so
 downturns are more turbulent than upturns. \emph{Nesting:} setting all
-correlations to zero ($\boldsymbol\rho=0$ and $\rho_{\varepsilon,i}=0$ for
-all $i$) makes the level and volatility shocks independent again and
-returns the symmetric stochastic-volatility model of the previous
-subsection; freezing the volatilities on top of that returns the baseline.
+correlations to zero ($\rho_i=0$ and $\rho_{\varepsilon,i}=0$ for all $i$)
+makes the level and volatility shocks independent again and returns the
+symmetric stochastic-volatility model of the previous subsection; freezing
+the volatilities on top of that returns the baseline.
 
 \smallskip
 \noindent\emph{A note on notation.} The standardized forms used above,
-$u_t=\sqrt{h^u_t}\,\mQ^{1/2}z^u_t$ and
+$u_t=\sqrt{\mathbf H^u_t}\,\mQ^{1/2}z^u_t$ and
 $\varepsilon_{i,t}=\sqrt{h^\varepsilon_{i,t}\,r_i}\,z^\varepsilon_{i,t}$,
 suppress the Student-$t$ tail weights $1/\sqrt{w^u_t}$ and
 $1/\sqrt{w^\varepsilon_t}$ that appeared in the previous subsection. This
@@ -16172,9 +16183,9 @@ part in the leverage coupling and simply ride along as positive scale
 factors. They are reinstated wherever the full conditional law is needed.
 
 \paragraph{The timing of the leverage: a conscious choice.}
-The joint laws above pair the level shock $z^u_t$ with the log-volatility
-innovation $\eta^u_t$ that drives the \emph{same} period's volatility
-$h^u_t$ through \eqref{eq:sv-logvol-u} --- and, identically,
+The joint laws above pair each factor's level shock $z^u_{i,t}$ with the
+log-volatility innovation $\eta^u_{i,t}$ that drives the \emph{same} period's
+volatility $h^u_{i,t}$ through \eqref{eq:sv-logvol-u} --- and, identically,
 $z^\varepsilon_{i,t}$ with $\eta^\varepsilon_{i,t}$. This is only one of
 two admissible timings for the coupling, and which one we adopt is a
 genuine modelling decision rather than a notational detail; we make it
@@ -16185,20 +16196,19 @@ explicit here.
 \begin{itemize}
 \item \textbf{Contemporaneous.} The period-$t$ level shock is correlated
       with the log-volatility innovation of the \emph{same} period,
-      $\eta^u_t$, which determines $h^u_t$:
-      $\mathrm{Corr}(z^u_{j,t},\eta^u_t)=\rho_j$. The drop in the level
+      $\eta^u_{i,t}$, which determines $h^u_{i,t}$:
+      $\mathrm{Corr}(z^u_{i,t},\eta^u_{i,t})=\rho_i$. The drop in the level
       and the rise in volatility are one and the same event --- this is
       exactly the joint law written above.
 \item \textbf{Lagged.} The period-$t$ level shock is correlated instead
       with the log-volatility innovation of the \emph{next} period,
-      $\eta^u_{t+1}$, which determines $h^u_{t+1}$:
-      $\mathrm{Corr}(z^u_{j,t},\eta^u_{t+1})=\rho_j$. Today's adverse
+      $\eta^u_{i,t+1}$, which determines $h^u_{i,t+1}$:
+      $\mathrm{Corr}(z^u_{i,t},\eta^u_{i,t+1})=\rho_i$. Today's adverse
       shock \emph{anticipates} tomorrow's turbulence.
 \end{itemize}
-The structure of the stacked covariance --- the correlation entries, and
-the positive-definiteness constraints $\boldsymbol\rho'\boldsymbol\rho<1$
-and $|\rho_{\varepsilon,i}|<1$ with their Schur complements --- is
-\emph{identical} in the two cases. The only thing that changes is
+The structure of the couplings --- the correlation entries, and the
+positive-definiteness constraints $|\rho_i|<1$ and $|\rho_{\varepsilon,i}|<1$
+with their Schur complements --- is \emph{identical} in the two cases. The only thing that changes is
 \emph{which} log-volatility innovation, the contemporaneous $\eta_t$ or
 the one-step-ahead $\eta_{t+1}$, is stacked together with the level shock
 $z_t$.
@@ -16206,9 +16216,9 @@ $z_t$.
 \smallskip
 \noindent\emph{Applied coherently across blocks.} Whichever timing we
 choose, we apply it \emph{uniformly} to every leveraged volatility
-process: the common shock ($z^u_t$ coupled with its $\eta^u$) and each
-idiosyncratic component ($z^\varepsilon_{i,t}$ coupled with its
-$\eta^\varepsilon_i$) obey the \emph{same} temporal scheme. Mixing a
+process: each common factor ($z^u_{i,t}$ coupled with its $\eta^u_{i,t}$)
+and each idiosyncratic component ($z^\varepsilon_{i,t}$ coupled with its
+$\eta^\varepsilon_{i,t}$) obey the \emph{same} temporal scheme. Mixing a
 contemporaneous coupling in one block with a lagged one in another would
 have no economic rationale and is excluded by construction.
 
@@ -16230,12 +16240,7 @@ form, it keeps the level and volatility innovations within a single
 period (so that the joint law, and hence the sampler, factorises one
 period at a time), and it is already the law written in the equations
 above --- and we retain the \textbf{lagged} timing as an explicit
-variant.\footnote{Provisional: the final choice between the
-contemporaneous and the lagged timing is to be confirmed with the
-supervisor. The two specifications share the same parameters and the same
-covariance structure, so the model code and the estimator carry over to
-the lagged form by re-indexing the volatility innovation that is coupled
-to the level shock ($\eta_t\!\to\!\eta_{t+1}$).} The substantive point is
+variant. The substantive point is
 that this timing is a \emph{deliberate} choice, not an artefact of
 notation.
 
@@ -16964,23 +16969,26 @@ u_t\mid \mathbf H^u_t\;\sim\; t_{\nu_u}\!\big(0,\,\sqrt{\mathbf H^u_t}\,\mQ\,\sq
 a multivariate $t$ in each case, because the one shared weight couples the
 components of the vector through their common mixing scale.
 
-\paragraph{Channel 3 --- leverage (contemporaneous timing).}
-The base shock that moves the \emph{level} is correlated with the
-innovation that moves the \emph{(log-)volatility} of the same period. For
-the common factor, the level shock $z^u_t\in\mathbb R^r$ and the common
-log-volatility innovation $\eta^u_t$ of \eqref{eq:d1bd2b-logvol-u} obey
-the joint Gaussian law
+\paragraph{Channel 3 --- leverage (contemporaneous timing, Option~A).}
+The base shock that moves the \emph{level} is correlated with the innovation
+that moves the \emph{(log-)volatility} of the same period. We attach it by
+\textbf{Option~A}: for each common factor $i$, the \emph{raw} base shock
+$z^u_{i,t}$ (before the mixing by $\mQ^{1/2}$) is coupled with the
+log-volatility innovation $\eta^u_{i,t}$ of \eqref{eq:d1bd2b-logvol-u} for
+\emph{that same factor}, one independent channel per factor,
 \begin{equation}
-\begin{pmatrix} z^u_t \\[2pt] \eta^u_t \end{pmatrix}
+\begin{pmatrix} z^u_{i,t} \\[2pt] \eta^u_{i,t} \end{pmatrix}
 \;\sim\;
 \mathcal N\!\left(
 \begin{pmatrix} 0 \\[2pt] 0 \end{pmatrix},\;
-\begin{pmatrix} \mathbf I_r & \sigma_u\,\boldsymbol\rho \\[2pt] \sigma_u\,\boldsymbol\rho' & \sigma_u^2 \end{pmatrix}
+\begin{pmatrix} 1 & \sigma_{u,i}\,\rho_i \\[2pt] \sigma_{u,i}\,\rho_i & \sigma_{u,i}^2 \end{pmatrix}
 \right),
-\qquad \boldsymbol\rho\in\mathbb R^r,\quad \boldsymbol\rho'\boldsymbol\rho<1,
+\qquad \rho_i\in(-1,1),\quad i=1,\dots,r,
 \label{eq:d1bd2b-lev-u}
 \end{equation}
-so that $\mathrm{Corr}(z^u_{j,t},\eta^u_t)=\rho_j$. For each idiosyncratic
+independently across $i$, so that $\mathrm{Corr}(z^u_{i,t},\eta^u_{i,t})=\rho_i$
+and the stacked cross-covariance $\mathrm{Cov}(z^u_t,\eta^u_t)$ is diagonal;
+$\mQ^{1/2}$ enters only downstream, in the assembly of $u_t$. For each idiosyncratic
 component the scalar analogue couples $z^\varepsilon_{i,t}$ with
 $\eta^\varepsilon_{i,t}$ of \eqref{eq:d1bd2b-logvol-eps},
 \begin{equation}
@@ -16994,11 +17002,11 @@ $\eta^\varepsilon_{i,t}$ of \eqref{eq:d1bd2b-logvol-eps},
 \label{eq:d1bd2b-lev-eps}
 \end{equation}
 with $\mathrm{Corr}(z^\varepsilon_{i,t},\eta^\varepsilon_{i,t})=\rho_{\varepsilon,i}$.
-The positive-definiteness constraints $\boldsymbol\rho'\boldsymbol\rho<1$
-and $|\rho_{\varepsilon,i}|<1$ are exactly the Schur complements
-$\sigma_u^2(1-\boldsymbol\rho'\boldsymbol\rho)>0$ and
+The positive-definiteness constraints $|\rho_i|<1$ and
+$|\rho_{\varepsilon,i}|<1$ are exactly the Schur complements
+$\sigma_{u,i}^2(1-\rho_i^2)>0$ and
 $\sigma_{\varepsilon,i}^2(1-\rho_{\varepsilon,i}^2)>0$. The leverage signs
-are negative, $\rho_j,\rho_{\varepsilon,i}<0$: a contraction of the level
+are negative, $\rho_i,\rho_{\varepsilon,i}<0$: a contraction of the level
 ($z<0$) comes with rising volatility ($\eta>0$), so downturns are more
 turbulent than upturns and the predictive density leans to the left. The
 tail weights $w^u_t,w^\varepsilon_t$ stay independent of the
@@ -17011,11 +17019,11 @@ of period $t{+}1$ rather than $t$. The covariance structure of
 \eqref{eq:d1bd2b-lev-u}--\eqref{eq:d1bd2b-lev-eps} is unchanged; only the
 time index of the volatility innovation moves,
 \begin{equation}
-\begin{pmatrix} z^u_t \\[2pt] \eta^u_{t+1} \end{pmatrix}
+\begin{pmatrix} z^u_{i,t} \\[2pt] \eta^u_{i,t+1} \end{pmatrix}
 \sim
 \mathcal N\!\left(\!
 \begin{pmatrix} 0 \\[2pt] 0 \end{pmatrix}\!,
-\begin{pmatrix} \mathbf I_r & \sigma_u\,\boldsymbol\rho \\[2pt] \sigma_u\,\boldsymbol\rho' & \sigma_u^2 \end{pmatrix}
+\begin{pmatrix} 1 & \sigma_{u,i}\,\rho_i \\[2pt] \sigma_{u,i}\,\rho_i & \sigma_{u,i}^2 \end{pmatrix}
 \!\right),
 \qquad
 \begin{pmatrix} z^\varepsilon_{i,t} \\[2pt] \eta^\varepsilon_{i,t+1} \end{pmatrix}
@@ -17026,7 +17034,7 @@ time index of the volatility innovation moves,
 \!\right),
 \label{eq:d1bd2b-lev-lagged}
 \end{equation}
-so that $\mathrm{Corr}(z^u_{j,t},\eta^u_{t+1})=\rho_j$ and
+so that $\mathrm{Corr}(z^u_{i,t},\eta^u_{i,t+1})=\rho_i$ and
 $\mathrm{Corr}(z^\varepsilon_{i,t},\eta^\varepsilon_{i,t+1})=\rho_{\varepsilon,i}$:
 today's adverse shock anticipates tomorrow's turbulence. The timing is
 applied uniformly across all blocks; the contemporaneous form
@@ -17040,7 +17048,7 @@ leverage law \eqref{eq:d1bd2b-lev-u}--\eqref{eq:d1bd2b-lev-eps}
 (contemporaneous) or \eqref{eq:d1bd2b-lev-lagged} (lagged), one period of
 the DGP unfolds as follows: (i) draw the tail weights $w^u_t,w^\varepsilon_t$
 from \eqref{eq:d1bd2b-weights}; (ii) draw the coupled pairs
-$(z^u_t,\eta^u_t)$ and $(z^\varepsilon_{i,t},\eta^\varepsilon_{i,t})$
+$(z^u_{i,t},\eta^u_{i,t})$ and $(z^\varepsilon_{i,t},\eta^\varepsilon_{i,t})$
 jointly from the leverage law; (iii) advance the log-volatilities through
 \eqref{eq:d1bd2b-logvol-u}--\eqref{eq:d1bd2b-logvol-eps} using the
 $\eta$'s; (iv) form the innovations $u_t,\varepsilon_t$ via the
@@ -17057,14 +17065,14 @@ one-period link between $z_t$ and $\eta_{t+1}$.
 The general model contains the simpler ones as nested limits. Three
 restrictions, applied in sequence, walk back the entire construction.
 
-\paragraph{Step 1 --- switch off leverage ($\boldsymbol\rho=0$, $\rho_{\varepsilon,i}=0$).}
+\paragraph{Step 1 --- switch off leverage ($\rho_i=0$, $\rho_{\varepsilon,i}=0$).}
 Setting every leverage correlation to zero makes the off-diagonal blocks
 in \eqref{eq:d1bd2b-lev-u}--\eqref{eq:d1bd2b-lev-eps} vanish, so the level
 shocks and the log-volatility innovations become independent again,
 \[
-\begin{pmatrix} z^u_t \\ \eta^u_t \end{pmatrix}
+\begin{pmatrix} z^u_{i,t} \\ \eta^u_{i,t} \end{pmatrix}
 \sim \mathcal N\!\left(0,\,
-\begin{pmatrix} \mathbf I_r & 0 \\ 0 & \sigma_u^2 \end{pmatrix}\right),
+\begin{pmatrix} 1 & 0 \\ 0 & \sigma_{u,i}^2 \end{pmatrix}\right),
 \qquad
 \begin{pmatrix} z^\varepsilon_{i,t} \\ \eta^\varepsilon_{i,t} \end{pmatrix}
 \sim \mathcal N\!\left(0,\,
@@ -18550,20 +18558,19 @@ matrix-Normal--inverse-Wishart; MH $=$ Metropolis--Hastings.}
 \label{tab:who-draws-what}
 \end{table}
 
-\paragraph{A clarification: $\boldsymbol\rho$ is one number, the correlation it
+\paragraph{A clarification: each $\rho_i$ is a fixed number, the correlation it
 governs acts at every $t$.} One point invites confusion and is worth settling.
-The leverage $\boldsymbol\rho$ is a \emph{single fixed value} --- a parameter ---
-yet it governs a correlation that \emph{operates at every instant}. At each $t$
-the level shock $z_t$ and the volatility innovation $\eta_t$ (or $\eta_{t+1}$
-under the lagged timing) are correlated with coefficient $\boldsymbol\rho$, the
-\emph{same} $\boldsymbol\rho$ at every $t$. So the shocks $z_t,\eta_t$ themselves
-vary through time --- they belong to the paths --- but the \emph{rule} that binds
-them, $\boldsymbol\rho$, is fixed. One must not confuse $\boldsymbol\rho$, the
-parameter (one number), with the correlation it enforces period by period (always
-acting, always with the same strength, set by that one $\boldsymbol\rho$). The
-identical reading applies to $\phi$ and $\sigma_\eta^2$: a single persistence and
-a single innovation variance govern an AR(1) recursion that plays out anew at
-every $t$.
+Each leverage correlation $\rho_i$ is a \emph{single fixed value} --- a
+parameter --- yet it governs a correlation that \emph{operates at every
+instant}. At each $t$ the raw shock $z^u_{i,t}$ and the volatility innovation
+$\eta^u_{i,t}$ (or $\eta^u_{i,t+1}$ under the lagged timing) are correlated with
+coefficient $\rho_i$, the \emph{same} $\rho_i$ at every $t$. So the shocks
+themselves vary through time --- they belong to the paths --- but the
+\emph{rule} that binds them, $\rho_i$, is fixed. One must not confuse the
+parameter $\rho_i$ (a fixed number) with the correlation it enforces period by
+period (always acting, always with the same strength). The identical reading
+applies to $\phi$ and $\sigma_\eta^2$: a single persistence and a single
+innovation variance govern an AR(1) recursion that plays out anew at every $t$.
 
 \paragraph{Why this distinction \emph{is} the sampling method.} The
 path/parameter split recorded in the ``Kind'' column of
@@ -19407,13 +19414,14 @@ base scale, the tail weight and the current volatility. For an
 idiosyncratic series this is
 $z_{i,t}=\varepsilon_{i,t}\,\sqrt{w^\varepsilon_t/r_i}\big/\sqrt{h^\varepsilon_{i,t}}$,
 i.e.\ $z_{i,t}=e_{i,t}/\sqrt{h^\varepsilon_{i,t}}$ in the notation of the
-base case; for the common factor the same three operations --- whitening
-by $\mQ^{-1/2}$, scaling by the tail weight $\sqrt{w^u_t}$, and deflating
-by the common volatility $\sqrt{h^u_t}$ --- give
-$z^u_t=\sqrt{w^u_t}\,\mQ^{-1/2}u_t\big/\sqrt{h^u_t}=\tilde u_t/\sqrt{h^u_t}$,
-with $\tilde u_t=\sqrt{w^u_t}\,\mQ^{-1/2}u_t$ the whitened factor
-innovation, exactly the quantity that reappears in
-\eqref{eq:lev-cond-common} below. Conditioning the bivariate normal on
+base case; for the common factor the raw base shocks are recovered by
+inverting the standardized map
+$u_t=\sqrt{\mathbf H^u_t}\,\mQ^{1/2}z^u_t/\sqrt{w^u_t}$ of Specification~II,
+\[
+z^u_t=\sqrt{w^u_t}\,\mQ^{-1/2}\big(\sqrt{\mathbf H^u_t}\big)^{-1}u_t,
+\]
+whose $i$-th component $z^u_{i,t}$ is factor $i$'s own raw shock --- the one
+Option~A couples to $\eta^u_{i,t}$. Conditioning the bivariate normal on
 $z_t$ gives the Gaussian
 \begin{equation}
 \boxed{\;\;
@@ -19426,23 +19434,25 @@ $z_t$ gives the Gaussian
 \end{equation}
 The independent case of the previous section is recovered exactly at
 $\rho=0$, where the mean collapses to zero and the variance to
-$\sigma_\eta^2$. For the common factor the same conditioning, applied to
-the joint law
-$\big(z^u_t,\eta^u_t\big)\sim\mathcal N\!\big(0,\,[\,I_r,\ \sigma_u\boldsymbol\rho;\ \sigma_u\boldsymbol\rho',\ \sigma_u^2\,]\big)$
-of the asymmetry section, yields
+$\sigma_\eta^2$. For the common factor, Option~A makes the coupling $r$
+\emph{independent} scalar channels rather than one vector conditioning: each
+$\eta^u_{i,t}$ is correlated with its own raw shock $z^u_{i,t}$ alone. The
+scalar law \eqref{eq:lev-cond-scalar} therefore applies factor by factor,
 \begin{equation}
-\eta^u_t \mid z^u_t \;\sim\;
-\mathcal N\!\Big(\sigma_u\,\boldsymbol\rho'\,z^u_t,\;
-\sigma_u^2\big(1-\boldsymbol\rho'\boldsymbol\rho\big)\Big),
-\qquad
-z^u_t=\tilde u_t/\sqrt{h^u_t},
+\eta^u_{i,t} \mid z^u_{i,t} \;\sim\;
+\mathcal N\!\Big(\rho_i\,\sigma_{u,i}\,z^u_{i,t},\;
+\sigma_{u,i}^2\big(1-\rho_i^2\big)\Big),
+\qquad i=1,\dots,r,
 \label{eq:lev-cond-common}
 \end{equation}
-with $\tilde u_t=\sqrt{w^u_t}\,\mQ^{-1/2}u_t$ the whitened factor
-innovation of the base case. Because the leverage sign is negative, a
-contractionary level shock ($z_t<0$) raises the conditional mean of
-$\eta_t$ and so pushes the next log-volatility up --- the asymmetry, now
-entering the \emph{estimator} exactly as it entered the model.
+the raw shocks $z^u_{i,t}$ being the components of
+$z^u_t=\sqrt{w^u_t}\,\mQ^{-1/2}\big(\sqrt{\mathbf H^u_t}\big)^{-1}u_t$. This
+is structurally identical to the idiosyncratic channels and needs no vector
+conditioning --- the payoff of the raw-innovation attachment. Because the
+leverage sign is negative, a contractionary shock to factor $i$
+($z^u_{i,t}<0$) raises the conditional mean of $\eta^u_{i,t}$ and so pushes
+that factor's next log-volatility up --- the asymmetry, now entering the
+\emph{estimator} exactly as it entered the model.
 
 \subsection{Timing: which residual corrects which transition}
 \label{subsec:lev-timing}
@@ -20195,21 +20205,21 @@ default is therefore the coherent choice for Branch~B. In one line:
 \emph{lagged timing does not restore conjugacy by itself --- it makes the
 separable specification, which does, the natural and lossless default.}
 
-\subsection{Both branches across all \texorpdfstring{$M+1$}{M+1} processes}
+\subsection{Both branches across all \texorpdfstring{$M+r$}{M+r} leverage channels}
 \label{subsec:lev-branches-allproc}
 
-Either branch applies, process by process, to the common factor and to
+Either branch applies, channel by channel, to the $r$ common factors and to
 each of the $M$ idiosyncratic series, exactly as the base volatility block
-did. For an idiosyncratic series the leverage correlation is the scalar
-$\rho_{\varepsilon,i}$ and both branches operate on the univariate
-residual $e_{i,t}$ without change. For the common factor the correlation
-is the vector $\boldsymbol\rho$: Branch~A handles this directly, since the
-Metropolis target \eqref{eq:lev-mh-target} only needs the multivariate
-conditional evaluated; Branch~B, whose sign-and-mixture construction is
-natively univariate, requires the leverage to act through the relevant
-scalar combination $\boldsymbol\rho'z^u_t$, a mild extra step. In both
-cases the cost is the one already noted --- the leverage treatment is
-repeated $M+1$ times per sweep.
+did. Under Option~A the common leverage is $r$ \emph{scalar} correlations
+$\rho_1,\dots,\rho_r$, one per factor, each coupling the univariate raw shock
+$z^u_{i,t}$ with its own $\eta^u_{i,t}$ --- structurally identical to the
+idiosyncratic $\rho_{\varepsilon,i}$ acting on $e_{i,t}$. Both branches
+therefore operate \emph{univariately} on every channel, common or
+idiosyncratic, with no vector step: Branch~A runs its single-move Metropolis
+target \eqref{eq:lev-mh-target} channel by channel, and Branch~B its
+sign-and-mixture construction likewise, each on the relevant scalar residual.
+The cost is the one already noted --- the leverage treatment is repeated
+$M+r$ times per sweep.
 
 \subsection{The weight axis is separate: one draw under the default, and which response to prefer}
 \label{subsec:lev-weight-axis}
