@@ -15418,7 +15418,7 @@ estimated by least-squares-type criteria. Yet for the two uses that
 motivate a nowcasting exercise in the first place --- the conduct of
 policy and the assessment of risk --- a point is not enough. A
 policymaker does not only want to know where growth is expected to
-land; she wants to know how \emph{uncertain} that expectation is and,
+land; but also how \emph{uncertain} that expectation is and,
 above all, how \emph{large the danger of an adverse outcome} is: the
 probability that the economy slips into recession, the depth of a
 plausible bad scenario, the magnitude of the loss that would be
@@ -15561,214 +15561,6 @@ takes the \emph{stochastic-volatility} route as its main line, while
 retaining Markov switching as the natural discrete-state alternative;
 the next section sets out the specific variants in full.
 
-\subsection{Where the common leverage attaches under a full \texorpdfstring{$\mQ$}{Q}: raw factor innovations vs.\ structural shocks}
-\label{subsec:lev-attach-choice}
-
-\paragraph{Per-factor volatility, and the fork it opens for the leverage.}
-We equip \emph{each} common factor with its own stochastic volatility: a
-log-volatility $h^u_{i,t}$ per factor, $i=1,\dots,r$, each carrying its own
-AR(1) innovation $\eta^u_{i,t}$. This is the factor-side counterpart of the
-per-series idiosyncratic volatilities, and it lets each factor's conditional
-scale breathe independently of the others. Placing a leverage effect on this
-block then requires a decision that is genuine rather than cosmetic: each
-volatility innovation $\eta^u_{i,t}$ must be correlated with \emph{some}
-scalar level disturbance, and because the factor innovation is assembled
-through the \emph{full}, dense matrix $\mQ$, there are two genuinely
-different disturbances it could be --- the \emph{raw} base shock that belongs
-to equation $i$ before $\mQ$ mixes the factors, or the \emph{structural}
-innovation that hits factor $i$ after that mixing. The choice is invisible
-when $\mQ$ is diagonal (the two coincide componentwise); with a full $\mQ$ it
-becomes a real modelling fork, and this subsection settles it.
-
-\paragraph{The two disturbances, made explicit.}
-Write the factor innovation in standardized form. Let
-$z_t=(z_{1,t},\dots,z_{r,t})'\sim\mathcal N(0,\mathbf I_r)$ be the $r$
-mutually independent \emph{base shocks} --- one per factor equation --- let
-$\mathbf D^u_t=\mathrm{diag}\big(\sqrt{h^u_{1,t}},\dots,\sqrt{h^u_{r,t}}\big)$
-collect the per-factor volatilities, and let $w^u_t$ be the tail weight.
-The innovation is
-\begin{equation}
-u_t \;=\; \mathbf D^u_t\,\mQ^{1/2}\,\frac{z_t}{\sqrt{w^u_t}},
-\qquad
-\mathrm{Var}\!\big(u_t\mid \mathbf D^u_t,w^u_t\big)
-   \;=\; \mathbf D^u_t\,\mQ\,\mathbf D^u_t\big/w^u_t,
-\label{eq:lev-attach-innov}
-\end{equation}
-the sandwich form $\sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}$ that a
-full $\mQ$ forces (with $\mQ$ diagonal it would collapse to the
-componentwise $h^u_{i,t}\,q_{ii}$). Reading
-\eqref{eq:lev-attach-innov} from the inside out exposes \emph{two} vectors
-of shocks that coexist in the same equation:
-\begin{itemize}
-\item the \textbf{raw factor innovations} $z_{i,t}$ --- the own,
-      pre-mixing disturbance of factor $i$'s equation, mutually
-      \emph{independent} across $i$ ($\mathrm{Cov}(z_t)=\mathbf I_r$);
-\item the \textbf{structural shocks}
-      $\zeta_{i,t}\equiv(\mQ^{1/2}z_t)_i$ --- the disturbance that
-      \emph{actually} hits factor $i$ once $\mQ^{1/2}$ has blended the base
-      shocks, mutually \emph{correlated} across $i$
-      ($\mathrm{Cov}(\zeta_t)=\mQ$).
-\end{itemize}
-The leverage must couple each volatility innovation $\eta^u_{i,t}$ to one of
-these two. That is the entire content of the fork.
-
-\paragraph{Option A --- leverage on the raw factor innovations.}
-Correlate $\eta^u_{i,t}$ with the \emph{own base shock} $z_{i,t}$, one
-factor at a time. Under the contemporaneous timing this is $r$
-\emph{independent} bivariate Gaussian couplings,
-\begin{equation}
-\begin{pmatrix} z_{i,t} \\[2pt] \eta^u_{i,t}\end{pmatrix}
-\;\sim\;
-\mathcal N\!\left(
-\begin{pmatrix} 0\\[2pt] 0\end{pmatrix},\;
-\begin{pmatrix} 1 & \sigma_{u,i}\,\rho_i \\[2pt] \sigma_{u,i}\,\rho_i & \sigma_{u,i}^2 \end{pmatrix}
-\right),
-\qquad \rho_i\in(-1,1),\quad i=1,\dots,r,
-\label{eq:lev-attach-A}
-\end{equation}
-independently across $i$, so that $\mathrm{Corr}(z_{i,t},\eta^u_{i,t})=\rho_i$
-and $\mathrm{Corr}(z_{k,t},\eta^u_{i,t})=0$ for $k\neq i$. Stacking the two
-$r$-vectors $z_t$ and $\eta^u_t=(\eta^u_{1,t},\dots,\eta^u_{r,t})'$, the
-cross-covariance block is \emph{diagonal},
-\begin{equation}
-\mathrm{Cov}\big(z_t,\eta^u_t\big)
-   \;=\; \mathrm{diag}\big(\sigma_{u,1}\rho_1,\dots,\sigma_{u,r}\rho_r\big),
-\qquad\text{i.e.}\qquad
-\mathrm{Cov}\big(z_{k,t},\eta^u_{i,t}\big)=\sigma_{u,i}\,\rho_i\,\delta_{ik}.
-\label{eq:lev-attach-A-cov}
-\end{equation}
-Crucially, $\mQ^{1/2}$ \emph{does not appear} in the coupling
-\eqref{eq:lev-attach-A}--\eqref{eq:lev-attach-A-cov}. It enters only
-\emph{afterwards}, in \eqref{eq:lev-attach-innov}, when the leveraged base
-shocks are assembled into the innovation $u_t$. The leverage lives
-\emph{upstream} of the mixing.
-
-\paragraph{Option B --- leverage on the structural shocks.}
-Correlate $\eta^u_{i,t}$ instead with the \emph{structural} innovation
-$\zeta_{i,t}=(\mQ^{1/2}z_t)_i$, standardized by its own scale
-$\sqrt{q_{ii}}$ (with $q_{ii}=(\mQ)_{ii}$) so that the correlation is again
-$\rho_i$,
-\begin{equation}
-\mathrm{Corr}\!\left(\frac{(\mQ^{1/2}z_t)_i}{\sqrt{q_{ii}}},\;\eta^u_{i,t}\right)=\rho_i .
-\label{eq:lev-attach-B}
-\end{equation}
-Because $\zeta_{i,t}=\sum_{k}(\mQ^{1/2})_{ik}\,z_{k,t}$ is a $\mQ^{1/2}$-weighted
-\emph{blend of every} base shock, the coupling \eqref{eq:lev-attach-B} no
-longer ties $\eta^u_{i,t}$ to a single $z_{i,t}$; it ties it to the whole
-vector $z_t$ through the $i$-th row of $\mQ^{1/2}$. The cross-covariance
-block is now \emph{full}:
-\begin{equation}
-\mathrm{Cov}\big(z_{k,t},\eta^u_{i,t}\big)
-   \;=\; \sigma_{u,i}\,\rho_i\,\frac{(\mQ^{1/2})_{ik}}{\sqrt{q_{ii}}},
-\label{eq:lev-attach-B-cov}
-\end{equation}
-which for a dense $\mQ$ is non-zero in \emph{every} entry, not only on the
-diagonal. Comparing \eqref{eq:lev-attach-A-cov} with
-\eqref{eq:lev-attach-B-cov} isolates the difference in one line: Option~A
-sets the cross-block to $\mathrm{diag}(\sigma_{u,i}\rho_i)$, Option~B sets
-it to $\mathrm{diag}(\sigma_{u,i}\rho_i)\,\widehat{\mQ}^{1/2}$ with
-$\widehat{\mQ}^{1/2}$ the row-standardized square root --- the leverage
-now carries a factor of $\mQ^{1/2}$ that Option~A does not. Where Option~A
-places the leverage upstream of $\mQ^{1/2}$, Option~B threads $\mQ^{1/2}$
-\emph{into} the leverage block itself.
-
-\paragraph{The case for Option~B, stated fairly.}
-Option~B is not a straw man; it has a genuine and even natural
-rationale. Its merit is that it binds each volatility to the
-\emph{structural} disturbance --- the shock that literally moves factor
-$i$ once the system's contemporaneous mechanics have acted --- rather than
-to a standardized coordinate $z_{i,t}$ that has no free-standing
-interpretation of its own. In a structural (SVAR) reading, where the
-orthogonalised shocks are taken as the primitive economic disturbances and
-$\mQ^{1/2}$ is the impact map that turns them into the observed
-innovations, it is precisely the structural shock whose sign one would want
-the volatility to answer to: the leverage effect is a statement about the
-\emph{true} disturbance hitting the factor, and $\zeta_{i,t}$ is that
-disturbance. Indeed, in a model whose \emph{only} cross-factor structure
-lived in $\mQ$ --- a static or near-static transition, with the factors'
-co-movement carried entirely by the contemporaneous covariance --- Option~B
-would be the principled choice, the only way to let the volatility respond
-to the genuine combined shock rather than to an artefact of the
-whitening basis. Under those premises B is the correct specification, and
-it is worth conceding this plainly before explaining why our premises are
-not those.
-
-\paragraph{Why we adopt Option~A.}
-The decisive point is \emph{where the cross-factor structure of our model
-already lives}. Ours is a VAR(1) with a \emph{full} transition matrix
-$\mA$, and that matrix is not incidental: its off-diagonal entries are the
-model's account of how the factors influence one another, a shock to the
-financial factor at $t-1$ feeding the real factor at $t$ through
-$\mathbf A_{\text{RF}}$. The interdependence among factors --- the very
-``mixing'' that Option~B reaches for --- is therefore \emph{already
-modelled}, and modelled where it economically belongs: in the
-\emph{dynamics}. The factor innovation $u_t=f_t-\mA f_{t-1}$ is, by
-construction, what remains \emph{after} that dynamic co-movement has been
-removed; it is the own, unpredictable disturbance of the period, and its
-standardized coordinates $z_t=\mQ^{-1/2}\mathbf D^{u\,-1}_t u_t$ are the
-cleanest available representation of ``factor $i$'s own shock this
-period.'' Coupling the volatility to \emph{these} --- Option~A --- assigns
-the leverage exactly the role left for it: the asymmetry between a factor's
-\emph{own} shock and its \emph{own} volatility, a scalar-on-scalar link,
-one channel per factor.
-
-Option~B, by re-introducing $\mQ^{1/2}$ into the leverage block, would make
-each factor's volatility respond to a $\mQ$-weighted blend of \emph{all}
-factors' shocks. But that contemporaneous blending is \emph{already}
-carried by $\mQ$ inside the innovation covariance
-\eqref{eq:lev-attach-innov}, on top of the dynamic blending already carried
-by $\mA$. B would thus re-perform, inside the leverage channel, a mixing
-the model executes twice over elsewhere --- once dynamically through $\mA$,
-once contemporaneously through $\mQ$. This is \emph{redundancy, not extra
-structure}: it buys no economic mechanism the model lacks, while
-entangling the leverage parameters $\rho_i$ with the entire geometry of
-$\mQ$ and forfeiting the plain reading of $\rho_i$ as the leverage of
-factor $i$ on itself. The clean division of labour that makes the
-specification legible ---
-\begin{center}
-\emph{$\mA$ carries the dynamic (lagged) interdependence,\quad
-$\mQ$ the contemporaneous correlation,\quad
-$\boldsymbol\rho$ the own-volatility/own-shock asymmetry}
-\end{center}
---- is respected exactly by Option~A and trespassed by Option~B, which lets
-the leverage reach back into $\mQ$'s territory.
-
-There is, finally, an identification dividend. Option~A keeps $r$
-\emph{separate}, one-to-one channels: $\rho_i$ couples $\eta^u_{i,t}$ with
-$z_{i,t}$ alone, each factor's leverage riding its \emph{own} independent
-volatility process. This is structurally identical to the $M$ idiosyncratic
-scalar leverages --- a scalar level shock correlated with a scalar
-volatility innovation, with no orthogonal directions left for the data to
-leave unexercised --- and it is therefore \emph{well posed}, exactly as they
-are: $r$ clean, independent own-channels, each an estimable scalar
-correlation. Option~B would squander this: by routing every $\rho_i$ through
-the shared $\mQ^{1/2}$ geometry it re-couples the $r$ leverages, so their
-identification would once again lean on the common covariance structure
-rather than on $r$ clean, independent own-channels. Adopting~A keeps the
-leverages as decoupled and as well identified as the per-factor construction
-allows.
-
-\paragraph{Decision.}
-We adopt \textbf{Option~A}: the common leverage correlates each
-volatility innovation $\eta^u_{i,t}$ with the \emph{raw} factor innovation
-$z_{i,t}$, one independent channel per factor, as in
-\eqref{eq:lev-attach-A}--\eqref{eq:lev-attach-A-cov}, with $\mQ^{1/2}$
-entering only downstream in the assembly of $u_t$. The reasons are
-substantive, not merely aesthetic: the cross-factor interdependence
-Option~B would re-mix is \emph{already} captured by the full transition
-matrix $\mA$ (dynamically) and by $\mQ$ (contemporaneously), so leverage on
-the raw innovations is \emph{sufficient} and re-mixing it through
-$\mQ^{1/2}$ is redundant; and the raw-innovation coupling keeps the $r$
-common leverages one-to-one with $r$ independent volatility processes,
-delivering clean identification: $r$ scalars, as well posed as the
-idiosyncratic ones. Option~B remains a coherent alternative under a different
-architecture (one in which $\mQ$ alone carried the factors' co-movement);
-it is superseded here \emph{by argument}, because in our architecture the
-mixing it honours is already the province of $\mA$ and $\mQ$. The same
-choice applies verbatim to the lagged timing, re-indexing the coupled
-volatility innovation from $\eta^u_{i,t}$ to $\eta^u_{i,t+1}$ and leaving
-\eqref{eq:lev-attach-A}--\eqref{eq:lev-attach-A-cov} otherwise unchanged.
-
 \subsection{Formal Specification of the Stochastic-Volatility Variants}
 \label{sec:sv-variants}
 
@@ -15868,7 +15660,7 @@ log-volatility AR(1) process,
 \eta^u_{i,t} &\sim \mathcal{N}(0,\sigma_{u,i}^2),\quad i=1,\dots,r,
 \label{eq:sv-logvol-u}\\
 \log h^\varepsilon_{i,t} &= \mu_{\varepsilon,i} + \phi_{\varepsilon,i}\big(\log h^\varepsilon_{i,t-1}-\mu_{\varepsilon,i}\big) + \eta^\varepsilon_{i,t}, &
-\eta^\varepsilon_{i,t} &\sim \mathcal{N}(0,\sigma_{\varepsilon,i}^2),
+\eta^\varepsilon_{i,t} &\sim \mathcal{N}(0,\sigma_{\varepsilon,i}^2), \quad i=1,\dots,M,
 \label{eq:sv-logvol-eps}
 \end{align}
 whose three parameters read cleanly: $\mu$ is the long-run level of
@@ -16129,12 +15921,6 @@ The second switch fixes which volatility states are active:
       series carries its own persistent volatility on top of the common
       ones. This is the most general scope and our preferred one.
 \end{itemize}
-We deliberately omit a scope that activates idiosyncratic volatility on
-the \emph{target series alone}: it would privilege GDP for no structural
-reason --- only because GDP happens to be this thesis's contingent
-target --- and would make no sense were the target another, similar
-series (industrial production, say). A target-specific volatility is a
-property of the application, not of the model, so we do not consider it.
 
 \paragraph{The six variants as instances of the parent.}
 The two switches are \emph{orthogonal}, so combining
@@ -16521,6 +16307,560 @@ unforeseeable event can be predicted. It is the right mechanism for
 skewness, but it leaves the non-forecastability of events like Covid
 exactly where it was --- a property of the world, discussed earlier, not
 a defect the model can repair.
+
+\newpage
+
+\subsection{A necessary specification: the difference between a full \texorpdfstring{$\mQ$}{Q} and diagonal \texorpdfstring{$\mR$}{R}}
+
+\paragraph{Per-factor volatility, and the modelling fork opened by a full covariance matrix.}
+We equip \emph{each} common factor with its own stochastic volatility:
+a log-volatility process $h^u_{i,t}$, $i=1,\dots,r$, each evolving through
+its own AR(1) innovation $\eta^u_{i,t}$. This mirrors exactly the
+idiosyncratic block, where each observable series already carries its own
+stochastic volatility process.
+
+The two blocks, however, differ in one crucial respect. On the
+idiosyncratic side the covariance matrix $\mR$ is \emph{diagonal}, so each
+idiosyncratic innovation is associated with one and only one variance.
+Introducing a separate stochastic volatility for each series therefore
+raises no ambiguity: every volatility process scales its own disturbance,
+and the leverage effect naturally correlates the corresponding
+log-volatility innovation with that same scalar shock. Since no
+cross-sectional mixing occurs, there is only one possible disturbance to
+which the leverage can attach.
+
+The common-factor block is fundamentally different because its innovation
+covariance $\mQ$ is \emph{full}. The factor innovation is therefore not a
+collection of independent disturbances but is assembled by mixing the
+underlying standardized shocks through the dense matrix $\mQ^{1/2}$. Once
+a distinct stochastic volatility is assigned to each factor, a genuine
+modelling question arises that has no analogue on the idiosyncratic side:
+to which disturbance should the volatility innovation
+$\eta^u_{i,t}$ be correlated? It may be linked either to the
+\emph{raw} standardized innovation associated with factor equation $i$,
+before the contemporaneous mixing induced by $\mQ$, or to the
+\emph{structural} disturbance that actually hits the factor after that
+mixing has taken place. The two coincide only when $\mQ$ is diagonal. With
+a full $\mQ$ they become genuinely different objects, making the placement
+of the leverage effect a substantive modelling decision rather than a
+notational detail. This subsection resolves that choice.
+
+\paragraph{The two representations of the factor innovation.}
+The ambiguity arises because, under a full covariance matrix $\mQ$, the
+factor innovation admits two equally valid representations. Let
+\[
+z_t=(z_{1,t},\ldots,z_{r,t})'
+\sim
+\mathcal N(0,\mathbf I_r)
+\]
+be a vector of mutually independent standardized shocks, one for each
+factor equation, let
+\[
+\mathbf D_t^u
+=
+\mathrm{diag}
+\!\left(
+\sqrt{h^u_{1,t}},
+\dots,
+\sqrt{h^u_{r,t}}
+\right)
+\]
+collect the factor-specific stochastic volatilities, and let $w_t^u$
+denote the Student-$t$ mixing weight. The factor innovation can then be
+written as
+\begin{equation}
+u_t
+=
+\mathbf D_t^u
+\mQ^{1/2}
+\frac{z_t}{\sqrt{w_t^u}},
+\qquad
+\mathrm{Var}
+\!\left(
+u_t\mid
+\mathbf D_t^u,
+w_t^u
+\right)
+=
+\mathbf D_t^u
+\mQ
+\mathbf D_t^u
+/w_t^u.
+\label{eq:lev-attach-innov}
+\end{equation}
+
+Equation~\eqref{eq:lev-attach-innov} naturally separates the innovation
+into two layers. The first consists of the standardized Gaussian shocks
+$z_t$, which are mutually independent and belong individually to the
+$r$ equations of the VAR before any contemporaneous interaction takes
+place. The second is obtained after the contemporaneous mixing induced by
+$\mQ^{1/2}$,
+\[
+\zeta_t
+=
+\mQ^{1/2}z_t,
+\]
+whose covariance is
+\[
+\mathrm{Cov}(\zeta_t)=\mQ.
+\]
+Thus, the same innovation may be viewed either in terms of the
+\emph{raw} standardized shocks $z_t$, or in terms of the
+\emph{structural} disturbances $\zeta_t$ that actually enter the VAR
+innovation after the covariance structure has acted.
+
+When $\mQ$ is diagonal the distinction disappears, because
+$\mQ^{1/2}$ merely rescales each component independently, so every
+structural shock coincides with its own raw shock up to scale. With a
+full $\mQ$, however, each structural disturbance is a linear combination
+of all raw shocks,
+\[
+\zeta_{i,t}
+=
+\sum_{k=1}^r
+(\mQ^{1/2})_{ik}
+z_{k,t},
+\]
+and the two representations become genuinely different. The leverage
+effect must therefore decide which of these two disturbances is
+economically relevant: should the volatility innovation
+$\eta^u_{i,t}$ be correlated with the own raw innovation $z_{i,t}$, or
+with the structural disturbance $\zeta_{i,t}$ that ultimately moves the
+factor? This is precisely the modelling fork considered below.
+
+\paragraph{Option A --- leverage on the raw factor innovations.}
+Correlate $\eta^u_{i,t}$ with the \emph{own base shock} $z_{i,t}$, one
+factor at a time. Under the contemporaneous timing this is $r$
+\emph{independent} bivariate Gaussian couplings,
+\begin{equation}
+\begin{pmatrix} z_{i,t} \\[2pt] \eta^u_{i,t}\end{pmatrix}
+\;\sim\;
+\mathcal N\!\left(
+\begin{pmatrix} 0\\[2pt] 0\end{pmatrix},\;
+\begin{pmatrix} 1 & \sigma_{u,i}\,\rho_i \\[2pt] \sigma_{u,i}\,\rho_i & \sigma_{u,i}^2 \end{pmatrix}
+\right),
+\qquad \rho_i\in(-1,1),\quad i=1,\dots,r,
+\label{eq:lev-attach-A}
+\end{equation}
+independently across $i$, so that $\mathrm{Corr}(z_{i,t},\eta^u_{i,t})=\rho_i$
+and $\mathrm{Corr}(z_{k,t},\eta^u_{i,t})=0$ for $k\neq i$. Stacking the two
+$r$-vectors $z_t$ and $\eta^u_t=(\eta^u_{1,t},\dots,\eta^u_{r,t})'$, the
+cross-covariance block is \emph{diagonal},
+\begin{equation}
+\mathrm{Cov}\big(z_t,\eta^u_t\big)
+   \;=\; \mathrm{diag}\big(\sigma_{u,1}\rho_1,\dots,\sigma_{u,r}\rho_r\big),
+\qquad\text{i.e.}\qquad
+\mathrm{Cov}\big(z_{k,t},\eta^u_{i,t}\big)=\sigma_{u,i}\,\rho_i\,\delta_{ik}.
+\label{eq:lev-attach-A-cov}
+\end{equation}
+Crucially, $\mQ^{1/2}$ \emph{does not appear} in the coupling
+\eqref{eq:lev-attach-A}--\eqref{eq:lev-attach-A-cov}. It enters only
+\emph{afterwards}, in \eqref{eq:lev-attach-innov}, when the leveraged base
+shocks are assembled into the innovation $u_t$. The leverage lives
+\emph{upstream} of the mixing.
+
+\paragraph{Option B --- leverage on the structural shocks.}
+Correlate $\eta^u_{i,t}$ instead with the \emph{structural} innovation
+$\zeta_{i,t}=(\mQ^{1/2}z_t)_i$, standardized by its own scale
+$\sqrt{q_{ii}}$ (with $q_{ii}=(\mQ)_{ii}$) so that the correlation is again
+$\rho_i$,
+\begin{equation}
+\mathrm{Corr}\!\left(\frac{(\mQ^{1/2}z_t)_i}{\sqrt{q_{ii}}},\;\eta^u_{i,t}\right)=\rho_i .
+\label{eq:lev-attach-B}
+\end{equation}
+Because $\zeta_{i,t}=\sum_{k}(\mQ^{1/2})_{ik}\,z_{k,t}$ is a $\mQ^{1/2}$-weighted
+\emph{blend of every} base shock, the coupling \eqref{eq:lev-attach-B} no
+longer ties $\eta^u_{i,t}$ to a single $z_{i,t}$; it ties it to the whole
+vector $z_t$ through the $i$-th row of $\mQ^{1/2}$. The cross-covariance
+block is now \emph{full}:
+\begin{equation}
+\mathrm{Cov}\big(z_{k,t},\eta^u_{i,t}\big)
+   \;=\; \sigma_{u,i}\,\rho_i\,\frac{(\mQ^{1/2})_{ik}}{\sqrt{q_{ii}}},
+\label{eq:lev-attach-B-cov}
+\end{equation}
+which for a dense $\mQ$ is non-zero in \emph{every} entry, not only on the
+diagonal. Comparing \eqref{eq:lev-attach-A-cov} with
+\eqref{eq:lev-attach-B-cov} isolates the difference in one line: Option~A
+sets the cross-block to $\mathrm{diag}(\sigma_{u,i}\rho_i)$, Option~B sets
+it to $\mathrm{diag}(\sigma_{u,i}\rho_i)\,\widehat{\mQ}^{1/2}$ with
+$\widehat{\mQ}^{1/2}$ the row-standardized square root --- the leverage
+now carries a factor of $\mQ^{1/2}$ that Option~A does not. Where Option~A
+places the leverage upstream of $\mQ^{1/2}$, Option~B threads $\mQ^{1/2}$
+\emph{into} the leverage block itself.
+
+\paragraph{The case for Option~B, stated fairly.}
+Option~B is not a straw man; it has a genuine and even natural
+rationale. Its merit is that it binds each volatility to the
+\emph{structural} disturbance --- the shock that literally moves factor
+$i$ once the system's contemporaneous mechanics have acted --- rather than
+to a standardized coordinate $z_{i,t}$ that has no free-standing
+interpretation of its own. In a structural (SVAR) reading, where the
+orthogonalised shocks are taken as the primitive economic disturbances and
+$\mQ^{1/2}$ is the impact map that turns them into the observed
+innovations, it is precisely the structural shock whose sign one would want
+the volatility to answer to: the leverage effect is a statement about the
+\emph{true} disturbance hitting the factor, and $\zeta_{i,t}$ is that
+disturbance. Indeed, in a model whose \emph{only} cross-factor structure
+lived in $\mQ$ --- a static or near-static transition, with the factors'
+co-movement carried entirely by the contemporaneous covariance --- Option~B
+would be the principled choice, the only way to let the volatility respond
+to the genuine combined shock rather than to an artefact of the
+whitening basis. Under those premises B is the correct specification, and
+it is worth conceding this plainly before explaining why our premises are
+not those.
+
+\paragraph{Why we adopt Option~A.}
+The decisive point is \emph{where the cross-factor structure of our model
+already lives}. Ours is a VAR(1) with a \emph{full} transition matrix
+$\mA$, and that matrix is not incidental: its off-diagonal entries are the
+model's account of how the factors influence one another, a shock to the
+financial factor at $t-1$ feeding the real factor at $t$ through
+$\mathbf A_{\text{RF}}$. The interdependence among factors --- the very
+``mixing'' that Option~B reaches for --- is therefore \emph{already
+modelled}, and modelled where it economically belongs: in the
+\emph{dynamics}. The factor innovation $u_t=f_t-\mA f_{t-1}$ is, by
+construction, what remains \emph{after} that dynamic co-movement has been
+removed; it is the own, unpredictable disturbance of the period, and its
+standardized coordinates $z_t=\mQ^{-1/2}\mathbf D^{u\,-1}_t u_t$ are the
+cleanest available representation of ``factor $i$'s own shock this
+period.'' Coupling the volatility to \emph{these} --- Option~A --- assigns
+the leverage exactly the role left for it: the asymmetry between a factor's
+\emph{own} shock and its \emph{own} volatility, a scalar-on-scalar link,
+one channel per factor.
+
+Option~B, by re-introducing $\mQ^{1/2}$ into the leverage block, would make
+each factor's volatility respond to a $\mQ$-weighted blend of \emph{all}
+factors' shocks. But that contemporaneous blending is \emph{already}
+carried by $\mQ$ inside the innovation covariance
+\eqref{eq:lev-attach-innov}, on top of the dynamic blending already carried
+by $\mA$. B would thus re-perform, inside the leverage channel, a mixing
+the model executes twice over elsewhere --- once dynamically through $\mA$,
+once contemporaneously through $\mQ$. This is \emph{redundancy, not extra
+structure}: it buys no economic mechanism the model lacks, while
+entangling the leverage parameters $\rho_i$ with the entire geometry of
+$\mQ$ and forfeiting the plain reading of $\rho_i$ as the leverage of
+factor $i$ on itself. The clean division of labour that makes the
+specification legible ---
+\begin{center}
+\emph{$\mA$ carries the dynamic (lagged) interdependence,\quad
+$\mQ$ the contemporaneous correlation,\quad
+$\boldsymbol\rho$ the own-volatility/own-shock asymmetry}
+\end{center}
+--- is respected exactly by Option~A and trespassed by Option~B, which lets
+the leverage reach back into $\mQ$'s territory.
+
+There is, finally, an identification dividend. Option~A keeps $r$
+\emph{separate}, one-to-one channels: $\rho_i$ couples $\eta^u_{i,t}$ with
+$z_{i,t}$ alone, each factor's leverage riding its \emph{own} independent
+volatility process. This is structurally identical to the $M$ idiosyncratic
+scalar leverages --- a scalar level shock correlated with a scalar
+volatility innovation, with no orthogonal directions left for the data to
+leave unexercised --- and it is therefore \emph{well posed}, exactly as they
+are: $r$ clean, independent own-channels, each an estimable scalar
+correlation. Option~B would squander this: by routing every $\rho_i$ through
+the shared $\mQ^{1/2}$ geometry it re-couples the $r$ leverages, so their
+identification would once again lean on the common covariance structure
+rather than on $r$ clean, independent own-channels. Adopting~A keeps the
+leverages as decoupled and as well identified as the per-factor construction
+allows.
+
+\paragraph{Decision.}
+We adopt \textbf{Option~A}: the common leverage correlates each
+volatility innovation $\eta^u_{i,t}$ with the \emph{raw} factor innovation
+$z_{i,t}$, one independent channel per factor, as in
+\eqref{eq:lev-attach-A}--\eqref{eq:lev-attach-A-cov}, with $\mQ^{1/2}$
+entering only downstream in the assembly of $u_t$. The reasons are
+substantive, not merely aesthetic: the cross-factor interdependence
+Option~B would re-mix is \emph{already} captured by the full transition
+matrix $\mA$ (dynamically) and by $\mQ$ (contemporaneously), so leverage on
+the raw innovations is \emph{sufficient} and re-mixing it through
+$\mQ^{1/2}$ is redundant; and the raw-innovation coupling keeps the $r$
+common leverages one-to-one with $r$ independent volatility processes,
+delivering clean identification: $r$ scalars, as well posed as the
+idiosyncratic ones. Option~B remains a coherent alternative under a different
+architecture (one in which $\mQ$ alone carried the factors' co-movement);
+it is superseded here \emph{by argument}, because in our architecture the
+mixing it honours is already the province of $\mA$ and $\mQ$. The same
+choice applies verbatim to the lagged timing, re-indexing the coupled
+volatility innovation from $\eta^u_{i,t}$ to $\eta^u_{i,t+1}$ and leaving
+\eqref{eq:lev-attach-A}--\eqref{eq:lev-attach-A-cov} otherwise unchanged.
+
+\subsection{A second specification choice: where the stochastic volatility acts}
+
+The previous discussion concerns \emph{which disturbance} carries the
+leverage correlation. An entirely separate modelling decision concerns
+\emph{where} the stochastic volatility matrix
+\(
+\mathbf D_t^u=\operatorname{diag}(\sqrt{h^u_{1,t}},\ldots,\sqrt{h^u_{r,t}})
+\)
+acts relative to the contemporaneous covariance factor
+\(\mQ^{1/2}\).
+
+With a diagonal covariance matrix the question never arises, since
+\(\mathbf D_t^u\) and \(\mQ^{1/2}\) commute. Under a full
+\(\mQ\), however,
+
+\[
+\mathbf D_t^u\mQ^{1/2}
+\neq
+\mQ^{1/2}\mathbf D_t^u,
+\]
+
+so the two specifications are genuinely different.
+
+Two placements are therefore possible.
+
+\paragraph{Specification I --- volatility acting before the contemporaneous mixing.}
+
+The first possibility is
+\begin{equation}
+u_t
+=
+\mQ^{1/2}
+\mathbf D_t^u
+\frac{z_t}{\sqrt{w_t^u}},
+\label{eq:inside}
+\end{equation}
+whose conditional covariance is
+
+\[
+\mathrm{Var}(u_t\mid\mathbf D_t^u,w_t)
+=
+\mQ^{1/2}
+\mathbf H_t^u
+\mQ^{1/2}/w_t^u .
+\]
+
+Each standardized disturbance $z_{i,t}$ is first rescaled by its own
+stochastic volatility and only afterwards mixed with the remaining
+factors through $\mQ^{1/2}$.
+\paragraph{Specification II --- volatility acting after the contemporaneous mixing.}
+
+The alternative is
+
+\begin{equation}
+u_t
+=
+\mathbf D_t^u
+\mQ^{1/2}
+\frac{z_t}{\sqrt{w_t^u}},
+\label{eq:outside}
+\end{equation}
+
+with conditional covariance
+
+\[
+\mathrm{Var}(u_t\mid\mathbf D_t^u,w_t)
+=
+\mathbf D_t^u
+\mQ
+\mathbf D_t^u/w_t^u.
+\]
+
+Here the standardized shocks are first combined through the
+contemporaneous covariance matrix and only afterwards each resulting
+factor equation is rescaled by its own stochastic volatility.
+\paragraph{What differs between the two specifications?}
+
+Although the two constructions differ only in the ordering of
+$\mathbf D_t^u$ and $\mQ^{1/2}$, they are not algebraically equivalent
+unless $\mQ$ is diagonal.
+The choice affects several aspects of the model.
+
+\begin{itemize}
+
+\item
+The interpretation of the stochastic volatility.
+Under \eqref{eq:inside},
+$h_{i,t}^u$ scales the raw standardized disturbance $z_{i,t}$ before
+the factors interact.
+Under \eqref{eq:outside},
+$h_{i,t}^u$ scales the innovation entering equation $i$ after the
+contemporaneous mixing.
+
+\item
+The interpretation of the factors.
+Under \eqref{eq:outside},
+each volatility process is naturally attached to the corresponding
+factor equation.
+Under \eqref{eq:inside},
+the contemporaneous transformation propagates each volatility across
+all factor innovations through $\mQ^{1/2}$.
+
+\item
+The covariance structure.
+Specification~\eqref{eq:inside} produces the covariance
+$\mQ^{1/2}\mathbf H_t^u\mQ^{1/2}$,
+whereas Specification~\eqref{eq:outside} yields the sandwich form
+$\mathbf D_t^u\mQ\mathbf D_t^u$.
+The two coincide only when $\mQ$ and $\mathbf D_t^u$ commute.
+
+\item
+The leverage interpretation.
+If leverage is attached to the raw shocks $z_t$, as adopted in the
+previous subsection, Specification~\eqref{eq:inside} leaves the same
+volatility process attached to the same standardized disturbance before
+any contemporaneous mixing occurs.
+Specification~\eqref{eq:outside} instead lets the leverage act on the
+raw disturbances while the volatility rescales the already-mixed factor
+innovations.
+
+\item
+The state-space representation.
+Because the stochastic volatility enters differently in the innovation
+covariance, the latent-state representation used for posterior
+simulation changes accordingly.
+This affects the form of the conditional Gaussian approximation used by
+simulation algorithms such as Kim--Shephard--Chib (1998) or Omori
+et al.\ (2007).
+
+\item
+The economic interpretation.
+Specification~\eqref{eq:inside} may be viewed as assigning one
+stochastic volatility to each primitive factor shock.
+Specification~\eqref{eq:outside} instead assigns one stochastic
+volatility to each factor innovation after contemporaneous interaction
+has taken place.
+
+\end{itemize}
+
+\paragraph{Interaction with the leverage specification.}
+
+The choice of where the volatility acts is independent of the previous
+choice of where the leverage is attached, but the two decisions interact
+in economically different ways.
+
+\smallskip
+
+\noindent
+\textbf{Option A + Inside.}
+The volatility and the leverage both refer to the same primitive object,
+the raw standardized innovation \(z_{i,t}\). Factor \(i\) possesses its
+own standardized shock, its own stochastic volatility process, and its
+own leverage parameter. The covariance matrix \(\mQ\) merely combines the
+already-scaled innovations into the final innovation \(u_t\).
+
+\smallskip
+
+\noindent
+\textbf{Option A + Outside.}
+The leverage still acts on the raw innovation \(z_{i,t}\), whereas the
+volatility rescales the structural innovation obtained only after the
+mixing by \(\mQ^{1/2}\). The leverage and volatility therefore refer to
+different representations of the innovation. The specification remains
+well defined, but the two mechanisms no longer act on exactly the same
+underlying disturbance.
+
+\smallskip
+
+\noindent
+\textbf{Option B + Inside.}
+The volatility belongs to the raw innovations, whereas the leverage is
+defined with respect to the structural disturbances
+\(\zeta_t=\mQ^{1/2}z_t\). Once again the two mechanisms act on different
+objects: volatility is attached before the contemporaneous mixing,
+leverage afterwards.
+
+\smallskip
+
+\noindent
+\textbf{Option B + Outside.}
+Both mechanisms are expressed in terms of the structural disturbances.
+The covariance matrix first constructs the structural innovation, which
+is then simultaneously rescaled by the factor-specific volatilities and
+correlated with the corresponding volatility innovations. This is the
+most internally homogeneous specification if the structural disturbance
+is regarded as the primitive economic shock.
+
+\paragraph{The specification we adopt: volatility after the mixing (Specification~II).}
+We adopt \textbf{Specification~II}, \eqref{eq:outside}, in which the
+volatility acts \emph{after} the contemporaneous mixing,
+$u_t=\mathbf D_t^u\,\mQ^{1/2}z_t/\sqrt{w_t^u}$ with conditional covariance
+$\mathbf D_t^u\,\mQ\,\mathbf D_t^u/w_t^u$. The reason is the very purpose of
+the refactoring: it is the only placement under which $h^u_{i,t}$ is the
+\emph{volatility of factor $i$ itself}. Reading the $i$-th diagonal of the
+conditional covariance,
+\[
+\mathrm{Var}\!\big(u_{i,t}\mid\cdot\big)
+=\big[\mathbf D_t^u\,\mQ\,\mathbf D_t^u\big]_{ii}/w_t^u
+=h^u_{i,t}\,q_{ii}/w_t^u,
+\]
+the innovation $u_{i,t}$ --- the disturbance to the real, financial, or
+nominal factor --- has a variance proportional to its \emph{own}
+$h^u_{i,t}$ alone. Each of the $r$ volatilities is thus the time-varying
+scale of one economically identified factor, exactly the object the
+extension set out to model.
+
+Specification~I fails this test. Under \eqref{eq:inside} the $i$-th diagonal
+is
+\[
+\mathrm{Var}\!\big(u_{i,t}\mid\cdot\big)
+=\big[\mQ^{1/2}\mathbf H_t^u\mQ^{1/2}\big]_{ii}/w_t^u
+=\Big(\textstyle\sum_{j}(\mQ^{1/2})_{ij}^2\,h^u_{j,t}\Big)/w_t^u,
+\]
+a \emph{blend of all} the volatilities: $h^u_{i,t}$ no longer measures the
+volatility of factor $i$ but that of the $i$-th standardized shock
+$z_{i,t}$, a direction fixed by the \emph{arbitrary} choice of matrix square
+root $\mQ^{1/2}$ (symmetric, Cholesky, or any $\mQ^{1/2}\mathbf R$ with
+$\mathbf R$ orthogonal). Indeed $\mQ^{1/2}\mathbf H_t^u\mQ^{1/2}$ is not even
+invariant to that choice once $\mathbf H_t^u\neq c\,\mathbf I$: the same
+volatilities imply a \emph{different} model under a different root.
+Specification~I therefore attaches the volatilities to non-identified
+directions and loses the per-factor reading; Specification~II attaches them
+to the factor innovations $u_{i,t}$, identified up to the within-block
+sign/scale conventions already fixed, and keeps it.
+
+\paragraph{The price of Specification~II: a coupled common-volatility block.}
+The per-factor interpretation is not free. Because $\mQ$ is \emph{full}, the
+sandwich $\mathbf D_t^u\,\mQ\,\mathbf D_t^u$ does not diagonalise, and the
+$r$ common volatilities no longer separate in the likelihood. The exponent
+of the conditional density of $u_t$ is
+\[
+w_t^u\,u_t'\big(\mathbf D_t^u\,\mQ\,\mathbf D_t^u\big)^{-1}u_t
+=w_t^u\,\big(\mathbf D_t^{u\,-1}u_t\big)'\mQ^{-1}\big(\mathbf D_t^{u\,-1}u_t\big)
+=w_t^u\sum_{j,l}\frac{u_{j,t}\,u_{l,t}}{\sqrt{h^u_{j,t}\,h^u_{l,t}}}\,(\mQ^{-1})_{jl},
+\]
+and the off-diagonal entries $(\mQ^{-1})_{jl}$ couple every pair
+$(h^u_{j,t},h^u_{l,t})$: the full conditional of one common volatility
+depends on all the others. This is in sharp contrast to the idiosyncratic
+block, where $\mR$ is diagonal, the analogous exponent is the plain sum
+$w_t^\varepsilon\sum_i \varepsilon_{i,t}^2/(h^\varepsilon_{i,t}\,r_i)$ with no
+cross terms, and the $M$ volatilities split into $M$ independent univariate
+problems. The common block is therefore a genuine \emph{multivariate}
+stochastic-volatility problem: the $r$ log-volatility paths must be drawn
+\emph{jointly}, from an $r$-dimensional state, rather than one at a time.
+This is the additional cost the honest per-factor interpretation carries
+under a full $\mQ$, and the estimation section treats the common block
+accordingly. (When $\mQ$ is near-diagonal the coupling is weak and the block
+is nearly separable; it is the strength of the cross-factor innovation
+correlations that sets how far the common block departs from $r$ independent
+sub-sweeps.)
+
+\paragraph{The two choices are separable: our adopted model is Option~A with Specification~II.}
+The placement of the volatility (this subsection) and the attachment of the
+leverage (the previous one) are decisions about \emph{different} objects ---
+the first about $\mathrm{Var}(u_t\mid\mathbf D_t^u,w_t^u)$, the second about
+$\mathrm{Cov}(z_t,\eta^u_t)$ --- and $\mathbf D_t^u$ scales $u_t$ only
+\emph{after} the pair $(z_t,\eta^u_t)$ has been drawn. Neither choice
+constrains the other: any placement combines with any attachment. Our
+adopted model is therefore \textbf{Option~A with Specification~II} ---
+per-factor volatility acting after the mixing, leverage on the raw
+innovations --- and it is a \emph{coherent} combination, not a compromise.
+It keeps both properties each choice was made for: the $r$ volatilities are
+the volatilities of the actual factors (Specification~II), and the $r$
+leverages are clean, independent, well-identified own-channels (Option~A).
+The one feature it deliberately forgoes --- that volatility and leverage act
+on the very \emph{same} coordinate --- is exactly the redundancy declined in
+the previous subsection: as the \textbf{Option~A + Outside} case above
+records, the leverage keys on the raw disturbance $z_{i,t}$ while the
+volatility scales the mixed innovation, which is the intended division of
+labour, the contemporaneous mixing left to $\mQ$ (and the dynamic mixing to
+$\mA$) rather than duplicated inside the leverage channel. Option~B with
+Specification~II would restore the single-coordinate homogeneity, but only by
+re-threading $\mQ^{1/2}$ through the leverage block --- the redundancy
+already argued against. We therefore retain \textbf{A~+~Specification~II} as
+the coherent specification, and use its sandwich covariance
+$\mathbf D_t^u\,\mQ\,\mathbf D_t^u/w_t^u$ throughout what follows.
 
 \newpage
 
