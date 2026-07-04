@@ -16247,7 +16247,7 @@ they make the tails heavy and regime-dependent, those tails are
 D1b-D2b (Student-$t$ tails, full stochastic volatility); the argument is
 identical for the others. Both shocks are conditionally Gaussian:
 \[
-u_t \mid h^u_t, w^u_t \sim \mathcal N\!\big(0,\,h^u_t\,\mQ/w^u_t\big),
+u_t \mid \mathbf H^u_t, w^u_t \sim \mathcal N\!\big(0,\,\sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}/w^u_t\big),
 \qquad
 \varepsilon_t \mid \mathbf H^\varepsilon_t, w^\varepsilon_t \sim \mathcal N\!\big(0,\,\mathbf H^\varepsilon_t\,\mR/w^\varepsilon_t\big),
 \]
@@ -16255,13 +16255,13 @@ or, exposing the Gaussian base shocks $z^u_t\sim\mathcal N(0,\mathbf I_r)$
 and $z^\varepsilon_t\sim\mathcal N(0,\mathbf I_M)$ in \emph{standardized}
 form,
 \[
-u_t \;=\; \sqrt{h^u_t}\;\mQ^{1/2}\,\frac{z^u_t}{\sqrt{w^u_t}},
+u_t \;=\; \sqrt{\mathbf H^u_t}\;\mQ^{1/2}\,\frac{z^u_t}{\sqrt{w^u_t}},
 \qquad
 \varepsilon_{i,t} \;=\; \sqrt{h^\varepsilon_{i,t}\,r_i}\;\frac{z^\varepsilon_{i,t}}{\sqrt{w^\varepsilon_t}} .
 \]
 Now the symmetry is visible \emph{by construction}. In each case the base
 shock ($z^u_t$ or $z^\varepsilon_{i,t}$) is Gaussian, hence symmetric
-about zero, while the volatility multiplier ($h^u_t$ or
+about zero, while the volatility multiplier ($\mathbf H^u_t$ or
 $h^\varepsilon_{i,t}$) and the tail weight ($1/w^u_t$ or
 $1/w^\varepsilon_t$) are \emph{nonnegative scale factors}. Multiplying a
 symmetric shock by a positive scale leaves it symmetric: it stretches the
@@ -16318,7 +16318,7 @@ series is singled out.
 
 \smallskip
 \noindent\emph{Common factor.} In the standardized form
-$u_t=\sqrt{h^u_t}\,\mQ^{1/2}z^u_t$ of the previous subsection, the level
+$u_t=\sqrt{\mathbf H^u_t}\,\mQ^{1/2}z^u_t$ of the previous subsection, the level
 shock $z^u_t\in\mathbb R^r$ and the common log-volatility innovation
 $\eta^u_t$ of \eqref{eq:sv-logvol-u} --- previously independent --- are
 given the joint Gaussian law
@@ -16564,8 +16564,10 @@ Each innovation is a Gaussian base shock rescaled by a persistent
 volatility $h_t$ and a memoryless tail weight $1/w_t$. In conditional
 form,
 \begin{align}
-u_t \mid w^u_t,\,h^u_t
-  &\sim \mathcal N\!\Big(0,\; h^u_t\,\mQ\,/\,w^u_t\Big),
+u_t \mid w^u_t,\,\mathbf H^u_t
+  &\sim \mathcal N\!\Big(0,\; \sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}\,/\,w^u_t\Big),
+  \qquad
+  \mathbf H^u_t=\mathrm{diag}\big(h^u_{1,t},\dots,h^u_{r,t}\big),
   \label{eq:d1bd2b-ushock}\\
 \varepsilon_t \mid w^\varepsilon_t,\,\mathbf H^\varepsilon_t
   &\sim \mathcal N\!\Big(0,\; \mathbf H^\varepsilon_t\,\mR\,/\,w^\varepsilon_t\Big),
@@ -16577,7 +16579,7 @@ or, exposing the standardized Gaussian base shocks
 $z^u_t\sim\mathcal N(0,\mathbf I_r)$ and
 $z^\varepsilon_{i,t}\sim\mathcal N(0,1)$,
 \begin{equation}
-u_t \;=\; \sqrt{h^u_t}\;\mQ^{1/2}\,\frac{z^u_t}{\sqrt{w^u_t}},
+u_t \;=\; \sqrt{\mathbf H^u_t}\;\mQ^{1/2}\,\frac{z^u_t}{\sqrt{w^u_t}},
 \qquad
 \varepsilon_{i,t} \;=\; \sqrt{h^\varepsilon_{i,t}\,r_i}\;\frac{z^\varepsilon_{i,t}}{\sqrt{w^\varepsilon_t}} .
 \label{eq:d1bd2b-standardized}
@@ -16587,15 +16589,16 @@ u_t \;=\; \sqrt{h^u_t}\;\mQ^{1/2}\,\frac{z^u_t}{\sqrt{w^u_t}},
 Every log-volatility, common and idiosyncratic, evolves as an
 independent AR(1),
 \begin{align}
-\log h^u_t &= \mu_u + \phi_u\big(\log h^u_{t-1}-\mu_u\big) + \eta^u_t,
+\log h^u_{i,t} &= \mu_{u,i} + \phi_{u,i}\big(\log h^u_{i,t-1}-\mu_{u,i}\big) + \eta^u_{i,t},
+  \qquad i=1,\dots,r,
   \label{eq:d1bd2b-logvol-u}\\
 \log h^\varepsilon_{i,t}
   &= \mu_{\varepsilon,i} + \phi_{\varepsilon,i}\big(\log h^\varepsilon_{i,t-1}-\mu_{\varepsilon,i}\big) + \eta^\varepsilon_{i,t},
   \qquad i=1,\dots,M,
   \label{eq:d1bd2b-logvol-eps}
 \end{align}
-with persistences $\phi_u,\phi_{\varepsilon,i}\in(-1,1)$ and
-log-volatility innovation variances $\sigma_u^2,\sigma_{\varepsilon,i}^2>0$.
+with persistences $\phi_{u,i},\phi_{\varepsilon,i}\in(-1,1)$ and
+log-volatility innovation variances $\sigma_{u,i}^2,\sigma_{\varepsilon,i}^2>0$.
 
 \paragraph{Channel 2 --- Student-$t$ tail weights (D1-b).}
 The memoryless tail multipliers are inverse Gamma weights, drawn afresh
@@ -16614,7 +16617,7 @@ idiosyncratic vector. Integrating that weight out --- while keeping the
 volatility $h_t$ fixed --- turns the conditional Gaussian into a
 Student-$t$, the usual Gaussian scale-mixture representation of the $t$:
 \[
-u_t\mid h^u_t\;\sim\; t_{\nu_u}\!\big(0,\,h^u_t\,\mQ\big),
+u_t\mid \mathbf H^u_t\;\sim\; t_{\nu_u}\!\big(0,\,\sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}\big),
 \qquad
 \varepsilon_t\mid\mathbf H^\varepsilon_t\;\sim\; t_{\nu_\varepsilon}\!\big(0,\,\mathbf H^\varepsilon_t\,\mR\big),
 \]
@@ -16705,7 +16708,7 @@ standardized map \eqref{eq:d1bd2b-standardized}; and (v) update the level
 through the state and observation equations
 \eqref{eq:d1bd2b-state}--\eqref{eq:d1bd2b-obs}. The latent objects carried
 across periods are the factors $f_t$, the log-volatilities
-$\log h^u_t,\log h^\varepsilon_{i,t}$, and (for the lagged timing) the
+$\log h^u_{i,t},\log h^\varepsilon_{i,t}$, and (for the lagged timing) the
 one-period link between $z_t$ and $\eta_{t+1}$.
 
 \subsection{Collapsing back: leverage \texorpdfstring{$\to$}{->} Student-\texorpdfstring{$t$}{t} \texorpdfstring{$\to$}{->} Gaussian}
@@ -16732,7 +16735,7 @@ channels --- but the density can no longer lean: this is the
 \emph{symmetric} Student-$t$-with-SV model,
 \[
 \begin{aligned}
-f_t &= \mA\,f_{t-1}+u_t, & u_t\mid w^u_t,h^u_t &\sim\mathcal N\!\big(0,\,h^u_t\,\mQ/w^u_t\big),\\
+f_t &= \mA\,f_{t-1}+u_t, & u_t\mid w^u_t,\mathbf H^u_t &\sim\mathcal N\!\big(0,\,\sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}/w^u_t\big),\\
 y_t &= \mL\,f_t+\varepsilon_t, & \varepsilon_t\mid w^\varepsilon_t,\mathbf H^\varepsilon_t &\sim\mathcal N\!\big(0,\,\mathbf H^\varepsilon_t\,\mR/w^\varepsilon_t\big),
 \end{aligned}
 \]
@@ -16742,9 +16745,9 @@ Skewness disappears; excess kurtosis and regime-dependent scale remain.
 point, since it too has zero off-diagonal once $\boldsymbol\rho=0$.)
 
 \paragraph{Step 2 --- freeze the volatilities ($\sigma^2=0$, $\mu=0$).}
-Freezing every log-volatility state ($\sigma_u^2=0,\mu_u=0$ and
+Freezing every log-volatility state ($\sigma_{u,i}^2=0,\mu_{u,i}=0$ and
 $\sigma_{\varepsilon,i}^2=0,\mu_{\varepsilon,i}=0$ for all $i$) forces
-$h^u_t\equiv1$ and $\mathbf H^\varepsilon_t\equiv\mathbf I_M$ for all $t$,
+$\mathbf H^u_t\equiv\mathbf I_r$ and $\mathbf H^\varepsilon_t\equiv\mathbf I_M$ for all $t$,
 so \eqref{eq:d1bd2b-logvol-u}--\eqref{eq:d1bd2b-logvol-eps} become
 degenerate and drop out. The persistent channel is gone and only the
 Student-$t$ tail weight survives, returning the \textbf{first-stage
