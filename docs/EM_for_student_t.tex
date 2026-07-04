@@ -15561,6 +15561,214 @@ takes the \emph{stochastic-volatility} route as its main line, while
 retaining Markov switching as the natural discrete-state alternative;
 the next section sets out the specific variants in full.
 
+\subsection{Where the common leverage attaches under a full \texorpdfstring{$\mQ$}{Q}: raw factor innovations vs.\ structural shocks}
+\label{subsec:lev-attach-choice}
+
+\paragraph{Per-factor volatility, and the fork it opens for the leverage.}
+We equip \emph{each} common factor with its own stochastic volatility: a
+log-volatility $h^u_{i,t}$ per factor, $i=1,\dots,r$, each carrying its own
+AR(1) innovation $\eta^u_{i,t}$. This is the factor-side counterpart of the
+per-series idiosyncratic volatilities, and it lets each factor's conditional
+scale breathe independently of the others. Placing a leverage effect on this
+block then requires a decision that is genuine rather than cosmetic: each
+volatility innovation $\eta^u_{i,t}$ must be correlated with \emph{some}
+scalar level disturbance, and because the factor innovation is assembled
+through the \emph{full}, dense matrix $\mQ$, there are two genuinely
+different disturbances it could be --- the \emph{raw} base shock that belongs
+to equation $i$ before $\mQ$ mixes the factors, or the \emph{structural}
+innovation that hits factor $i$ after that mixing. The choice is invisible
+when $\mQ$ is diagonal (the two coincide componentwise); with a full $\mQ$ it
+becomes a real modelling fork, and this subsection settles it.
+
+\paragraph{The two disturbances, made explicit.}
+Write the factor innovation in standardized form. Let
+$z_t=(z_{1,t},\dots,z_{r,t})'\sim\mathcal N(0,\mathbf I_r)$ be the $r$
+mutually independent \emph{base shocks} --- one per factor equation --- let
+$\mathbf D^u_t=\mathrm{diag}\big(\sqrt{h^u_{1,t}},\dots,\sqrt{h^u_{r,t}}\big)$
+collect the per-factor volatilities, and let $w^u_t$ be the tail weight.
+The innovation is
+\begin{equation}
+u_t \;=\; \mathbf D^u_t\,\mQ^{1/2}\,\frac{z_t}{\sqrt{w^u_t}},
+\qquad
+\mathrm{Var}\!\big(u_t\mid \mathbf D^u_t,w^u_t\big)
+   \;=\; \mathbf D^u_t\,\mQ\,\mathbf D^u_t\big/w^u_t,
+\label{eq:lev-attach-innov}
+\end{equation}
+the sandwich form $\sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}$ that a
+full $\mQ$ forces (with $\mQ$ diagonal it would collapse to the
+componentwise $h^u_{i,t}\,q_{ii}$). Reading
+\eqref{eq:lev-attach-innov} from the inside out exposes \emph{two} vectors
+of shocks that coexist in the same equation:
+\begin{itemize}
+\item the \textbf{raw factor innovations} $z_{i,t}$ --- the own,
+      pre-mixing disturbance of factor $i$'s equation, mutually
+      \emph{independent} across $i$ ($\mathrm{Cov}(z_t)=\mathbf I_r$);
+\item the \textbf{structural shocks}
+      $\zeta_{i,t}\equiv(\mQ^{1/2}z_t)_i$ --- the disturbance that
+      \emph{actually} hits factor $i$ once $\mQ^{1/2}$ has blended the base
+      shocks, mutually \emph{correlated} across $i$
+      ($\mathrm{Cov}(\zeta_t)=\mQ$).
+\end{itemize}
+The leverage must couple each volatility innovation $\eta^u_{i,t}$ to one of
+these two. That is the entire content of the fork.
+
+\paragraph{Option A --- leverage on the raw factor innovations.}
+Correlate $\eta^u_{i,t}$ with the \emph{own base shock} $z_{i,t}$, one
+factor at a time. Under the contemporaneous timing this is $r$
+\emph{independent} bivariate Gaussian couplings,
+\begin{equation}
+\begin{pmatrix} z_{i,t} \\[2pt] \eta^u_{i,t}\end{pmatrix}
+\;\sim\;
+\mathcal N\!\left(
+\begin{pmatrix} 0\\[2pt] 0\end{pmatrix},\;
+\begin{pmatrix} 1 & \sigma_{u,i}\,\rho_i \\[2pt] \sigma_{u,i}\,\rho_i & \sigma_{u,i}^2 \end{pmatrix}
+\right),
+\qquad \rho_i\in(-1,1),\quad i=1,\dots,r,
+\label{eq:lev-attach-A}
+\end{equation}
+independently across $i$, so that $\mathrm{Corr}(z_{i,t},\eta^u_{i,t})=\rho_i$
+and $\mathrm{Corr}(z_{k,t},\eta^u_{i,t})=0$ for $k\neq i$. Stacking the two
+$r$-vectors $z_t$ and $\eta^u_t=(\eta^u_{1,t},\dots,\eta^u_{r,t})'$, the
+cross-covariance block is \emph{diagonal},
+\begin{equation}
+\mathrm{Cov}\big(z_t,\eta^u_t\big)
+   \;=\; \mathrm{diag}\big(\sigma_{u,1}\rho_1,\dots,\sigma_{u,r}\rho_r\big),
+\qquad\text{i.e.}\qquad
+\mathrm{Cov}\big(z_{k,t},\eta^u_{i,t}\big)=\sigma_{u,i}\,\rho_i\,\delta_{ik}.
+\label{eq:lev-attach-A-cov}
+\end{equation}
+Crucially, $\mQ^{1/2}$ \emph{does not appear} in the coupling
+\eqref{eq:lev-attach-A}--\eqref{eq:lev-attach-A-cov}. It enters only
+\emph{afterwards}, in \eqref{eq:lev-attach-innov}, when the leveraged base
+shocks are assembled into the innovation $u_t$. The leverage lives
+\emph{upstream} of the mixing.
+
+\paragraph{Option B --- leverage on the structural shocks.}
+Correlate $\eta^u_{i,t}$ instead with the \emph{structural} innovation
+$\zeta_{i,t}=(\mQ^{1/2}z_t)_i$, standardized by its own scale
+$\sqrt{q_{ii}}$ (with $q_{ii}=(\mQ)_{ii}$) so that the correlation is again
+$\rho_i$,
+\begin{equation}
+\mathrm{Corr}\!\left(\frac{(\mQ^{1/2}z_t)_i}{\sqrt{q_{ii}}},\;\eta^u_{i,t}\right)=\rho_i .
+\label{eq:lev-attach-B}
+\end{equation}
+Because $\zeta_{i,t}=\sum_{k}(\mQ^{1/2})_{ik}\,z_{k,t}$ is a $\mQ^{1/2}$-weighted
+\emph{blend of every} base shock, the coupling \eqref{eq:lev-attach-B} no
+longer ties $\eta^u_{i,t}$ to a single $z_{i,t}$; it ties it to the whole
+vector $z_t$ through the $i$-th row of $\mQ^{1/2}$. The cross-covariance
+block is now \emph{full}:
+\begin{equation}
+\mathrm{Cov}\big(z_{k,t},\eta^u_{i,t}\big)
+   \;=\; \sigma_{u,i}\,\rho_i\,\frac{(\mQ^{1/2})_{ik}}{\sqrt{q_{ii}}},
+\label{eq:lev-attach-B-cov}
+\end{equation}
+which for a dense $\mQ$ is non-zero in \emph{every} entry, not only on the
+diagonal. Comparing \eqref{eq:lev-attach-A-cov} with
+\eqref{eq:lev-attach-B-cov} isolates the difference in one line: Option~A
+sets the cross-block to $\mathrm{diag}(\sigma_{u,i}\rho_i)$, Option~B sets
+it to $\mathrm{diag}(\sigma_{u,i}\rho_i)\,\widehat{\mQ}^{1/2}$ with
+$\widehat{\mQ}^{1/2}$ the row-standardized square root --- the leverage
+now carries a factor of $\mQ^{1/2}$ that Option~A does not. Where Option~A
+places the leverage upstream of $\mQ^{1/2}$, Option~B threads $\mQ^{1/2}$
+\emph{into} the leverage block itself.
+
+\paragraph{The case for Option~B, stated fairly.}
+Option~B is not a straw man; it has a genuine and even natural
+rationale. Its merit is that it binds each volatility to the
+\emph{structural} disturbance --- the shock that literally moves factor
+$i$ once the system's contemporaneous mechanics have acted --- rather than
+to a standardized coordinate $z_{i,t}$ that has no free-standing
+interpretation of its own. In a structural (SVAR) reading, where the
+orthogonalised shocks are taken as the primitive economic disturbances and
+$\mQ^{1/2}$ is the impact map that turns them into the observed
+innovations, it is precisely the structural shock whose sign one would want
+the volatility to answer to: the leverage effect is a statement about the
+\emph{true} disturbance hitting the factor, and $\zeta_{i,t}$ is that
+disturbance. Indeed, in a model whose \emph{only} cross-factor structure
+lived in $\mQ$ --- a static or near-static transition, with the factors'
+co-movement carried entirely by the contemporaneous covariance --- Option~B
+would be the principled choice, the only way to let the volatility respond
+to the genuine combined shock rather than to an artefact of the
+whitening basis. Under those premises B is the correct specification, and
+it is worth conceding this plainly before explaining why our premises are
+not those.
+
+\paragraph{Why we adopt Option~A.}
+The decisive point is \emph{where the cross-factor structure of our model
+already lives}. Ours is a VAR(1) with a \emph{full} transition matrix
+$\mA$, and that matrix is not incidental: its off-diagonal entries are the
+model's account of how the factors influence one another, a shock to the
+financial factor at $t-1$ feeding the real factor at $t$ through
+$\mathbf A_{\text{RF}}$. The interdependence among factors --- the very
+``mixing'' that Option~B reaches for --- is therefore \emph{already
+modelled}, and modelled where it economically belongs: in the
+\emph{dynamics}. The factor innovation $u_t=f_t-\mA f_{t-1}$ is, by
+construction, what remains \emph{after} that dynamic co-movement has been
+removed; it is the own, unpredictable disturbance of the period, and its
+standardized coordinates $z_t=\mQ^{-1/2}\mathbf D^{u\,-1}_t u_t$ are the
+cleanest available representation of ``factor $i$'s own shock this
+period.'' Coupling the volatility to \emph{these} --- Option~A --- assigns
+the leverage exactly the role left for it: the asymmetry between a factor's
+\emph{own} shock and its \emph{own} volatility, a scalar-on-scalar link,
+one channel per factor.
+
+Option~B, by re-introducing $\mQ^{1/2}$ into the leverage block, would make
+each factor's volatility respond to a $\mQ$-weighted blend of \emph{all}
+factors' shocks. But that contemporaneous blending is \emph{already}
+carried by $\mQ$ inside the innovation covariance
+\eqref{eq:lev-attach-innov}, on top of the dynamic blending already carried
+by $\mA$. B would thus re-perform, inside the leverage channel, a mixing
+the model executes twice over elsewhere --- once dynamically through $\mA$,
+once contemporaneously through $\mQ$. This is \emph{redundancy, not extra
+structure}: it buys no economic mechanism the model lacks, while
+entangling the leverage parameters $\rho_i$ with the entire geometry of
+$\mQ$ and forfeiting the plain reading of $\rho_i$ as the leverage of
+factor $i$ on itself. The clean division of labour that makes the
+specification legible ---
+\begin{center}
+\emph{$\mA$ carries the dynamic (lagged) interdependence,\quad
+$\mQ$ the contemporaneous correlation,\quad
+$\boldsymbol\rho$ the own-volatility/own-shock asymmetry}
+\end{center}
+--- is respected exactly by Option~A and trespassed by Option~B, which lets
+the leverage reach back into $\mQ$'s territory.
+
+There is, finally, an identification dividend. Option~A keeps $r$
+\emph{separate}, one-to-one channels: $\rho_i$ couples $\eta^u_{i,t}$ with
+$z_{i,t}$ alone, each factor's leverage riding its \emph{own} independent
+volatility process. This is structurally identical to the $M$ idiosyncratic
+scalar leverages --- a scalar level shock correlated with a scalar
+volatility innovation, with no orthogonal directions left for the data to
+leave unexercised --- and it is therefore \emph{well posed}, exactly as they
+are: $r$ clean, independent own-channels, each an estimable scalar
+correlation. Option~B would squander this: by routing every $\rho_i$ through
+the shared $\mQ^{1/2}$ geometry it re-couples the $r$ leverages, so their
+identification would once again lean on the common covariance structure
+rather than on $r$ clean, independent own-channels. Adopting~A keeps the
+leverages as decoupled and as well identified as the per-factor construction
+allows.
+
+\paragraph{Decision.}
+We adopt \textbf{Option~A}: the common leverage correlates each
+volatility innovation $\eta^u_{i,t}$ with the \emph{raw} factor innovation
+$z_{i,t}$, one independent channel per factor, as in
+\eqref{eq:lev-attach-A}--\eqref{eq:lev-attach-A-cov}, with $\mQ^{1/2}$
+entering only downstream in the assembly of $u_t$. The reasons are
+substantive, not merely aesthetic: the cross-factor interdependence
+Option~B would re-mix is \emph{already} captured by the full transition
+matrix $\mA$ (dynamically) and by $\mQ$ (contemporaneously), so leverage on
+the raw innovations is \emph{sufficient} and re-mixing it through
+$\mQ^{1/2}$ is redundant; and the raw-innovation coupling keeps the $r$
+common leverages one-to-one with $r$ independent volatility processes,
+delivering clean identification: $r$ scalars, as well posed as the
+idiosyncratic ones. Option~B remains a coherent alternative under a different
+architecture (one in which $\mQ$ alone carried the factors' co-movement);
+it is superseded here \emph{by argument}, because in our architecture the
+mixing it honours is already the province of $\mA$ and $\mQ$. The same
+choice applies verbatim to the lagged timing, re-indexing the coupled
+volatility innovation from $\eta^u_{i,t}$ to $\eta^u_{i,t+1}$ and leaving
+\eqref{eq:lev-attach-A}--\eqref{eq:lev-attach-A-cov} otherwise unchanged.
+
 \subsection{Formal Specification of the Stochastic-Volatility Variants}
 \label{sec:sv-variants}
 
@@ -15609,11 +15817,12 @@ multiplicative channels that play distinct roles. We factor that
 variance into a fixed base scale --- the matrices $\mQ$ and $\mR$ of the
 baseline --- times two strictly positive multipliers: a persistent
 stochastic-volatility term $h_t$ and a tail term $s_t$. For the factor
-innovation this reads
+innovation, writing
+$\mathbf{H}^u_t = \mathrm{diag}(h^u_{1,t},\dots,h^u_{r,t})$ for the
+per-factor volatilities, this reads
 \[
-u_t \mid w^u_t, h^u_t \;\sim\; \mathcal{N}\!\Big(0,\;
-\underbrace{\mQ}_{\substack{\text{base}\\ \text{scale}}}\;\cdot\;
-\underbrace{h^u_t}_{\substack{\text{persistent}\\ \text{volatility}}}\;
+u_t \mid w^u_t, \mathbf{H}^u_t \;\sim\; \mathcal{N}\!\Big(0,\;
+\underbrace{\sqrt{\mathbf{H}^u_t}\,\mQ\,\sqrt{\mathbf{H}^u_t}}_{\substack{\text{base scale }\mQ\text{, flanked}\\ \text{by the per-factor volatilities}}}\;
 \underbrace{\tfrac{1}{w^u_t}}_{\substack{\text{tail}\\ s^u_t}}\Big),
 \]
 and for the idiosyncratic vector, writing
@@ -15655,8 +15864,8 @@ saying plainly what each one is and what it does.
 The persistent component follows, for each active state, an independent
 log-volatility AR(1) process,
 \begin{align}
-\log h^u_t &= \mu_u + \phi_u\big(\log h^u_{t-1}-\mu_u\big) + \eta^u_t, &
-\eta^u_t &\sim \mathcal{N}(0,\sigma_u^2),
+\log h^u_{i,t} &= \mu_{u,i} + \phi_{u,i}\big(\log h^u_{i,t-1}-\mu_{u,i}\big) + \eta^u_{i,t}, &
+\eta^u_{i,t} &\sim \mathcal{N}(0,\sigma_{u,i}^2),\quad i=1,\dots,r,
 \label{eq:sv-logvol-u}\\
 \log h^\varepsilon_{i,t} &= \mu_{\varepsilon,i} + \phi_{\varepsilon,i}\big(\log h^\varepsilon_{i,t-1}-\mu_{\varepsilon,i}\big) + \eta^\varepsilon_{i,t}, &
 \eta^\varepsilon_{i,t} &\sim \mathcal{N}(0,\sigma_{\varepsilon,i}^2),
@@ -15677,11 +15886,15 @@ two channels statistically distinct, so that $h_t$ is identified by the
 \paragraph{Identification: fixing the level $\mu=0$.}
 The level of each log-volatility process is, by construction,
 \emph{not identified} separately from the base scale. Only the
-\emph{products} $h^u_t\,\mQ$ and $h^\varepsilon_{i,t}\,r_i$ enter the
-conditional variances written above, so a constant shift of a
-log-volatility path, $\log h_t\mapsto\log h_t+c$, is exactly undone by a
-rescaling of the corresponding base matrix, $\mQ\mapsto e^{-c}\mQ$ (resp.\
-$r_i\mapsto e^{-c}r_i$): the two parametrisations imply the very same law
+\emph{products} $\sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}$ and
+$h^\varepsilon_{i,t}\,r_i$ enter the conditional variances written above,
+so a constant shift of a log-volatility path, $\log h^u_{i,t}\mapsto\log
+h^u_{i,t}+c_i$ (resp.\ $\log h^\varepsilon_{i,t}\mapsto\log
+h^\varepsilon_{i,t}+c$), is exactly undone by a compensating
+reparametrisation of the corresponding base matrix --- the diagonal
+congruence $\mQ\mapsto\mathbf C^{-1}\mQ\,\mathbf C^{-1}$ with $\mathbf
+C=\mathrm{diag}(e^{c_i/2})$ on the factor side, and $r_i\mapsto e^{-c}r_i$
+on the idiosyncratic side: the two parametrisations imply the very same law
 for the data. Equivalently, the unconditional volatility level
 $\mathbb E[h_t]=\exp\!\big(\mu+\tfrac12\sigma^2/(1-\phi^2)\big)$ is
 absorbed into $\mQ,\mR$ and cannot be read off the data on its own. The
@@ -15691,7 +15904,7 @@ compensation.
 
 We remove the redundancy by the identification convention
 \begin{equation}
-\mu_u=0,\qquad \mu_{\varepsilon,i}=0\quad(i=1,\dots,M),
+\mu_{u,i}=0\quad(i=1,\dots,r),\qquad \mu_{\varepsilon,i}=0\quad(i=1,\dots,M),
 \label{eq:sv-mu-identification}
 \end{equation}
 fixing the long-run level of \emph{every} log-volatility process at zero.
@@ -15749,8 +15962,9 @@ variance $\sigma^2>0$ and \emph{frozen} when $\sigma^2=0$, $\mu=0$
 (forcing $h_t\equiv1$ for all $t$ --- the persistence $\phi$ then
 irrelevant --- which switches the channel off). The two scopes are:
 \begin{itemize}
-\item[\textbf{D2-a}] only the common factor volatility $h^u_t$ is active;
-\item[\textbf{D2-b}] the common volatility \emph{and} every idiosyncratic
+\item[\textbf{D2-a}] only the $r$ common factor volatilities $h^u_{i,t}$,
+      $i=1,\dots,r$, are active;
+\item[\textbf{D2-b}] the common volatilities \emph{and} every idiosyncratic
       volatility $h^\varepsilon_{i,t}$, $i=1,\dots,M$, are active.
 \end{itemize}
 
@@ -15768,11 +15982,12 @@ D1-c reduce to a thin-tailed Gaussian DFM.
       The complete DGP is
       \[
       \begin{aligned}
-      f_t &= \mA\,f_{t-1} + u_t, & u_t\mid h^u_t &\sim \mathcal{N}\!\big(0,\,h^u_t\,\mQ\big),\\
+      f_t &= \mA\,f_{t-1} + u_t, & u_t\mid \mathbf H^u_t &\sim \mathcal{N}\!\big(0,\,\sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}\big),\\
       y_t &= \mL\,f_t + \varepsilon_t, & \varepsilon_t\mid \mathbf H^\varepsilon_t &\sim \mathcal{N}\!\big(0,\,\mathbf H^\varepsilon_t\,\mR\big),
       \end{aligned}
       \]
-      with $\mathbf H^\varepsilon_t=\mathrm{diag}(h^\varepsilon_{1,t},\dots,h^\varepsilon_{M,t})$
+      with $\mathbf H^u_t=\mathrm{diag}(h^u_{1,t},\dots,h^u_{r,t})$,
+      $\mathbf H^\varepsilon_t=\mathrm{diag}(h^\varepsilon_{1,t},\dots,h^\varepsilon_{M,t})$,
       and the active log-volatilities following
       \eqref{eq:sv-logvol-u}--\eqref{eq:sv-logvol-eps}. Heavy tails come
       \emph{only} from movements in $h_t$; a smooth, persistent $h_t$
@@ -15780,7 +15995,7 @@ D1-c reduce to a thin-tailed Gaussian DFM.
       one-period jump.
 
       \emph{Nesting.} Freezing every volatility state
-      ($\sigma^2=0,\mu=0\Rightarrow h^u_t\equiv1$,
+      ($\sigma^2=0,\mu=0\Rightarrow \mathbf H^u_t\equiv\mathbf I_r$,
       $\mathbf H^\varepsilon_t\equiv\mathbf I$) removes the SV channel and
       leaves the thin-tailed \textbf{Gaussian DFM},
       \[
@@ -15797,7 +16012,7 @@ D1-c reduce to a thin-tailed Gaussian DFM.
       volatility states. The complete DGP is
       \[
       \begin{aligned}
-      f_t &= \mA\,f_{t-1} + u_t, & u_t\mid w^u_t,h^u_t &\sim \mathcal{N}\!\big(0,\,h^u_t\,\mQ/w^u_t\big),\\
+      f_t &= \mA\,f_{t-1} + u_t, & u_t\mid w^u_t,\mathbf H^u_t &\sim \mathcal{N}\!\big(0,\,\sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}/w^u_t\big),\\
       y_t &= \mL\,f_t + \varepsilon_t, & \varepsilon_t\mid w^\varepsilon_t,\mathbf H^\varepsilon_t &\sim \mathcal{N}\!\big(0,\,\mathbf H^\varepsilon_t\,\mR/w^\varepsilon_t\big),
       \end{aligned}
       \]
@@ -15810,7 +16025,7 @@ D1-c reduce to a thin-tailed Gaussian DFM.
       within-regime outliers.
 
       \emph{Nesting.} Freezing every volatility state
-      ($h^u_t\equiv1$, $\mathbf H^\varepsilon_t\equiv\mathbf I$) returns
+      ($\mathbf H^u_t\equiv\mathbf I_r$, $\mathbf H^\varepsilon_t\equiv\mathbf I$) returns
       \textbf{our Student-$t$ DFM}
       \eqref{eq:sv-baseline-state}--\eqref{eq:sv-baseline-obs},
       \[
@@ -15831,7 +16046,7 @@ D1-c reduce to a thin-tailed Gaussian DFM.
       ($\kappa>1$, $o_t\in\{0,1\}$). The complete DGP is
       \[
       \begin{aligned}
-      f_t &= \mA\,f_{t-1} + u_t, & u_t\mid h^u_t,o^u_t &\sim \mathcal{N}\!\big(0,\,(1+(\kappa_u^2-1)o^u_t)\,h^u_t\,\mQ\big),\\
+      f_t &= \mA\,f_{t-1} + u_t, & u_t\mid \mathbf H^u_t,o^u_t &\sim \mathcal{N}\!\big(0,\,(1+(\kappa_u^2-1)o^u_t)\,\sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}\big),\\
       y_t &= \mL\,f_t + \varepsilon_t, & \varepsilon_t\mid \mathbf H^\varepsilon_t,o^\varepsilon_t &\sim \mathcal{N}\!\big(0,\,(1+(\kappa_\varepsilon^2-1)o^\varepsilon_t)\,\mathbf H^\varepsilon_t\,\mR\big),
       \end{aligned}
       \]
@@ -15905,14 +16120,14 @@ D1-c reduce to a thin-tailed Gaussian DFM.
 \paragraph{The volatility-scope axis (D2).}
 The second switch fixes which volatility states are active:
 \begin{itemize}
-\item[\textbf{D2-a}] \emph{common only} --- only $h^u_t$ is active, every
-      idiosyncratic state frozen ($\mathbf H^\varepsilon_t\equiv\mathbf I$);
-      systemic, economy-wide swings in volatility are captured,
-      series-specific ones are not.
-\item[\textbf{D2-b}] \emph{common plus all idiosyncratic} --- $h^u_t$ and
-      every $h^\varepsilon_{i,t}$ are active, so each series carries its
-      own persistent volatility on top of the common one. This is the
-      most general scope and our preferred one.
+\item[\textbf{D2-a}] \emph{common only} --- only the $r$ common
+      volatilities $h^u_{i,t}$ are active, every idiosyncratic state frozen
+      ($\mathbf H^\varepsilon_t\equiv\mathbf I$); systemic, economy-wide
+      swings in volatility are captured, series-specific ones are not.
+\item[\textbf{D2-b}] \emph{common plus all idiosyncratic} --- the $r$
+      common $h^u_{i,t}$ and every $h^\varepsilon_{i,t}$ are active, so each
+      series carries its own persistent volatility on top of the common
+      ones. This is the most general scope and our preferred one.
 \end{itemize}
 We deliberately omit a scope that activates idiosyncratic volatility on
 the \emph{target series alone}: it would privilege GDP for no structural
@@ -15930,28 +16145,31 @@ $y_t=\mL f_t+\varepsilon_t$, the factor transition $f_t=\mA f_{t-1}+u_t$,
 the Gamma weights where present, and the log-volatility processes
 \eqref{eq:sv-logvol-u}--\eqref{eq:sv-logvol-eps} for the active states
 --- and differ \emph{only} in the tail multiplier $s_t$ and in which $h$
-are active. Writing $h^u_t$ for the (always-active) common volatility and
+are active. Writing $\mathbf H^u_t=\mathrm{diag}(h^u_{1,t},\dots,h^u_{r,t})$
+for the (always-active) common volatilities,
 $\mathbf H^\varepsilon_t=\mathrm{diag}(h^\varepsilon_{1,t},\dots,h^\varepsilon_{M,t})$
 for the idiosyncratic ones (with $\mathbf H^\varepsilon_t\equiv\mathbf I$
-under D2-a), the six conditional laws of the shocks are:
+under D2-a), and $\widetilde{\mathbf Q}^u_t\equiv\sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}$
+for the volatility-dressed factor scale, the six conditional laws of the
+shocks are:
 \begin{itemize}
-\item[\textbf{D1a-D2a}] $u_t\mid\cdot\sim\mathcal N(0,\,h^u_t\mQ)$,\;
+\item[\textbf{D1a-D2a}] $u_t\mid\cdot\sim\mathcal N(0,\,\widetilde{\mathbf Q}^u_t)$,\;
       $\varepsilon_t\mid\cdot\sim\mathcal N(0,\,\mR)$.\;
       \emph{Nests} the Gaussian DFM.
-\item[\textbf{D1a-D2b}] $u_t\mid\cdot\sim\mathcal N(0,\,h^u_t\mQ)$,\;
+\item[\textbf{D1a-D2b}] $u_t\mid\cdot\sim\mathcal N(0,\,\widetilde{\mathbf Q}^u_t)$,\;
       $\varepsilon_t\mid\cdot\sim\mathcal N(0,\,\mathbf H^\varepsilon_t\mR)$.\;
       \emph{Nests} the Gaussian DFM.
-\item[\textbf{D1b-D2a}] $u_t\mid\cdot\sim\mathcal N(0,\,h^u_t\mQ/w^u_t)$,\;
+\item[\textbf{D1b-D2a}] $u_t\mid\cdot\sim\mathcal N(0,\,\widetilde{\mathbf Q}^u_t/w^u_t)$,\;
       $\varepsilon_t\mid\cdot\sim\mathcal N(0,\,\mR/w^\varepsilon_t)$.\;
       \emph{Nests} our Student-$t$ DFM.
 \item[\textbf{D1b-D2b}] \emph{(preferred)}\;
-      $u_t\mid\cdot\sim\mathcal N(0,\,h^u_t\mQ/w^u_t)$,\;
+      $u_t\mid\cdot\sim\mathcal N(0,\,\widetilde{\mathbf Q}^u_t/w^u_t)$,\;
       $\varepsilon_t\mid\cdot\sim\mathcal N(0,\,\mathbf H^\varepsilon_t\mR/w^\varepsilon_t)$.\;
       \emph{Nests} our Student-$t$ DFM.
-\item[\textbf{D1c-D2a}] $u_t\mid\cdot\sim\mathcal N(0,\,s^u_t\,h^u_t\mQ)$,\;
+\item[\textbf{D1c-D2a}] $u_t\mid\cdot\sim\mathcal N(0,\,s^u_t\,\widetilde{\mathbf Q}^u_t)$,\;
       $\varepsilon_t\mid\cdot\sim\mathcal N(0,\,s^\varepsilon_t\,\mR)$.\;
       \emph{Nests} the Gaussian DFM.
-\item[\textbf{D1c-D2b}] $u_t\mid\cdot\sim\mathcal N(0,\,s^u_t\,h^u_t\mQ)$,\;
+\item[\textbf{D1c-D2b}] $u_t\mid\cdot\sim\mathcal N(0,\,s^u_t\,\widetilde{\mathbf Q}^u_t)$,\;
       $\varepsilon_t\mid\cdot\sim\mathcal N(0,\,s^\varepsilon_t\,\mathbf H^\varepsilon_t\mR)$.\;
       \emph{Nests} the Gaussian DFM.
 \end{itemize}
@@ -15965,23 +16183,24 @@ For concreteness we write two cells out in full. The preferred cell
 \textbf{D1b-D2b} is
 \[
 \begin{aligned}
-f_t &= \mA\,f_{t-1} + u_t, & u_t\mid w^u_t,h^u_t &\sim \mathcal N\!\big(0,\,h^u_t\,\mQ/w^u_t\big),\\
+f_t &= \mA\,f_{t-1} + u_t, & u_t\mid w^u_t,\mathbf H^u_t &\sim \mathcal N\!\big(0,\,\sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}/w^u_t\big),\\
 y_t &= \mL\,f_t + \varepsilon_t, & \varepsilon_t\mid w^\varepsilon_t,\mathbf H^\varepsilon_t &\sim \mathcal N\!\big(0,\,\mathbf H^\varepsilon_t\,\mR/w^\varepsilon_t\big),
 \end{aligned}
 \]
 with $w^u_t,w^\varepsilon_t$ Gamma as above,
+$\mathbf H^u_t=\mathrm{diag}(h^u_{1,t},\dots,h^u_{r,t})$,
 $\mathbf H^\varepsilon_t=\mathrm{diag}(h^\varepsilon_{1,t},\dots,h^\varepsilon_{M,t})$,
-and $\log h^u_t$ and every $\log h^\varepsilon_{i,t}$ following
+and every $\log h^u_{i,t}$ and every $\log h^\varepsilon_{i,t}$ following
 \eqref{eq:sv-logvol-u}--\eqref{eq:sv-logvol-eps}. The most distant
 \textbf{contrast} cell \textbf{D1a-D2a} (Gaussian tails, common
 volatility only) is
 \[
 \begin{aligned}
-f_t &= \mA\,f_{t-1} + u_t, & u_t\mid h^u_t &\sim \mathcal N\!\big(0,\,h^u_t\,\mQ\big),\\
+f_t &= \mA\,f_{t-1} + u_t, & u_t\mid \mathbf H^u_t &\sim \mathcal N\!\big(0,\,\sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}\big),\\
 y_t &= \mL\,f_t + \varepsilon_t, & \varepsilon_t &\sim \mathcal N\!\big(0,\,\mR\big),
 \end{aligned}
 \]
-with only $\log h^u_t$ active (\eqref{eq:sv-logvol-u}) and no tail weight
+with only the $\log h^u_{i,t}$ active (\eqref{eq:sv-logvol-u}) and no tail weight
 on either shock.
 
 \emph{Nesting, in one picture.} The tail switch D1 alone decides what a
@@ -16095,12 +16314,7 @@ stochastic volatility, the innovation that moves the \emph{level} with the
 innovation that moves its \emph{(log-)volatility}. The coupling applies
 \emph{uniformly} to every volatility process in the model --- the common
 factor and, under scope D2-b, each idiosyncratic component --- so that no
-series is singled out. (The uniformity is one of \emph{form}; the
-\emph{identifiability} of the resulting parameters is not uniform --- the
-common leverage is a vector and only one scalar combination of it is
-identified by the data, whereas the idiosyncratic leverages are scalars and
-well posed --- an asymmetry we take up in
-\S\ref{subsec:common-lev-identif}.)
+series is singled out.
 
 \smallskip
 \noindent\emph{Common factor.} In the standardized form
@@ -16307,219 +16521,6 @@ unforeseeable event can be predicted. It is the right mechanism for
 skewness, but it leaves the non-forecastability of events like Covid
 exactly where it was --- a property of the world, discussed earlier, not
 a defect the model can repair.
-
-\subsection{Where the common leverage attaches under a full \texorpdfstring{$\mQ$}{Q}: raw factor innovations vs.\ structural shocks}
-\label{subsec:lev-attach-choice}
-
-\paragraph{A fork that only opens once each factor has its own volatility.}
-In the scalar-volatility model the common block carried a \emph{single}
-log-volatility $h^u_t$ and a \emph{single} innovation $\eta^u_t$, so there
-was nothing to decide: whatever the leverage correlated the level with, it
-was that one innovation. The refactoring to \emph{one volatility per
-factor} --- $h^u_{i,t}$ with its own AR(1) innovation $\eta^u_{i,t}$,
-$i=1,\dots,r$ --- changes this. Now each $\eta^u_{i,t}$ must be correlated
-with \emph{some} scalar level disturbance, and because the factor
-innovation is assembled through the \emph{full}, dense matrix $\mQ$, there
-are two genuinely different disturbances it could be: the \emph{raw} base
-shock that belongs to equation $i$ before $\mQ$ mixes the factors, or the
-\emph{structural} innovation that hits factor $i$ after that mixing. The
-choice is invisible when $\mQ$ is diagonal (the two coincide componentwise)
-and invisible when the volatility is scalar (there is only one $\eta$); it
-becomes a real modelling fork precisely in our case --- full $\mQ$ and one
-$\eta$ per factor --- and this subsection settles it.
-
-\paragraph{The two disturbances, made explicit.}
-Recall the refactored factor innovation, written in standardized form. Let
-$z_t=(z_{1,t},\dots,z_{r,t})'\sim\mathcal N(0,\mathbf I_r)$ be the $r$
-mutually independent \emph{base shocks} --- one per factor equation --- let
-$\mathbf D^u_t=\mathrm{diag}\big(\sqrt{h^u_{1,t}},\dots,\sqrt{h^u_{r,t}}\big)$
-collect the per-factor volatilities, and let $w^u_t$ be the tail weight.
-The innovation is
-\begin{equation}
-u_t \;=\; \mathbf D^u_t\,\mQ^{1/2}\,\frac{z_t}{\sqrt{w^u_t}},
-\qquad
-\mathrm{Var}\!\big(u_t\mid \mathbf D^u_t,w^u_t\big)
-   \;=\; \mathbf D^u_t\,\mQ\,\mathbf D^u_t\big/w^u_t,
-\label{eq:lev-attach-innov}
-\end{equation}
-the sandwich form $\sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}$ that a
-full $\mQ$ forces (with $\mQ$ diagonal it would collapse to the
-componentwise $h^u_{i,t}\,q_{ii}$). Reading
-\eqref{eq:lev-attach-innov} from the inside out exposes \emph{two} vectors
-of shocks that coexist in the same equation:
-\begin{itemize}
-\item the \textbf{raw factor innovations} $z_{i,t}$ --- the own,
-      pre-mixing disturbance of factor $i$'s equation, mutually
-      \emph{independent} across $i$ ($\mathrm{Cov}(z_t)=\mathbf I_r$);
-\item the \textbf{structural shocks}
-      $\zeta_{i,t}\equiv(\mQ^{1/2}z_t)_i$ --- the disturbance that
-      \emph{actually} hits factor $i$ once $\mQ^{1/2}$ has blended the base
-      shocks, mutually \emph{correlated} across $i$
-      ($\mathrm{Cov}(\zeta_t)=\mQ$).
-\end{itemize}
-The leverage must couple each volatility innovation $\eta^u_{i,t}$ to one of
-these two. That is the entire content of the fork.
-
-\paragraph{Option A --- leverage on the raw factor innovations.}
-Correlate $\eta^u_{i,t}$ with the \emph{own base shock} $z_{i,t}$, one
-factor at a time. Under the contemporaneous timing this is $r$
-\emph{independent} bivariate Gaussian couplings,
-\begin{equation}
-\begin{pmatrix} z_{i,t} \\[2pt] \eta^u_{i,t}\end{pmatrix}
-\;\sim\;
-\mathcal N\!\left(
-\begin{pmatrix} 0\\[2pt] 0\end{pmatrix},\;
-\begin{pmatrix} 1 & \sigma_{u,i}\,\rho_i \\[2pt] \sigma_{u,i}\,\rho_i & \sigma_{u,i}^2 \end{pmatrix}
-\right),
-\qquad \rho_i\in(-1,1),\quad i=1,\dots,r,
-\label{eq:lev-attach-A}
-\end{equation}
-independently across $i$, so that $\mathrm{Corr}(z_{i,t},\eta^u_{i,t})=\rho_i$
-and $\mathrm{Corr}(z_{k,t},\eta^u_{i,t})=0$ for $k\neq i$. Stacking the two
-$r$-vectors $z_t$ and $\eta^u_t=(\eta^u_{1,t},\dots,\eta^u_{r,t})'$, the
-cross-covariance block is \emph{diagonal},
-\begin{equation}
-\mathrm{Cov}\big(z_t,\eta^u_t\big)
-   \;=\; \mathrm{diag}\big(\sigma_{u,1}\rho_1,\dots,\sigma_{u,r}\rho_r\big),
-\qquad\text{i.e.}\qquad
-\mathrm{Cov}\big(z_{k,t},\eta^u_{i,t}\big)=\sigma_{u,i}\,\rho_i\,\delta_{ik}.
-\label{eq:lev-attach-A-cov}
-\end{equation}
-Crucially, $\mQ^{1/2}$ \emph{does not appear} in the coupling
-\eqref{eq:lev-attach-A}--\eqref{eq:lev-attach-A-cov}. It enters only
-\emph{afterwards}, in \eqref{eq:lev-attach-innov}, when the leveraged base
-shocks are assembled into the innovation $u_t$. The leverage lives
-\emph{upstream} of the mixing.
-
-\paragraph{Option B --- leverage on the structural shocks.}
-Correlate $\eta^u_{i,t}$ instead with the \emph{structural} innovation
-$\zeta_{i,t}=(\mQ^{1/2}z_t)_i$, standardized by its own scale
-$\sqrt{q_{ii}}$ (with $q_{ii}=(\mQ)_{ii}$) so that the correlation is again
-$\rho_i$,
-\begin{equation}
-\mathrm{Corr}\!\left(\frac{(\mQ^{1/2}z_t)_i}{\sqrt{q_{ii}}},\;\eta^u_{i,t}\right)=\rho_i .
-\label{eq:lev-attach-B}
-\end{equation}
-Because $\zeta_{i,t}=\sum_{k}(\mQ^{1/2})_{ik}\,z_{k,t}$ is a $\mQ^{1/2}$-weighted
-\emph{blend of every} base shock, the coupling \eqref{eq:lev-attach-B} no
-longer ties $\eta^u_{i,t}$ to a single $z_{i,t}$; it ties it to the whole
-vector $z_t$ through the $i$-th row of $\mQ^{1/2}$. The cross-covariance
-block is now \emph{full}:
-\begin{equation}
-\mathrm{Cov}\big(z_{k,t},\eta^u_{i,t}\big)
-   \;=\; \sigma_{u,i}\,\rho_i\,\frac{(\mQ^{1/2})_{ik}}{\sqrt{q_{ii}}},
-\label{eq:lev-attach-B-cov}
-\end{equation}
-which for a dense $\mQ$ is non-zero in \emph{every} entry, not only on the
-diagonal. Comparing \eqref{eq:lev-attach-A-cov} with
-\eqref{eq:lev-attach-B-cov} isolates the difference in one line: Option~A
-sets the cross-block to $\mathrm{diag}(\sigma_{u,i}\rho_i)$, Option~B sets
-it to $\mathrm{diag}(\sigma_{u,i}\rho_i)\,\widehat{\mQ}^{1/2}$ with
-$\widehat{\mQ}^{1/2}$ the row-standardized square root --- the leverage
-now carries a factor of $\mQ^{1/2}$ that Option~A does not. Where Option~A
-places the leverage upstream of $\mQ^{1/2}$, Option~B threads $\mQ^{1/2}$
-\emph{into} the leverage block itself.
-
-\paragraph{The case for Option~B, stated fairly.}
-Option~B is not a straw man; it has a genuine and even natural
-rationale. Its merit is that it binds each volatility to the
-\emph{structural} disturbance --- the shock that literally moves factor
-$i$ once the system's contemporaneous mechanics have acted --- rather than
-to a standardized coordinate $z_{i,t}$ that has no free-standing
-interpretation of its own. In a structural (SVAR) reading, where the
-orthogonalised shocks are taken as the primitive economic disturbances and
-$\mQ^{1/2}$ is the impact map that turns them into the observed
-innovations, it is precisely the structural shock whose sign one would want
-the volatility to answer to: the leverage effect is a statement about the
-\emph{true} disturbance hitting the factor, and $\zeta_{i,t}$ is that
-disturbance. Indeed, in a model whose \emph{only} cross-factor structure
-lived in $\mQ$ --- a static or near-static transition, with the factors'
-co-movement carried entirely by the contemporaneous covariance --- Option~B
-would be the principled choice, the only way to let the volatility respond
-to the genuine combined shock rather than to an artefact of the
-whitening basis. Under those premises B is the correct specification, and
-it is worth conceding this plainly before explaining why our premises are
-not those.
-
-\paragraph{Why we adopt Option~A.}
-The decisive point is \emph{where the cross-factor structure of our model
-already lives}. Ours is a VAR(1) with a \emph{full} transition matrix
-$\mA$, and that matrix is not incidental: its off-diagonal entries are the
-model's account of how the factors influence one another, a shock to the
-financial factor at $t-1$ feeding the real factor at $t$ through
-$\mathbf A_{\text{RF}}$. The interdependence among factors --- the very
-``mixing'' that Option~B reaches for --- is therefore \emph{already
-modelled}, and modelled where it economically belongs: in the
-\emph{dynamics}. The factor innovation $u_t=f_t-\mA f_{t-1}$ is, by
-construction, what remains \emph{after} that dynamic co-movement has been
-removed; it is the own, unpredictable disturbance of the period, and its
-standardized coordinates $z_t=\mQ^{-1/2}\mathbf D^{u\,-1}_t u_t$ are the
-cleanest available representation of ``factor $i$'s own shock this
-period.'' Coupling the volatility to \emph{these} --- Option~A --- assigns
-the leverage exactly the role left for it: the asymmetry between a factor's
-\emph{own} shock and its \emph{own} volatility, a scalar-on-scalar link,
-one channel per factor.
-
-Option~B, by re-introducing $\mQ^{1/2}$ into the leverage block, would make
-each factor's volatility respond to a $\mQ$-weighted blend of \emph{all}
-factors' shocks. But that contemporaneous blending is \emph{already}
-carried by $\mQ$ inside the innovation covariance
-\eqref{eq:lev-attach-innov}, on top of the dynamic blending already carried
-by $\mA$. B would thus re-perform, inside the leverage channel, a mixing
-the model executes twice over elsewhere --- once dynamically through $\mA$,
-once contemporaneously through $\mQ$. This is \emph{redundancy, not extra
-structure}: it buys no economic mechanism the model lacks, while
-entangling the leverage parameters $\rho_i$ with the entire geometry of
-$\mQ$ and forfeiting the plain reading of $\rho_i$ as the leverage of
-factor $i$ on itself. The clean division of labour that makes the
-specification legible ---
-\begin{center}
-\emph{$\mA$ carries the dynamic (lagged) interdependence,\quad
-$\mQ$ the contemporaneous correlation,\quad
-$\boldsymbol\rho$ the own-volatility/own-shock asymmetry}
-\end{center}
---- is respected exactly by Option~A and trespassed by Option~B, which lets
-the leverage reach back into $\mQ$'s territory.
-
-There is, finally, an identification dividend that aligns with the whole
-purpose of the refactoring. Option~A keeps $r$ \emph{separate},
-one-to-one channels: $\rho_i$ couples $\eta^u_{i,t}$ with $z_{i,t}$ alone,
-each factor's leverage riding its \emph{own} independent volatility
-process. This is structurally identical to the $M$ idiosyncratic scalar
-leverages --- a scalar level shock correlated with a scalar volatility
-innovation, with no orthogonal directions left for the data to leave
-unexercised --- and it is therefore \emph{well posed}, exactly as they are.
-It is this one-to-one structure that cures the non-identification the
-scalar-volatility model suffered, in which a single $\eta^u$ could support
-only one identified combination of a leverage \emph{vector}
-(\S\ref{subsec:common-lev-identif}). Option~B would partly squander that
-gain: by routing every $\rho_i$ through the shared $\mQ^{1/2}$ geometry it
-re-couples the $r$ leverages, so their identification would once again lean
-on the common covariance structure rather than on $r$ clean, independent
-own-channels. Adopting~A keeps the leverages as decoupled and as
-well-identified as the refactoring was designed to make them.
-
-\paragraph{Decision.}
-We adopt \textbf{Option~A}: the common leverage correlates each
-volatility innovation $\eta^u_{i,t}$ with the \emph{raw} factor innovation
-$z_{i,t}$, one independent channel per factor, as in
-\eqref{eq:lev-attach-A}--\eqref{eq:lev-attach-A-cov}, with $\mQ^{1/2}$
-entering only downstream in the assembly of $u_t$. The reasons are
-substantive, not merely aesthetic: the cross-factor interdependence
-Option~B would re-mix is \emph{already} captured by the full transition
-matrix $\mA$ (dynamically) and by $\mQ$ (contemporaneously), so leverage on
-the raw innovations is \emph{sufficient} and re-mixing it through
-$\mQ^{1/2}$ is redundant; and the raw-innovation coupling keeps the $r$
-common leverages one-to-one with $r$ independent volatility processes,
-delivering the clean identification --- three scalars, as well posed as the
-idiosyncratic ones --- that motivates the move to per-factor volatility in
-the first place. Option~B remains a coherent alternative under a different
-architecture (one in which $\mQ$ alone carried the factors' co-movement);
-it is superseded here \emph{by argument}, because in our architecture the
-mixing it honours is already the province of $\mA$ and $\mQ$. The same
-choice applies verbatim to the lagged timing, re-indexing the coupled
-volatility innovation from $\eta^u_{i,t}$ to $\eta^u_{i,t+1}$ and leaving
-\eqref{eq:lev-attach-A}--\eqref{eq:lev-attach-A-cov} otherwise unchanged.
 
 \newpage
 
@@ -20654,120 +20655,7 @@ region $\boldsymbol\rho'\boldsymbol\rho<1$; for each idiosyncratic series it
 is the scalar $\rho_{\varepsilon,i}$. This family is new, and it inherits the
 branch dependence of the volatility block rather than admitting a single
 universal sampler. The \emph{sampling} logic is thus shared by the vector and
-the scalar; their \emph{identifiability} is not, and the common vector carries
-a subtlety --- only one scalar combination of $\boldsymbol\rho$ is pinned down
-by the data --- taken up in \S\ref{subsec:common-lev-identif} below.
-
-\subsection{An identification asymmetry: the common leverage as a scalar}
-\label{subsec:common-lev-identif}
-
-The derivation of Family~C above treats the common leverage as the full
-vector $\boldsymbol\rho\in\mathbb R^r$ and each idiosyncratic leverage as a
-scalar $\rho_{\varepsilon,i}$, by one and the same Metropolis logic --- and
-that vector derivation stands, unchanged, as the \emph{general case}. The two
-are \emph{not}, however, on the same footing as regards \emph{identification},
-and the difference is a direct consequence of their differing dimension. This
-subsection sets out the asymmetry and the modelling choice it motivates: for
-the \emph{adopted implementation} we specialize the common leverage to its
-identified scalar, while the general vector derivation is left intact. The
-specialization is confined to a single point --- the common-leverage draw of
-Family~C --- and is a declared modelling choice, not an inconsistency: one
-derives the general (vector) case and adopts the particular (scalar) one, for
-the reasons that follow.
-
-\paragraph{Only one scalar combination of $\boldsymbol\rho$ is identified.}
-The common leverage couples the $r$-dimensional level shock $z^u_t$ with the
-\emph{single scalar} log-volatility innovation $\eta^u_t$; its $r$ components
-are the correlations $\rho_j=\mathrm{Corr}(z^u_{j,t},\eta^u_t)$. But all the
-data see of $\boldsymbol\rho$ enters through the scalar leverage drift
-$\sigma_u\,\boldsymbol\rho'z^u_t$ that re-centres $\eta^u_t$ --- the vector
-form of the drift $\rho\sigma_\eta z_t$ of \eqref{eq:lev-cond-scalar}. Along
-the direction in which the common factor actually varies --- call it the
-dominant, essentially one-dimensional direction $\mathbf g$ of the sampled
-factor path --- the projection $\boldsymbol\rho'\mathbf g$ is pinned down;
-the $r-1$ orthogonal directions of $\boldsymbol\rho$ are not, because the
-low-dimensional common factor simply does not \emph{exercise} them: there is
-no independent variation along those axes for a leverage to be estimated
-against. This is a sharper cousin of the weak-information pathology already
-met for objects a low-dimensional structure cannot feed --- the degrees of
-freedom $\nu_u$, informed only through two scalar sufficient statistics, and
-the idiosyncratic volatilities of Step~2, each estimated from a single
-series' worth of information. Here it is sharper because the unexercised
-directions receive \emph{no} information at all, not merely little: it is a
-genuine non-identification, not just an imprecision.
-
-\paragraph{The empirical symptom: a convergent false positive.}
-Left in the model, the unidentified directions do not sit harmlessly at
-zero. The long run of the sampler (three chains of six thousand iterations
-each) returns, on a non-dominant component of $\boldsymbol\rho$, a leverage
-that \emph{looks} estimated: a credible interval that excludes zero and
-chains that pass the usual convergence diagnostics. It is nonetheless
-spurious --- and the tell is that the affected component \emph{changes with
-the seed} while the phenomenon itself persists, exactly the signature of a
-direction the likelihood does not constrain, on which the posterior merely
-echoes the proposal and the prior. A leverage effect reported on an axis the
-data never inform is a \emph{false positive}, and reading it structurally ---
-as a genuine level--volatility asymmetry in some component of the common
-factor --- would be a mistake.
-
-\paragraph{The adopted remedy, chosen among three alternatives.} Faced with an
-over-parameterised object, three responses are available. \emph{(a) Document
-the limit and leave the vector free:} keep $\boldsymbol\rho\in\mathbb R^r$ and
-simply warn the reader that its non-dominant components are not identified.
-This is honest but unsatisfactory --- it ships a model carrying parameters the
-data cannot inform, and the false positive of the previous paragraph remains in
-every reported estimate. \emph{(b) Regularise with an informative prior:} shrink
-the unexercised directions toward zero with a prior tight on $\boldsymbol\rho$.
-This works, but it adds hyper-parameters to tune and leans on the prior precisely
-where the likelihood is silent --- less transparent, and less elegant, than the
-alternative. \emph{(c) Reduce the object to what is identified:} specify the
-common leverage as the \emph{single scalar} it can support --- the identified
-projection $\boldsymbol\rho'\mathbf g$, one leverage correlation on the dominant
-common direction $\mathbf g$ --- rather than as a free vector. We \emph{adopt}
-(c). It removes the over-parameterisation at its root: with the factors carrying
-their VAR(1) dynamics and only the combination $\boldsymbol\rho'\mathbf g$ pinned
-down, a scalar is exactly the estimable content, and parsimony then dictates
-estimating that and nothing more. It retains precisely the part of the common
-leverage the data speak to (and, through the block-diagonal loadings, exactly the
-channel that shapes the Growth-at-Risk tail), while discarding the $r-1$
-directions that only manufacture spurious asymmetry, and it introduces no prior
-mass where the likelihood is flat.
-
-\smallskip
-\noindent\emph{The bridge to the general derivation, and to the code.}
-Operationally the specialization is a one-line restriction of the vector draw,
-not a new sampler: writing $\boldsymbol\rho=m\,\mathbf g$ with $\mathbf g$ the
-unit dominant direction (the leading direction of the sampled factor path) and
-$m\in(-1,1)$ the scalar magnitude, the Metropolis target of Family~C is
-\emph{exactly} the vector target of \eqref{eq:param-rho-cond} restricted to the
-line $\{m\,\mathbf g\}$ --- since $\mathbf g$ is unit, the drift
-$\boldsymbol\rho'z^u_t=m\,(\mathbf g'z^u_t)$ and the constraint
-$\boldsymbol\rho'\boldsymbol\rho=m^2<1$ both collapse to their scalar forms.
-Nothing is re-derived: the general vector case of Family~C is the parent, the
-adopted scalar is the identified one-dimensional child, and the two coincide
-term by term on that line. The nesting $\boldsymbol\rho=0$ (no leverage) is
-untouched, as are the $M$ idiosyncratic scalars; only the common-factor draw is
-specialized, and only when $r>1$ (for $r=1$ the two coincide).
-
-\paragraph{Why the idiosyncratic leverages are exempt.}
-The same reasoning \emph{exonerates} the idiosyncratic leverages, and for a
-structural reason rather than by stipulation. It is precisely the
-\emph{vector} nature of the common leverage --- a direction in $\mathbb R^r$
-riding a low-dimensional factor --- that creates the free, unexercised
-directions in the first place. The idiosyncratic leverages have none: each
-$\rho_{\varepsilon,i}$ correlates a \emph{scalar} level shock
-$z^\varepsilon_{i,t}$ with a \emph{scalar} volatility innovation
-$\eta^\varepsilon_{i,t}$, a scalar-on-scalar coupling with \emph{no}
-orthogonal directions for the data to leave free, so the non-identification
-that afflicts the common vector cannot arise. They are therefore
-\emph{well posed}, one identified correlation per series. They may still be
-\emph{weakly informed} --- a single series carries limited information,
-exactly as its idiosyncratic volatility does in Step~2 --- but weak
-information is a matter of \emph{precision}, curable by more data or a mild
-prior, whereas the common vector's difficulty is one of \emph{identification},
-curable only by respecifying the object. Dimension is here the \emph{cause}
-of the asymmetry, not a bookkeeping difference: vector $\rightarrow$ free
-directions $\rightarrow$ false positive; scalar $\rightarrow$ well posed.
+the scalar.
 
 \subsection{Family D --- the degrees of freedom \texorpdfstring{$\nu_u,\nu_\varepsilon$}{nu}}
 \label{subsec:param-familyD}
