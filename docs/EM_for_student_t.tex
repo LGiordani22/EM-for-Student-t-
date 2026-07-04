@@ -17961,7 +17961,7 @@ are held fixed, the multipliers $h_t/w_t$ are just \emph{known numbers}:
 the nonlinearity is frozen out. The conditional innovation covariances
 become the \emph{deterministic} time-varying matrices
 \[
-\mQ_t \;=\; \frac{h^u_t}{w^u_t}\,\mQ,
+\mQ_t \;=\; \sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}\,/\,w^u_t,
 \qquad
 \mR_{i,t} \;=\; \frac{h^\varepsilon_{i,t}}{w^\varepsilon_t}\,r_i .
 \]
@@ -18840,14 +18840,14 @@ multipliers attached to each shock are then known numbers, and the
 conditional innovation covariances are the \emph{deterministic}
 time-varying matrices
 \begin{equation}
-\mQ_t \;=\; \frac{h^u_t}{w^u_t}\,\mQ,
+\mQ_t \;=\; \sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}\,/\,w^u_t,
 \qquad
 \mR_{i,t} \;=\; \frac{h^\varepsilon_{i,t}}{w^\varepsilon_t}\,r_i,
 \qquad
 \mR_t \;=\; \mathrm{diag}\big(\mR_{1,t},\dots,\mR_{M,t}\big),
 \label{eq:states-tv-cov}
 \end{equation}
-where $h^u_t$ and the $h^\varepsilon_{i,t}$ carry the persistent
+where $\mathbf H^u_t=\mathrm{diag}(h^u_{1,t},\dots,h^u_{r,t})$ and the $h^\varepsilon_{i,t}$ carry the persistent
 stochastic volatility and $1/w^u_t$, $1/w^\varepsilon_t$ the Student-$t$
 tail rescaling. With these in place the data-generating process is
 exactly a linear-Gaussian state-space model with time-varying
@@ -18859,7 +18859,7 @@ y_t = \mL\,f_t + \varepsilon_t, \quad \varepsilon_t\sim\mathcal N(0,\mR_t),
 \]
 identical in form to the weighted system the EM E-step already filtered,
 with the single change that the factor-innovation covariance now also
-carries the volatility multiplier $h^u_t$ and the idiosyncratic
+carries the volatility multipliers $\mathbf H^u_t$ and the idiosyncratic
 covariance the multipliers $h^\varepsilon_{i,t}$.
 
 In the mixed-frequency model this is run, exactly as before, on the
@@ -18875,7 +18875,7 @@ block, so that the augmented innovation covariance is the singular matrix
 \begin{pmatrix} \mQ_t & \mathbf 0 \\ \mathbf 0 & \mathbf 0 \end{pmatrix}
 \in\mathbb R^{5r\times 5r},
 \qquad
-\mQ_t=\frac{h^u_t}{w^u_t}\,\mQ,
+\mQ_t=\sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}\,/\,w^u_t,
 \label{eq:states-aug-Q}
 \end{equation}
 with $\mQ_t$ in the top-left $r\times r$ block and zeros elsewhere,
@@ -19063,7 +19063,7 @@ Mariano--Murasawa weights, the singular $\tilde{\mQ}_t$), the forward
 Kalman filter and even the smoother gain $J_t$ of
 \eqref{eq:ffbs-gain} are all inherited verbatim from the EM machinery; the
 only modifications are that the time-varying covariances now also carry
-the volatility multipliers $h^u_t,h^\varepsilon_{i,t}$ through
+the volatility multipliers $\mathbf H^u_t,h^\varepsilon_{i,t}$ through
 \eqref{eq:states-tv-cov}--\eqref{eq:states-aug-Q}, and that the backward
 pass \emph{samples} from \eqref{eq:ffbs-backward} instead of
 \emph{averaging} as in \eqref{eq:smoother-mean}. In code terms it is a
@@ -19102,7 +19102,7 @@ and for each idiosyncratic series the residual is
 In the base specification these residuals obey, recalling the
 data-generating process,
 \[
-u_t \mid h^u_t, w^u_t \sim \mathcal N\!\big(0,\, h^u_t\,\mQ/w^u_t\big),
+u_t \mid \mathbf H^u_t, w^u_t \sim \mathcal N\!\big(0,\, \sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}/w^u_t\big),
 \qquad
 \varepsilon_{i,t} \mid h^\varepsilon_{i,t}, w^\varepsilon_t \sim
 \mathcal N\!\big(0,\, h^\varepsilon_{i,t}\,r_i/w^\varepsilon_t\big).
@@ -19617,7 +19617,7 @@ w^\varepsilon_t \overset{iid}{\sim}\mathrm{Gamma}\!\Big(\tfrac{\nu_\varepsilon}{
 independently across $t$. In the full stochastic-volatility model the
 conditional law of each shock now carries \emph{both} multipliers,
 \[
-u_t \mid h^u_t, w^u_t \sim \mathcal N\!\big(0,\, h^u_t\,\mQ/w^u_t\big),
+u_t \mid \mathbf H^u_t, w^u_t \sim \mathcal N\!\big(0,\, \sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}/w^u_t\big),
 \qquad
 \varepsilon_t \mid \mathbf H^\varepsilon_t, w^\varepsilon_t \sim
 \mathcal N\!\big(0,\, \mathbf H^\varepsilon_t\,\mR/w^\varepsilon_t\big),
