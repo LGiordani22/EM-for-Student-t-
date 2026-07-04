@@ -16252,7 +16252,7 @@ common factor (through its loading) and on GDP's \emph{own} idiosyncratic
 component --- the idiosyncratic shocks of the other series never enter the
 GDP equation. For the Growth-at-Risk object, therefore, the leverage that
 actually shapes the target's skewness flows through exactly two channels,
-the common factor ($\boldsymbol\rho$) and the GDP idiosyncratic component
+the common block ($\rho_i$) and the GDP idiosyncratic component
 ($\rho_{\varepsilon,\mathrm g}$), while every other $\rho_{\varepsilon,i}$
 shapes the predictive density of its own series. GDP is thus not
 privileged by assumption --- the specification is symmetric across
@@ -16298,7 +16298,7 @@ distributional form with no structural motivation of its own.
 Two honest qualifications. First, estimation: the level and volatility
 shocks, previously separable, must now be handled \emph{jointly} in the
 sampler, and the model carries one leverage correlation per volatility
-process (the factor vector $\boldsymbol\rho$ and a scalar
+process (a scalar $\rho_i$ for each common factor and a scalar
 $\rho_{\varepsilon,i}$ for each idiosyncratic series). This is a genuine
 --- if mild --- complication relative to the independent case, and we
 defer its treatment to the estimation chapter. Second, and more importantly, what leverage
@@ -16549,7 +16549,7 @@ specification legible ---
 \begin{center}
 \emph{$\mA$ carries the dynamic (lagged) interdependence,\quad
 $\mQ$ the contemporaneous correlation,\quad
-$\boldsymbol\rho$ the own-volatility/own-shock asymmetry}
+$\rho_i$ the own-volatility/own-shock asymmetry}
 \end{center}
 --- is respected exactly by Option~A and trespassed by Option~B, which lets
 the leverage reach back into $\mQ$'s territory.
@@ -17090,7 +17090,7 @@ y_t &= \mL\,f_t+\varepsilon_t, & \varepsilon_t\mid w^\varepsilon_t,\mathbf H^\va
 with \eqref{eq:d1bd2b-logvol-u}--\eqref{eq:d1bd2b-weights} still in force.
 Skewness disappears; excess kurtosis and regime-dependent scale remain.
 (The lagged variant \eqref{eq:d1bd2b-lev-lagged} collapses to the same
-point, since it too has zero off-diagonal once $\boldsymbol\rho=0$.)
+point, since it too has zero off-diagonal once $\rho=0$.)
 
 \paragraph{Step 2 --- freeze the volatilities ($\sigma^2=0$, $\mu=0$).}
 Freezing every log-volatility state ($\sigma_{u,i}^2=0,\mu_{u,i}=0$ and
@@ -17128,17 +17128,17 @@ y_t &= \mL\,f_t+\varepsilon_t, & \varepsilon_t &\sim\mathcal N(0,\,\mR).
 \paragraph{The nesting chain.}
 The three steps trace the inclusion
 \[
-\underbrace{\text{Gaussian DFM}}_{\nu\to\infty,\ \sigma^2=0,\ \boldsymbol\rho=0}
+\underbrace{\text{Gaussian DFM}}_{\nu\to\infty,\ \sigma^2=0,\ \rho=0}
 \;\subset\;
-\underbrace{\text{Student-}t\text{ DFM}}_{\sigma^2=0,\ \boldsymbol\rho=0}
+\underbrace{\text{Student-}t\text{ DFM}}_{\sigma^2=0,\ \rho=0}
 \;\subset\;
-\underbrace{\text{Student-}t\text{ with SV}}_{\boldsymbol\rho=0}
+\underbrace{\text{Student-}t\text{ with SV}}_{\rho=0}
 \;\subset\;
 \underbrace{\text{D1b--D2b with leverage}}_{\text{full model}},
 \]
 each arrow switching exactly one channel back on: the Student-$t$ tail
 ($\nu$ finite), the persistent volatility ($\sigma^2>0$), and the
-leverage asymmetry ($\boldsymbol\rho\neq0$). Because D1b--D2b sits at the
+leverage asymmetry ($\rho\neq0$). Because D1b--D2b sits at the
 top of this chain, deriving the estimator once for the full model ---
 the task of the next section --- automatically covers every restriction
 below it.
@@ -17160,7 +17160,7 @@ specification of the family, and, as the nesting chain of the previous
 section showed, every other cell is one of its restrictions, reached by
 switching a single component off: freezing a volatility path
 ($\sigma^2=0,\mu=0$), setting a leverage correlation to zero
-($\boldsymbol\rho=0$), or sending a degrees-of-freedom parameter to
+($\rho=0$), or sending a degrees-of-freedom parameter to
 infinity ($\nu\to\infty$). An estimator that handles the richest model
 therefore handles all the others for free --- one simply \emph{disables}
 the corresponding sampling block --- so we derive it once, here, and make
@@ -17301,7 +17301,7 @@ through asymptotic standard errors.
 Collecting the parameters in $\btheta$ --- here $\btheta$ gathers
 $(\mA,\mQ,\mL,\mR)$, the log-volatility parameters $(\mu,\phi,\sigma^2)$
 of every active AR(1), the leverage correlations
-$(\boldsymbol\rho,\rho_{\varepsilon,i})$ and the degrees of freedom
+$(\rho_i,\rho_{\varepsilon,i})$ and the degrees of freedom
 $(\nu_u,\nu_\varepsilon)$ --- Bayes' theorem reads
 \[
 p(\btheta \mid \mY) \;=\;
@@ -17719,7 +17719,7 @@ conditional is a distribution we know how to sample.
       ``friendly'' blocks.
 \item \emph{Non-standard conditional --- propose and accept
       (Metropolis--Hastings).} For the log-volatility paths under leverage,
-      and for the leverage correlations $\boldsymbol\rho,\rho_{\varepsilon,i}$
+      and for the leverage correlations $\rho_i,\rho_{\varepsilon,i}$
       themselves, the full conditional is a genuine but \emph{non-standard}
       density: we can evaluate its unnormalised height at any point, yet we
       cannot draw from it directly. Metropolis needs only that ability to
@@ -17794,7 +17794,7 @@ $\to$ posterior $\to$ draw}. The ``Posterior'' column makes conjugacy visible:
 the posterior sits in the \emph{same family} as the prior (matrix-Normal $\to$
 matrix-Normal, inverse-Wishart $\to$ inverse-Wishart, $\dots$), the data having
 only updated its hyperparameters, so the draw is \emph{direct}. The
-\emph{non-conjugate} blocks (the leverage $\boldsymbol\rho$ and the degrees of
+\emph{non-conjugate} blocks (the leverage $\rho_i$ and the degrees of
 freedom $\nu$) are split off into Table~\ref{tab:theta-inventory-nonconj}; the
 latent paths --- states, not parameters --- into Table~\ref{tab:latent-paths}.
 The priors are specified in the priors subsection of the parameter section, where
@@ -17881,12 +17881,12 @@ remains a valid alternative, simply not the one used.
 \paragraph{Every unknown carries a prior --- that is not the dividing line.}
 It is tempting to think that ``the parameters'' $\mA,\mL,\mR,\mQ$ have priors
 while the log-volatility persistence $\phi$, the innovation variance
-$\sigma_\eta^2$, the leverage $\boldsymbol\rho$ and the degrees of freedom $\nu$
+$\sigma_\eta^2$, the leverage $\rho_i$ and the degrees of freedom $\nu$
 are somehow estimated ``directly from the data'' without one. This is the
 misconception worth dispelling outright: in a fully Bayesian treatment
 \emph{every} unknown in $\btheta$ has a prior --- $\phi$ and $\sigma_\eta^2$
 carry the Normal--inverse-Gamma we have already chosen (the $\mathrm{IG}(2,0.05)$
-on $\sigma_\eta^2$ adopted for the volatility block), $\boldsymbol\rho$
+on $\sigma_\eta^2$ adopted for the volatility block), $\rho_i$
 a law supported on the admissible region, $\nu$ a proper law on $(2,\infty)$.
 There is no unknown without a prior. The real dividing line, the one
 the table's last column records, is not \emph{whether} a
@@ -17897,7 +17897,7 @@ product takes}:
       AR(1) $\phi,\sigma_\eta^2$), prior and likelihood multiply to a posterior
       of \emph{recognisable form} --- a Normal, an inverse-Gamma, an
       inverse-Wishart --- whose parameters are read off in closed form;
-\item for the \emph{non-conjugate} blocks (the leverage $\boldsymbol\rho$, the
+\item for the \emph{non-conjugate} blocks (the leverage $\rho_i$, the
       degrees of freedom $\nu$), prior times likelihood is a perfectly definite
       density but \emph{not} one of the textbook families --- no closed-form
       parameters to read off.
@@ -17917,7 +17917,7 @@ same story with one wrinkle: $\phi$ is a Gaussian draw truncated to $|\phi|<1$
 $\sigma_\eta^2$ is an inverse-Gamma draw \emph{except} under leverage, where the
 $(1-\rho^2)$ factor multiplying its variance spoils exact conjugacy and a light
 Metropolis correction is added. For Families~C and~D the phrase no longer
-applies: the conditional of $\boldsymbol\rho$ carries the awkward
+applies: the conditional of $\rho_i$ carries the awkward
 $(1-\rho^2)^{-(T-1)/2}$ prefactor \emph{and} a $\rho$ inside the variance
 (derived in Family~C below), and the conditional of $\nu$ is a digamma
 expression --- in neither case a distribution we can sample from directly. There
@@ -18098,7 +18098,7 @@ initialised by other means:
 \begin{itemize}
 \item the \textbf{volatility paths} $h_{1:T}$: set to one, i.e.\ $\log h_t=0$
       for all $t$ --- ``volatility switched off'';
-\item the \textbf{leverage correlations} $\boldsymbol\rho,\rho_{\varepsilon,i}$:
+\item the \textbf{leverage correlations} $\rho_i,\rho_{\varepsilon,i}$:
       set to zero --- ``leverage switched off'';
 \item the \textbf{log-volatility parameters} $(\phi,\sigma_\eta^2)$: at neutral
       values, or drawn from their priors.
@@ -18374,7 +18374,7 @@ the estimator transparent.
 \paragraph{Everything begins with $\mY$.} The only observed input to the whole
 apparatus is the data matrix $\mY$ --- the panel of macroeconomic series.
 \emph{Nothing else is seen.} The factors $f_{1:T}$, the parameters $\btheta$, the
-volatility paths $h_{1:T}$, the leverage correlations $\boldsymbol\rho$ --- all of
+volatility paths $h_{1:T}$, the leverage correlations $\rho_i$ --- all of
 these are \emph{latent} or \emph{to be estimated}; not one of them is ever
 observed directly. They exist in the model only as quantities to be reconstructed
 \emph{from} $\mY$. The estimation problem, in its entirety, is the problem of
@@ -18393,9 +18393,9 @@ As the warm-start discussion of \S\ref{subsec:mcmc-bridge} established, this is
 precisely the \emph{warm start} of the chain --- and precisely a \emph{partial}
 one. It says nothing about the channels the second stage adds: the log-volatility
 parameters $(\phi,\sigma_\eta^2)$, the volatility paths $h_{1:T}$ and the leverage
-$\boldsymbol\rho$ are all absent from $\hat\btheta_{\text{EM}}$, because the model
+$\rho_i$ are all absent from $\hat\btheta_{\text{EM}}$, because the model
 EM fitted did not contain them. Those coordinates are therefore started not warm
-but \emph{neutral} --- $h\equiv 1$, $\boldsymbol\rho=0$ --- at the values that
+but \emph{neutral} --- $h\equiv 1$, $\rho=0$ --- at the values that
 switch the extra mechanisms off (the argument is given above and not repeated
 here). In the data's journey this stage reads simply: $\mY \to$ EM $\to$ a partial
 warm start.
@@ -18426,7 +18426,7 @@ into every full conditional is the likelihood of the measurement equation
 the model \emph{predicts}, $\mL f_t$, and what is \emph{observed}, $y_t$,
 distilled into the residuals $\varepsilon_t=y_t-\mL f_t$. Whatever block is being
 refreshed --- the factor path $f$, the loadings $\mL$, a volatility path, the
-leverage $\boldsymbol\rho$ --- the data make contact with it only through those
+leverage $\rho_i$ --- the data make contact with it only through those
 residuals, the discrepancy between prediction and observation. There is one
 channel, the measurement equation, and \emph{every} block of the sweep draws the
 data through it.
@@ -18455,7 +18455,7 @@ to each:
       level innovations of factors and series, one step further removed:
       $\mY\to f\to$ residuals $\to h$;
 \item the log-volatility parameters (Family~B) read the \emph{sampled volatility
-      paths}, and the leverage $\boldsymbol\rho$ (Family~C, and identically in
+      paths}, and the leverage $\rho_i$ (Family~C, and identically in
       both timing branches~A and~B) the \emph{level and log-volatility
       innovations} of those paths --- $\mY$ now at two and three removes;
 \item the degrees of freedom $\nu$ (Family~D) see only the \emph{sampled
@@ -18467,7 +18467,7 @@ In one picture, $\mY$ enters at the measurement equation and then
 \[
 \mY \;\longrightarrow\; \underbrace{f}_{\text{states}} \;\longrightarrow\;
 \text{residuals} \;\longrightarrow\;
-\big\{\, h \to (\phi,\sigma_\eta^2),\ \boldsymbol\rho \,\big\}
+\big\{\, h \to (\phi,\sigma_\eta^2),\ \rho_i \,\big\}
 \ \ \text{and}\ \
 \big\{\, w \to \nu \,\big\},
 \]
@@ -18534,7 +18534,7 @@ $h_{1:T}$ (leverage)      & path \emph{(dynamic)}   & single-move \textbf{Metrop
 $w^u,\,w^\varepsilon$     & path \emph{(dynamic)}   & direct Gamma draw (Gaussian--Gamma conjugacy)                & direct (Gibbs)\\
 $\mA,\mQ,\mL,\mR$         & parameter \emph{(static)} & direct conjugate draw (MNIW / Normal--inverse-Gamma)         & direct (Gibbs)\\
 $\phi,\sigma_\eta^2$      & parameter \emph{(static)} & direct Normal--inverse-Gamma draw (light MH under leverage)  & direct (Gibbs)\\
-$\boldsymbol\rho,\rho_{\varepsilon,i}$ & parameter \emph{(static)} & \textbf{Metropolis} on $(-1,1)$ / admissible region         & MH\\
+$\rho_i,\rho_{\varepsilon,i}$ & parameter \emph{(static)} & \textbf{Metropolis} on $(-1,1)$ / admissible region         & MH\\
 $\nu_u,\nu_\varepsilon$   & parameter \emph{(static)} & \textbf{griddy-Gibbs} (grid inversion of the log-concave $1$-D conditional) on $(2,\infty)$ & direct (griddy)\\
 \bottomrule
 \end{tabular}
@@ -18587,7 +18587,7 @@ its ``Drawn by'' column.
       they carry no temporal coupling, so the trajectory factorises and is drawn
       pointwise by an independent Gamma at each $t$; a path still, but one that
       needs no FFBS.)
-\item The \textbf{parameters} $\boldsymbol\rho,\phi,\sigma_\eta^2,\nu,\mA,\mQ,
+\item The \textbf{parameters} $\rho_i,\phi,\sigma_\eta^2,\nu,\mA,\mQ,
       \dots$ are sampled by a direct draw where the conditional is conjugate, and
       by Metropolis where it is not, because what is needed is a \emph{single
       value or matrix}, given the already-drawn paths and the data. This is a
@@ -18650,7 +18650,7 @@ in $\btheta$:
       $(\mu_{\varepsilon,i},\phi_{\varepsilon,i},\sigma_{\varepsilon,i}^2)$
       for each idiosyncratic volatility;
 \item the \textbf{leverage correlations} --- the common vector
-      $\boldsymbol\rho$ and the scalar $\rho_{\varepsilon,i}$ of each
+      $\rho_i$ and the scalar $\rho_{\varepsilon,i}$ of each
       idiosyncratic block;
 \item the \textbf{degrees of freedom} $(\nu_u,\nu_\varepsilon)$ governing
       the heaviness of the two tail families.
@@ -18696,10 +18696,10 @@ The two kinds of unknown differ not only in dimension --- paths that grow with
 $T$ versus a fixed set of constants --- but in \emph{how their distributions
 arise}, and this is what the circularity of the sweep turns on. The
 \textbf{parameters} $\btheta=(\mA,\mQ,\mL,\mR,\phi,\sigma_\eta^2,
-\boldsymbol\rho,\nu,\dots)$ carry \emph{explicit, subjective priors} --- laws we
+\rho_i,\nu,\dots)$ carry \emph{explicit, subjective priors} --- laws we
 choose: a Matrix-Normal on $\mA$, inverse-Gamma (or inverse-Wishart) on the
 scales $\mR,\mQ$, a Normal--inverse-Gamma on the log-volatility coefficients,
-a prior supported on the admissible region for $\boldsymbol\rho$, a proper prior
+a prior supported on the admissible region for $\rho_i$, a proper prior
 on $(2,\infty)$ for $\nu$ (the choices catalogued with the parameter blocks
 below). Each parameter block is then drawn from prior $\times$ likelihood --- a
 conjugate draw where that product is standard, a Metropolis step where it is
@@ -19564,7 +19564,7 @@ $i$}. Conditioning on the observed standardized shock gives, exactly as in
 This is the scalar conditional \eqref{eq:lev-cond-scalar} replicated $M$
 times, with a single scalar leverage correlation $\rho_{\varepsilon,i}$
 per series --- the idiosyncratic counterpart of the vector
-$\boldsymbol\rho$ that governs the common block in
+$\rho_i$ that governs the common block in
 \eqref{eq:lev-cond-common}, here scalar because each idiosyncratic shock
 is univariate.
 
