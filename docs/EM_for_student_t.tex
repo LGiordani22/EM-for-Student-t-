@@ -17426,8 +17426,12 @@ $\mA_0$ and the data fit $\widehat{\mA}$,
 \]
 exactly the matrix analogue of the scalar $m_1$ above --- a
 precision-weighted average in which the data pull the harder the larger
-$\mathcal P^u_{00}$ is. And then the step that has no analogue in EM: \emph{we
-draw $\mA$ from this posterior}, never from the prior. The prior was only the
+$\mathcal P^u_{00}$ is. (This clean matrix-Normal form is the one the
+baseline and the equal-volatility case take; under the per-factor stochastic
+volatility of the full model the factor-side draw becomes an equivalent but
+\emph{vectorised} Gaussian, \S\ref{subsec:param-familyA}, with the same
+three-step logic intact.) And then the step that has no analogue in EM:
+\emph{we draw $\mA$ from this posterior}, never from the prior. The prior was only the
 starting belief; the posterior is the belief \emph{after} the data have been
 put in the middle; the sampler reports a draw from the latter. Three features
 recur in every Family below. \emph{(i) The data enter only through sufficient
@@ -19268,11 +19272,12 @@ $(s_{1:T},\log h_{1:T})$ from their joint conditional.
 \subsection{Repetition across all volatility processes}
 \label{subsec:vol-all-processes}
 
-Under scope D2-b the model carries $M+1$ independent log-volatility
-processes --- the common $h^u$ and the $M$ idiosyncratic
-$h^\varepsilon_i$ --- and the sub-sweep above is applied to \emph{each},
-with its own residuals and its own AR(1) parameters
-$(\mu,\phi,\sigma_\eta^2)$.
+Under scope D2-b the model carries $M+r$ log-volatility processes --- the
+$r$ common $h^u_i$ and the $M$ idiosyncratic $h^\varepsilon_i$ --- each with
+its own residuals and its own AR(1) parameters $(\mu,\phi,\sigma_\eta^2)$.
+The scalar sub-sweep above applies \emph{directly} to the idiosyncratic
+block; the common block, because $\mQ$ is full, is instead drawn as a single
+\emph{multivariate} pass, as detailed below.
 \begin{itemize}
 \item \textbf{Idiosyncratic processes.} Each $\varepsilon_{i,t}$ of
       \eqref{eq:vol-residual-eps} is already scalar; the template applies
@@ -19280,28 +19285,64 @@ $(\mu,\phi,\sigma_\eta^2)$.
       $e_{i,t}=\sqrt{w^\varepsilon_t/r_i}\,\varepsilon_{i,t}$, so that
       $e_{i,t}\mid h^\varepsilon_{i,t}\sim\mathcal N(0,h^\varepsilon_{i,t})$
       and $y^\ast_{i,t}=\log(e_{i,t}^2+c)$.
-\item \textbf{Common factor.} Here $h^u_t$ is a single scalar that
-      scales the whole $r$-vector $u_t$. Whitening by the base scale and
-      the tail weight, $\tilde u_t=\sqrt{w^u_t}\,\mQ^{-1/2}u_t$, gives
-      $\tilde u_t\mid h^u_t\sim\mathcal N(0,h^u_t I_r)$, i.e.\ $r$
-      conditionally independent scalar measurements
-      $\tilde u_{t,k}\mid h^u_t\sim\mathcal N(0,h^u_t)$ of the \emph{same}
-      state. The template applies with $r$ log-square observations
-      $y^\ast_{t,k}=\log(\tilde u_{t,k}^2+c)$ per period, each with its
-      own indicator $s^u_{t,k}$; the backward-sampling pass simply runs on
-      a scalar state fed $r$ measurements per time point.
+\item \textbf{Common factor.} Under Specification~II the $r$ factors carry
+      $r$ \emph{distinct} volatilities,
+      $\mathbf H^u_t=\mathrm{diag}(h^u_{1,t},\dots,h^u_{r,t})$, and because
+      $\mQ$ is \emph{full} they do not separate into $r$ scalar problems the
+      way the idiosyncratic block does. Writing the innovation in structural
+      form, $u_t=\sqrt{\mathbf H^u_t}\,\zeta_t/\sqrt{w^u_t}$ with
+      $\zeta_t=\mQ^{1/2}z^u_t\sim\mathcal N(0,\mQ)$, its $k$-th component is
+      $\sqrt{w^u_t}\,u_{k,t}=\sqrt{h^u_{k,t}}\,\zeta_{k,t}$, so the
+      componentwise log-square gives
+      \[
+      y^\ast_{k,t}\;\equiv\;\log\!\big(w^u_t\,u_{k,t}^2+c\big)
+      \;=\;\log h^u_{k,t}+\log\zeta_{k,t}^2,\qquad k=1,\dots,r,
+      \]
+      one measurement per factor, keyed to \emph{its own} volatility. But the
+      whitening $\tilde u_t=\sqrt{w^u_t}\,\mQ^{-1/2}u_t$ that separated the
+      scalar-volatility case no longer diagonalises here ---
+      $\mQ^{-1/2}\sqrt{\mathbf H^u_t}\,\mQ^{1/2}$ is not diagonal --- so the
+      $r$ measurement errors $\log\zeta_{k,t}^2$ are \emph{mutually
+      correlated}, their joint law fixed by the correlations of $\mQ$ (the
+      $\zeta_{k,t}$ share the covariance $\mQ$). The common block is
+      therefore a genuine \emph{multivariate} stochastic-volatility problem.
+      Stacking the log-squares $y^\ast_t=(y^\ast_{1,t},\dots,y^\ast_{r,t})'$
+      and the log-volatility state
+      $\log\mathbf h^u_t=(\log h^u_{1,t},\dots,\log h^u_{r,t})'$, which
+      follows the independent AR(1)s
+      $\log\mathbf h^u_t=\boldsymbol\mu_u+\boldsymbol\Phi_u\big(\log\mathbf h^u_{t-1}-\boldsymbol\mu_u\big)+\boldsymbol\eta^u_t$,
+      $\boldsymbol\Phi_u=\mathrm{diag}(\phi_{u,i})$,
+      $\mathrm{Var}(\boldsymbol\eta^u_t)=\mathrm{diag}(\sigma_{u,i}^2)$, the
+      measurement equation is the $r$-vector
+      \[
+      y^\ast_t=\log\mathbf h^u_t+\boldsymbol\xi_t,\qquad
+      \boldsymbol\xi_t=(\log\zeta_{1,t}^2,\dots,\log\zeta_{r,t}^2)',
+      \]
+      whose noise $\boldsymbol\xi_t$ carries a \emph{full} covariance
+      inherited from $\mQ$. Approximating $\boldsymbol\xi_t$ by the
+      Kim--Shephard--Chib offset mixture componentwise --- now retaining the
+      cross-component covariance, as in the multivariate treatment of Harvey,
+      Ruiz and Shephard (1994) --- restores conditional Gaussianity, and the
+      path $\log\mathbf h^u_{1:T}$ is drawn by \emph{one $r$-dimensional}
+      forward-filtering backward-sampling pass, the states moving jointly
+      rather than one factor at a time. (When $\mQ$ is near-diagonal the
+      off-diagonal noise covariance is small and the block decouples toward
+      $r$ independent scalar sub-sweeps; the strength of the
+      factor-innovation correlations sets the departure.)
 \end{itemize}
-The cost is explicit: one volatility sub-sweep per process, hence $M+1$
-simulation-smoother passes per Gibbs iteration. This is the principal
-computational burden the stochastic-volatility extension adds.
+The cost is explicit: $M$ scalar sub-sweeps for the idiosyncratic block and
+one $r$-dimensional pass for the common block --- $M+1$ simulation-smoother
+passes per Gibbs iteration, the common one carrying an $r$-dimensional state
+rather than a scalar. This is the principal computational burden the
+stochastic-volatility extension adds.
 
 \subsection{What is reused, what is new}
 \label{subsec:vol-reuse}
 
 The decomposition is clean. \emph{Reused:} the forward-filtering
-backward-sampling simulation smoother of the previous section is invoked
-verbatim, now on a scalar log-volatility state, to perform move~(ii) for
-every process. \emph{New to this block:} the log-square transformation
+backward-sampling simulation smoother of the previous section performs
+move~(ii) for every process --- on a scalar state for each idiosyncratic
+path, and on an $r$-dimensional state for the common block. \emph{New to this block:} the log-square transformation
 \eqref{eq:vol-logsquare} that linearises the measurement; the
 Kim--Shephard--Chib mixture \eqref{eq:vol-ksc-mixture} that restores
 conditional Gaussianity; and the indicator draw
@@ -19674,28 +19715,45 @@ w^\varepsilon_t \mid y_t, f_t, \mathbf H^\varepsilon_t, \theta
 \label{eq:w-post-eps}
 \end{equation}
 The factor-side weight is identical in form, with the state residual in
-place of the observation residual and its deflation by the scalar common
-volatility $h^u_t$:
-\[
+place of the observation residual; the only change from the
+scalar-volatility case is that the deflation is now by the \emph{matrix}
+$\sqrt{\mathbf H^u_t}$ rather than a single scalar. Because $\mQ$ is full,
+the volatility does \emph{not} factor out of the quadratic form: writing the
+volatility-deflated innovation
+$\check u_t=\big(\sqrt{\mathbf H^u_t}\big)^{-1}(f_t-\mA f_{t-1})$, with
+components $\check u_{k,t}=u_{k,t}/\sqrt{h^u_{k,t}}$,
+\begin{equation}
 \check d^u_t
 \;\equiv\;
-\frac{1}{h^u_t}\,(f_t-\mA f_{t-1})'\,\mQ^{-1}(f_t-\mA f_{t-1})
-\;=\;\frac{d^u_t}{h^u_t},
-\]
+(f_t-\mA f_{t-1})'\big(\sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t}\big)^{-1}(f_t-\mA f_{t-1})
+\;=\;
+\check u_t'\,\mQ^{-1}\,\check u_t
+\;=\;
+\sum_{k,l}\frac{u_{k,t}\,u_{l,t}}{\sqrt{h^u_{k,t}\,h^u_{l,t}}}\,(\mQ^{-1})_{kl},
+\label{eq:w-d-u-defl}
+\end{equation}
+which reduces to the scalar-volatility form $d^u_t/h^u_t$ only when the $r$
+common volatilities are equal (or $\mQ$ diagonal); in general the cross
+terms $(\mQ^{-1})_{kl}$ couple the deflations of different factors. The tail
+weight $w^u_t$ still enters as a single scalar precision multiplier of the
+whole innovation covariance, so the conjugacy is intact and the posterior
+keeps its shape,
 \begin{equation}
 \boxed{\;\;
-w^u_t \mid f_t, f_{t-1}, h^u_t, \theta
+w^u_t \mid f_t, f_{t-1}, \mathbf H^u_t, \theta
 \;\sim\;
 \mathrm{Gamma}\!\left(\frac{\nu_u+r}{2},\;
 \frac{\nu_u+\check d^u_t}{2}\right),
 \;\;}
 \label{eq:w-post-u}
 \end{equation}
-with $d^u_t$ the EM residual \eqref{eq:d-u}. Setting all volatilities to
-one ($h^u_t=h^\varepsilon_{i,t}=1$) collapses
+now with the matrix-deflated Mahalanobis residual \eqref{eq:w-d-u-defl} in
+place of $d^u_t/h^u_t$. Setting all volatilities to one
+($\mathbf H^u_t=\mathbf I_r$, $h^\varepsilon_{i,t}=1$) collapses
 \eqref{eq:w-post-eps}--\eqref{eq:w-post-u} back to the EM posteriors
 \eqref{eq:post-w-eps}--\eqref{eq:post-w-u}, as it must: the
-stochastic-volatility model adds the deflation and nothing else.
+stochastic-volatility model adds the (now matrix) deflation and nothing
+else.
 
 \subsection{From expectation to draw}
 \label{subsec:w-draw}
@@ -20335,47 +20393,43 @@ $\mathbb E[f_tf_t'\mid\mY]$ become \emph{realised} outer products
 $f_tf_t'$ of the drawn path --- the same algebra, with the expectation
 dropped.
 
-\paragraph{What the volatility scalars multiply.} Before proceeding it is
-worth fixing the \emph{dimensions} of the stochastic-volatility terms,
-since they reappear throughout the block. Under the master cell (scope
-D2-b) the model carries $M+1$ \emph{scalar} log-volatility processes, and
-each multiplies a \emph{different} object. The common volatility $h^u_t$ is
-a single positive number that scales the \emph{entire} factor-innovation
-covariance: the conditional variance of the VAR(1) innovation is
+\paragraph{What the volatility terms multiply.} Before proceeding it is
+worth fixing the \emph{dimensions} of the stochastic-volatility terms, since
+they reappear throughout the block. Under the master cell (scope D2-b) the
+model carries $M+r$ scalar log-volatility processes. The $M$ idiosyncratic
+volatilities act \emph{per series}: because $\mR$ is diagonal, conditional on
+the factors the $M$ series are independent, and each $h^\varepsilon_{i,t}$ is
+one number scaling the $i$-th diagonal entry $r_i$ of $\mR$,
 \begin{equation}
-\operatorname{Var}(u_t\mid\cdot)=\frac{h^u_t}{w^u_t}\,\mQ,
-\label{eq:param-hu-scalar}
-\end{equation}
-i.e.\ the one scalar $h^u_t$ premultiplies the whole matrix $\mQ$. This is
-the coherent way to attach a stochastic volatility to the factor block
-precisely because the factors do \emph{not} evolve as separate, independent
-AR(1) lines but as a single \emph{vector} VAR(1) whose innovation
-covariance $\mQ$ is non-diagonal: the off-diagonal entries of $\mQ$ encode
-the contemporaneous co-movement of the factor shocks. A single scalar
-$h^u_t$ multiplying the whole matrix dilates the overall magnitude of those
-shocks over time while leaving their correlation structure --- the
-\emph{shape} of $\mQ$ --- exactly intact (the scalar cancels in the implied
-correlation matrix); giving each factor its own volatility would instead be
-a heavier, full multivariate-SV specification, distorting the cross-factor
-correlations, which we do not adopt. The tail weight $w^u_t$ enters in the
-same matrix-wide, scalar fashion and for the same reason.
-
-The idiosyncratic side is different precisely because $\mR$ is
-\emph{diagonal}: conditional on the factors the $M$ series are independent,
-so there is no cross-series covariance to preserve, and the volatility is
-attached \emph{per series}. Each $h^\varepsilon_{i,t}$ is one number scaling
-the $i$-th diagonal entry $r_i$ of $\mR$,
-\begin{equation}
-\operatorname{Var}(\varepsilon_{i,t}\mid\cdot)=\frac{h^\varepsilon_{i,t}}{w^\varepsilon_t}\,r_i,
+\operatorname{Var}(\varepsilon_{i,t}\mid\cdot)=\frac{h^\varepsilon_{i,t}}{w^\varepsilon_t}\,r_i .
 \label{eq:param-he-scalar}
 \end{equation}
-so that the $M$ idiosyncratic volatilities
-$h^\varepsilon_{1,t},\dots,h^\varepsilon_{M,t}$ act element-by-element along
-the diagonal of $\mR$, just as the single $h^u_t$ acts matrix-wide on
-$\mQ$. These are exactly the conditional variances that produce the
-combined precision weights $g^u_t=w^u_t/h^u_t$ and
-$g^\varepsilon_{i,t}=w^\varepsilon_t/h^\varepsilon_{i,t}$ used in Family~A
-below.
+The $r$ \emph{common} volatilities, by contrast, are collected in the
+diagonal matrix $\mathbf H^u_t=\mathrm{diag}(h^u_{1,t},\dots,h^u_{r,t})$ and
+enter through the \emph{sandwich} of Specification~II, so that the
+conditional variance of the VAR(1) innovation is
+\begin{equation}
+\operatorname{Var}(u_t\mid\cdot)=\frac{1}{w^u_t}\,\sqrt{\mathbf H^u_t}\,\mQ\,\sqrt{\mathbf H^u_t},
+\label{eq:param-hu-matrix}
+\end{equation}
+each $h^u_{i,t}$ scaling the innovation of factor $i$ --- the true
+per-factor interpretation the placement choice was made for. This is the
+multivariate stochastic-volatility specification adopted there: with a full
+$\mQ$ the common block does \emph{not} reduce to $r$ separate AR(1) lines,
+and the volatilities dress $\mQ$ on both sides rather than premultiplying it
+by a single scalar. Two consequences propagate through this block. First,
+the tail weight $w^u_t$ still enters as a \emph{single scalar} multiplier of
+the whole covariance --- it cancels in the implied correlation matrix,
+leaving the \emph{shape} of $\mQ$ intact --- so its Gamma conjugacy is
+untouched. Second, and in contrast, the \emph{combined} precision on the
+factor side,
+$\operatorname{Var}(u_t\mid\cdot)^{-1}=w^u_t\,\mathbf H_t^{u\,-1/2}\mQ^{-1}\mathbf H_t^{u\,-1/2}$,
+is a \emph{matrix}, not the scalar $g^u_t=w^u_t/h^u_t$ of a common scalar
+volatility; the idiosyncratic side keeps its scalar combined weights
+$g^\varepsilon_{i,t}=w^\varepsilon_t/h^\varepsilon_{i,t}$ because $\mR$ is
+diagonal. The consequence for Family~A --- a clean inverse-Wishart draw of
+$\mQ$ but a genuinely multivariate (vectorised) draw of $\mA$ --- is worked
+out below.
 
 This block is also where the \emph{priors}, deferred until now, must be
 specified, since it is they that combine with the likelihood to give the
@@ -20416,9 +20470,9 @@ $\mA,\mQ,\mL,\mR$ carry \emph{conjugate} priors --- a (matrix-)Normal on the
 regression coefficients $\mA$ and $\mL$, an inverse-Wishart on the factor
 scale $\mQ$, and independent inverse-Gamma laws on the idiosyncratic variances
 $r_i$. The data reach them through the weighted
-cross-moments of the \emph{sampled} factor path (the $\mathcal P^u$ and
-$\mathcal F_i$ sums below), the sufficient statistics of the
-conditional Gaussian regression. Within the family the entry is not quite
+cross-moments of the \emph{sampled} factor path (the volatility-whitened
+factor moments and the $\mathcal F_i$ sums below), the sufficient statistics
+of the conditional Gaussian regression. Within the family the entry is not quite
 uniform, and it mirrors the flow of \S\ref{subsec:data-journey}: the loadings
 and scales $\mL,\mR$ regress the \emph{observed} $y_t$ on the sampled factors
 --- $y$ the regressand, the one pair here that meets the data directly ---
@@ -20432,124 +20486,120 @@ and its punchline is that the posterior \emph{mean} is exactly the EM M-step
 update: the draw merely restores the dispersion EM discarded.
 
 These are the friendliest. Conditional on the sampled states, volatilities
-and weights, the model is the linear-Gaussian regression of the M-step,
-and the weighted-least-squares updates survive verbatim as the
-\emph{means} of conjugate posteriors --- we now \emph{draw} from those
-posteriors instead of taking the mode. The only change relative to the EM
-moments is that each observation now carries a \emph{combined} precision
-weight that folds in the volatility alongside the tail weight,
+and weights, the model is the linear-Gaussian regression of the M-step. On
+the \emph{idiosyncratic} side --- where $\mR$ is diagonal --- the
+weighted-least-squares updates survive verbatim as the \emph{means} of
+conjugate posteriors, now with a \emph{combined} scalar precision weight that
+folds the volatility in alongside the tail weight,
 \begin{equation}
-g^u_t \;\equiv\; \frac{w^u_t}{h^u_t},
-\qquad
 g^\varepsilon_{i,t} \;\equiv\; \frac{w^\varepsilon_t}{h^\varepsilon_{i,t}},
+\qquad\text{so that}\qquad
+\operatorname{Var}(\varepsilon_{i,t}\mid\cdot)=r_i/g^\varepsilon_{i,t}.
 \label{eq:param-combined-weight}
 \end{equation}
-since the conditional innovation variances are $h^u_t\mQ/w^u_t$ and
-$h^\varepsilon_{i,t}r_i/w^\varepsilon_t$.
-
-\paragraph{The deflated regression.} Both updates rest on the same device.
-Conditional on the sampled states, volatilities and weights, every
-innovation is Gaussian with a \emph{known}, observation-specific variance;
-dividing each equation by the square root of its own scale restores
-homoskedasticity and returns an ordinary Gaussian regression to which the
-conjugate algebra applies verbatim. For the factor VAR
-$f_t=\mA f_{t-1}+u_t$ with $u_t\mid\cdot\sim\mathcal N(0,h^u_t\mQ/w^u_t)$,
-multiply through by $\sqrt{g^u_t}$:
+On the \emph{factor} side, by contrast, the sandwich
+\eqref{eq:param-hu-matrix} makes the combined precision a \emph{matrix},
 \begin{equation}
-\tilde f_t \;=\; \mA\,\tilde f_{t-1}\;+\;\tilde u_t,
+\mathbf G^u_t \;\equiv\; \operatorname{Var}(u_t\mid\cdot)^{-1}
+= w^u_t\,\mathbf H_t^{u\,-1/2}\,\mQ^{-1}\,\mathbf H_t^{u\,-1/2},
 \qquad
-\tilde f_t\equiv\sqrt{g^u_t}\,f_t,\quad
-\tilde f_{t-1}\equiv\sqrt{g^u_t}\,f_{t-1},\quad
-\tilde u_t\equiv\sqrt{g^u_t}\,u_t\sim\mathcal N(0,\mQ),
+\mathbf H_t^{u\,-1/2}=\mathrm{diag}\big(h^{u\,-1/2}_{1,t},\dots,h^{u\,-1/2}_{r,t}\big),
+\label{eq:param-combined-weight-u}
+\end{equation}
+which reduces to the scalar $g^u_t\mQ^{-1}$, $g^u_t=w^u_t/h^u_t$, only when
+the $r$ common volatilities are equal. This matrix --- time-varying and
+non-commuting with $\mA$ --- is what turns the factor-side draw multivariate.
+
+\paragraph{The deflated regression.} Conditional on the sampled states,
+volatilities and weights, every innovation is Gaussian with a \emph{known},
+observation-specific variance; whitening each equation by the inverse square
+root of its own scale restores homoskedasticity. On the idiosyncratic side
+this is the \emph{scalar} deflation of the first stage: multiplying row $i$
+by $\sqrt{g^\varepsilon_{i,t}}$ leaves a homoskedastic regression with
+variance $r_i$, and the conjugate algebra applies verbatim (below). On the
+factor side the deflation is by the \emph{matrix}
+$\sqrt{w^u_t}\,\mathbf H_t^{u\,-1/2}$: the whitened innovation
+\begin{equation}
+\check u_t \;\equiv\; \sqrt{w^u_t}\,\mathbf H_t^{u\,-1/2}\,(f_t-\mA f_{t-1})
+\;\sim\;\mathcal N(0,\mQ)
 \label{eq:param-deflate}
 \end{equation}
-a homoskedastic Gaussian regression with innovation covariance $\mQ$. The
-realised, combined-weight moments
-\[
-\mathcal P^u_{11}=\sum_t g^u_t\,f_tf_t',\quad
-\mathcal P^u_{10}=\sum_t g^u_t\,f_tf_{t-1}',\quad
-\mathcal P^u_{00}=\sum_t g^u_t\,f_{t-1}f_{t-1}',
-\]
-are then nothing but the cross-products $\sum_t\tilde f_t\tilde f_t'$,
-$\sum_t\tilde f_t\tilde f_{t-1}'$, $\sum_t\tilde f_{t-1}\tilde f_{t-1}'$ of
-the deflated data --- the exact analogues of the M-step moments
-\eqref{eq:Pu-definitions} with $\hat w^u_t$ replaced by $g^u_t$ and the
-expectation dropped. The same deflation by $\sqrt{g^\varepsilon_{i,t}}$
-turns each observation row into a scalar-variance regression below.
+is homoskedastic with covariance $\mQ$, but the matrix
+$\mathbf H_t^{u\,-1/2}$ premultiplies $\mA f_{t-1}$ and does \emph{not}
+commute with $\mA$. Consequently the scalar-weighted moments
+$\sum_t g^u_t f_tf_{t-1}'$ that were sufficient for a common \emph{scalar}
+volatility no longer are, and the closed matrix-normal update of the first
+stage does not survive on the factor side. We take the two factor-side
+parameters in turn.
 
-\paragraph{Transition $\mA$ and factor scale $\mQ$: the derivation.}
-Work with $\mathbf B\equiv\mA'$, so that \eqref{eq:param-deflate} reads
-$\tilde f_t'=\tilde f_{t-1}'\mathbf B+\tilde u_t'$ in the conventional
-``response-on-regressor'' layout. The conditional likelihood is
+\paragraph{Factor scale $\mQ$: still a clean inverse-Wishart.} Take the
+scale $\mQ$ first, conditional on $\mA$. The innovations $u_t=f_t-\mA f_{t-1}$
+are then known and, by \eqref{eq:param-deflate}, the whitened residuals
+$\check u_t=\sqrt{w^u_t}\,\mathbf H_t^{u\,-1/2}u_t$ are iid
+$\mathcal N(0,\mQ)$. With the conjugate prior $\mQ\sim\mathcal{IW}(\Psi_0,\nu_0)$
+the posterior is the standard one,
 \begin{equation}
-p(f_{1:T}\mid\mA,\mQ,\cdot)\;\propto\;|\mQ|^{-T/2}
-\exp\!\Big\{-\tfrac12\operatorname{tr}\!\Big[\mQ^{-1}\!\sum_t
-(\tilde f_t-\mathbf B'\tilde f_{t-1})(\tilde f_t-\mathbf B'\tilde f_{t-1})'\Big]\Big\}.
-\label{eq:param-AQ-lik}
-\end{equation}
-Expanding the inner sum and completing the square in $\mathbf B$ gives the
-exact quadratic identity
-\begin{equation}
-\sum_t(\tilde f_t-\mathbf B'\tilde f_{t-1})(\tilde f_t-\mathbf B'\tilde f_{t-1})'
-\;=\;\mathcal S^u
-\;+\;(\mathbf B-\widehat{\mathbf B})'\,\mathcal P^u_{00}\,(\mathbf B-\widehat{\mathbf B}),
-\label{eq:param-AQ-cs}
-\end{equation}
-where $\widehat{\mathbf B}=(\mathcal P^u_{00})^{-1}(\mathcal P^u_{10})'$ is
-the weighted-LS coefficient --- equivalently $\widehat{\mA}=\widehat{\mathbf B}'
-=\mathcal P^u_{10}(\mathcal P^u_{00})^{-1}$, the M-step value
-\eqref{eq:A-update} --- and
-$\mathcal S^u=\mathcal P^u_{11}-\mathcal P^u_{10}(\mathcal P^u_{00})^{-1}(\mathcal P^u_{10})'$
-is the residual scatter. Substituted into \eqref{eq:param-AQ-lik}, the
-first term of \eqref{eq:param-AQ-cs} depends on $\mQ$ alone and the second
-is a Gaussian kernel in $\mathbf B$ with precision $\mQ^{-1}\!\otimes\mathcal P^u_{00}$:
-the likelihood is thus matrix-normal in $\mathbf B$ times inverse-Wishart
-in $\mQ$. This is the conjugate \emph{matrix-normal--inverse-Wishart}
-(MNIW) family, which we adopt as prior:
-\begin{equation}
-\mQ\sim\mathcal{IW}(\Psi_0,\nu_0),
+\mQ\mid\mA,\cdot\;\sim\;\mathcal{IW}\Big(\Psi_0+\textstyle\sum_t\check u_t\check u_t',\;\nu_0+T\Big),
 \qquad
-\mathbf B\mid\mQ\sim\mathcal{MN}\big(\mathbf B_0,\;\Lambda_0^{-1},\;\mQ\big)
-\;\Longleftrightarrow\;
-\operatorname{vec}(\mathbf B)\mid\mQ\sim\mathcal N\big(\operatorname{vec}(\mathbf B_0),\,\mQ\otimes\Lambda_0^{-1}\big),
-\label{eq:param-AQ-prior}
+\check u_t=\sqrt{w^u_t}\,\mathbf H_t^{u\,-1/2}(f_t-\mA f_{t-1}),
+\label{eq:param-Q-post}
 \end{equation}
-with $\Lambda_0$ a prior precision in regressor space. Multiplying
-\eqref{eq:param-AQ-prior} by the likelihood and completing the square once
-more --- now pooling the prior precision $\Lambda_0$ with the data
-precision $\mathcal P^u_{00}$ --- returns the posterior in the same family,
+the only change from the first stage being that the residual scatter uses the
+\emph{volatility-whitened} residuals $\check u_t$: the scalar $g^u_t$ has
+become the per-period matrix whitening $\sqrt{w^u_t}\,\mathbf H_t^{u\,-1/2}$,
+and the inverse-Wishart form is untouched.
+
+\paragraph{Transition $\mA$: a vectorised Gaussian draw.} The transition is
+where the multivariate structure bites. Conditional on $\mQ$, read
+\eqref{eq:param-deflate} as a linear model in $\operatorname{vec}(\mA)$,
+using $\operatorname{vec}(\mathbf C\,\mA\,\mathbf d)=(\mathbf d'\otimes\mathbf C)\operatorname{vec}(\mA)$
+with $\mathbf C=\sqrt{w^u_t}\,\mathbf H_t^{u\,-1/2}$ and $\mathbf d=f_{t-1}$:
 \begin{equation}
-\mQ\mid\cdot\sim\mathcal{IW}(\Psi_n,\nu_0+T),
+\check f_t \;=\; \mathbf X_t\,\operatorname{vec}(\mA)+\check u_t,
 \qquad
-\mathbf B\mid\mQ,\cdot\sim\mathcal{MN}\big(\mathbf B_n,\;\Lambda_n^{-1},\;\mQ\big),
-\label{eq:param-AQ-post}
+\check f_t=\sqrt{w^u_t}\,\mathbf H_t^{u\,-1/2}f_t,\quad
+\mathbf X_t=f_{t-1}'\otimes \sqrt{w^u_t}\,\mathbf H_t^{u\,-1/2},\quad
+\check u_t\sim\mathcal N(0,\mQ).
+\label{eq:param-A-vec-model}
 \end{equation}
-\begin{equation}
-\Lambda_n=\Lambda_0+\mathcal P^u_{00},
-\quad
-\mathbf B_n=\Lambda_n^{-1}\big(\Lambda_0\mathbf B_0+(\mathcal P^u_{10})'\big),
-\quad
-\Psi_n=\Psi_0+\mathcal P^u_{11}+\mathbf B_0'\Lambda_0\mathbf B_0-\mathbf B_n'\Lambda_n\mathbf B_n,
-\label{eq:param-AQ-hyper}
-\end{equation}
-the standard conjugate updates (note $\mathcal P^u_{00}\widehat{\mathbf B}=(\mathcal P^u_{10})'$).
-In the flat-prior limit $\Lambda_0\!\to0$, $\Psi_0\!\to0$, $\nu_0\!\to0$ these
-collapse to $\Lambda_n=\mathcal P^u_{00}$, $\mathbf B_n=\widehat{\mathbf B}$
-and $\Psi_n=\mathcal P^u_{11}-\widehat{\mathbf B}'\mathcal P^u_{00}\widehat{\mathbf B}=\mathcal S^u$,
-so the sequential draw of $\mQ$ then $\mA=\mathbf B'$ becomes
+With a Gaussian prior
+$\operatorname{vec}(\mA)\sim\mathcal N(\operatorname{vec}(\mA_0),\mathbf V_0)$
+the conditional is Gaussian,
 \begin{equation}
 \boxed{\;
-\mQ \mid \cdot \;\sim\; \mathcal{IW}\big(\Psi_0+\mathcal S^u,\;\nu_0+T\big),
-\qquad
-\operatorname{vec}(\mA)\mid \mQ,\cdot \;\sim\;
-\mathcal N\!\big(\operatorname{vec}(\widehat{\mA}),\;\mQ\otimes(\mathcal P^u_{00})^{-1}\big),
+\operatorname{vec}(\mA)\mid\mQ,\cdot\;\sim\;\mathcal N\big(\mathbf m_n,\mathbf V_n\big),
+\;\;
+\mathbf V_n^{-1}=\mathbf V_0^{-1}+\sum_t \mathbf X_t'\mQ^{-1}\mathbf X_t,
+\;\;
+\mathbf m_n=\mathbf V_n\Big(\mathbf V_0^{-1}\operatorname{vec}(\mA_0)+\sum_t\mathbf X_t'\mQ^{-1}\check f_t\Big),
 \;}
 \label{eq:param-AQ}
 \end{equation}
-the among-row covariance being $\mQ$ and the among-column (regressor)
-covariance $(\mathcal P^u_{00})^{-1}$. The posterior \emph{mean} of $\mA$
-is exactly the EM update \eqref{eq:A-update}; the sampler merely adds the
-dispersion the M-step discarded.
+where, by the Kronecker identity,
+\begin{equation}
+\mathbf X_t'\mQ^{-1}\mathbf X_t
+=\big(f_{t-1}f_{t-1}'\big)\otimes\big(w^u_t\,\mathbf H_t^{u\,-1/2}\mQ^{-1}\mathbf H_t^{u\,-1/2}\big)
+=\big(f_{t-1}f_{t-1}'\big)\otimes\mathbf G^u_t .
+\label{eq:param-A-precision}
+\end{equation}
+Two features distinguish this from the first-stage update. First, the
+precision \eqref{eq:param-A-precision} is a \emph{sum of Kronecker products},
+one per period, because $\mathbf G^u_t$ varies with $t$; it does not collapse
+to the single Kronecker $\mathcal P^u_{00}\otimes\mQ^{-1}$ of the scalar case,
+so the draw is an honest $r^2$-dimensional Gaussian rather than the closed
+matrix-normal $\mA=\mathcal P^u_{10}(\mathcal P^u_{00})^{-1}$. Second, and in
+consequence, $\mA$ and $\mQ$ no longer share the joint
+matrix-normal--inverse-Wishart conjugacy; we draw them as a two-step Gibbs
+move within the block, $\mQ\mid\mA$ from \eqref{eq:param-Q-post} and then
+$\operatorname{vec}(\mA)\mid\mQ$ from \eqref{eq:param-AQ}. When the $r$ common
+volatilities coincide (or $\mQ$ is diagonal), $\mathbf G^u_t=g^u_t\mQ^{-1}$
+factors out, the Kronecker sum collapses to
+$\big(\sum_t g^u_t f_{t-1}f_{t-1}'\big)\otimes\mQ^{-1}$, and the closed
+matrix-normal--inverse-Wishart draw of the common-scalar case is recovered;
+in general the per-factor volatilities make the transition draw genuinely
+multivariate. As before, the posterior \emph{mean} of $\mA$ is the
+(prior-shrunk) generalised-least-squares fit, and the sampler adds the
+dispersion the mode discards.
 
 \paragraph{Loadings $\mL$ and idiosyncratic scales $r_i$: the derivation.}
 Because $\mR$ is diagonal the observation block factorises over series, and
@@ -20716,11 +20766,12 @@ $\tilde{\mL}^Q_{j\cdot}=(c_0\mL^Q_{j\cdot},\dots,c_4\mL^Q_{j\cdot})$, with
 the fixed weights.
 
 \paragraph{The transition is untouched.} The draw of $\mA,\mQ$ in
-\eqref{eq:param-AQ} involves only the \emph{monthly} factor dynamics
-$f_t=\mA f_{t-1}+u_t$, whose moments $\mathcal P^u_{11},\mathcal P^u_{10},\mathcal P^u_{00}$
-are formed from the leading two blocks $(f_t,f_{t-1})$ of the sampled
-augmented path; the four identity-shift block rows of the companion form
-$\tilde{\mA}$ are deterministic and contribute nothing to estimate. Hence
+\eqref{eq:param-Q-post}--\eqref{eq:param-AQ} involves only the \emph{monthly}
+factor dynamics $f_t=\mA f_{t-1}+u_t$, whose whitened residuals $\check u_t$
+and vectorised precision \eqref{eq:param-A-precision} are formed from the
+leading two blocks $(f_t,f_{t-1})$ of the sampled augmented path; the four
+identity-shift block rows of the companion form $\tilde{\mA}$ are
+deterministic and contribute nothing to estimate. Hence
 $\mA,\mQ$ --- and, being purely volatility-side, all of Families~B, C and D
 --- are drawn exactly as derived above, with no mixed-frequency
 modification. In one line: \emph{mixed frequency reaches the parameter
