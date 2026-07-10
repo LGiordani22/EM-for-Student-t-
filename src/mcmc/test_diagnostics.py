@@ -186,6 +186,60 @@ def test_real_panel():
            f"{np.max(np.abs(lam['bias_pct'])):.3f}%")
 
 
+def test_gate1_diagnostics_do_not_move_the_draws():
+    print("\n[5] GATE 1 (fix P6): the ESS/R-hat hook is pure instrumentation")
+    from mcmc.gibbs import fit_dfm_mcmc, load_warm_init
+    from mcmc.simulate_sv import simulate_dfm_sv
+
+    w = load_warm_init("small")
+    theta = dict(w["theta"]); theta["Sigma_0"] = np.asarray(theta["Sigma_0"])
+    fl, bm, oc, r = w["freq_list"], w["block_map"], w["ordered_cols"], w["r"]
+    sim = simulate_dfm_sv(theta, T=120, freq_list=fl, block_map=bm, ordered_cols=oc,
+                          r=r, seed=11, sv_u=(0.0, 0.95, 0.15), sv_eps=(0.0, 0.9, 0.10),
+                          rho_u=np.array([-0.5, -0.2, -0.1])[:r], rho_eps=-0.3,
+                          timing="lagged")
+    Y = sim["Y"]
+
+    def _run(diag: bool):
+        return fit_dfm_mcmc(Y, theta, fl, bm, oc, n_iter=60, burn_in=20, seed=3,
+                            sv=True, leverage=True, timing="lagged",
+                            compute_diagnostics=diag, verbose=False)
+
+    off, on = _run(False), _run(True)
+
+    # THE gate: same seed, the diagnostics on/off, every stored draw byte-for-byte equal.
+    same = all(np.array_equal(off["draws"][k], on["draws"][k]) for k in off["draws"])
+    _check("draws are bit-for-bit identical with diagnostics on vs off", same,
+           f"keys={sorted(off['draws'])}")
+    _check("same key set in both runs", set(off["draws"]) == set(on["draws"]))
+    _check("theta_mean unchanged",
+           all(np.array_equal(np.asarray(off["theta_mean"][k]),
+                              np.asarray(on["theta_mean"][k])) for k in off["theta_mean"]))
+    _check("acceptance rates unchanged (no RNG consumed by the hook)",
+           off["meta"]["acceptance"] == on["meta"]["acceptance"])
+    _check("diagnostics absent when switched off", "diagnostics" not in off)
+
+    # ... and the hook actually reports what P6 needs.
+    d = on["diagnostics"]
+    _check("rho_u diagnosed per factor",
+           d["rho_u"]["ess"].shape == (r,) and d["rho_u"]["r_hat"].shape == (r,),
+           f"{d.get('rho_u')}")
+    _check("phi and sigma2 diagnosed per factor (the ASIS ridge)",
+           d["sv_u_phi"]["ess"].shape == (r,) and d["sv_u_sigma2"]["ess"].shape == (r,))
+    _check("per-series quantities summarised, not dumped",
+           set(d["rho_eps"]) == {"ess_min", "ess_median", "r_hat_max"})
+    _check("ESS is positive and does not exceed the number of draws",
+           np.all(d["rho_u"]["ess"] > 0)
+           and np.all(d["rho_u"]["ess"] <= 1.05 * on["meta"]["n_keep"]),
+           f"ess={np.round(d['rho_u']['ess'],1)}, n_keep={on['meta']['n_keep']}")
+
+    # a no-SV run must carry no sv/rho diagnostics (schema follows the restriction)
+    ns = fit_dfm_mcmc(Y, theta, fl, bm, oc, n_iter=40, burn_in=10, seed=3,
+                      sv=False, verbose=False)
+    _check("no-SV run: only nu is diagnosed",
+           set(ns["diagnostics"]) == {"nu_u", "nu_eps"}, f"{sorted(ns['diagnostics'])}")
+
+
 def main():
     print("=" * 72)
     print("AUDIT METRICS — P1 / P4 / P5 made measurable (docs/audit_P1-P5.md)")
@@ -194,6 +248,7 @@ def main():
     test_coupling_overconfidence()
     test_leverage_whitening_attenuation()
     test_real_panel()
+    test_gate1_diagnostics_do_not_move_the_draws()
     print("\n" + "=" * 72)
     print(f"  {_PASS} passed, {_FAIL} failed")
     print("=" * 72)

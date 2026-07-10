@@ -115,6 +115,78 @@ VARIANT_FLAGS: dict[str, dict] = {
 }
 
 
+def _chain_diagnostics(draws: dict, *, sv: bool, sv_idio: bool,
+                       leverage: bool, student_t: bool) -> dict:
+    r"""
+    ESS and split-R-hat for the slowly-mixing parameters of the sweep — computed
+    **from the stored draws**, after the loop.
+
+    Pure instrumentation: it reads ``draws``, never writes them, and consumes **no**
+    RNG.  The draws of a given seed are therefore bit-for-bit identical whether or
+    not this runs (asserted by ``test_diagnostics`` [5]).
+
+    Why it is not optional (``docs/audit_P1-P5.md`` §P6).  ``rho`` is updated by a
+    single random-walk Metropolis move per sweep, sits on a posterior ridge with the
+    log-vol path and ``sigma_eta^2``, and shows ``ESS ~ 3-23`` per 2000 draws — while
+    being the parameter that gives the GDP predictive its **skew**.  A ``rho_hat``
+    without its ESS is not a measurement.  The same ridge afflicts ``(phi, sigma^2)``
+    (which is what ASIS exists for), so all three are reported.
+
+    Note on ``split_r_hat`` from a **single** chain: it splits the chain in half and
+    compares the halves, so it detects a chain that is still travelling (exactly the
+    ``rho`` failure mode) — but it cannot detect a chain stuck in one of several
+    modes.  For that, run several seeds.
+
+    Returns a dict; per-factor quantities are reported channel by channel, per-series
+    ones (``M`` of them) as a summary so the dict stays readable::
+
+        {"rho_u":       {"ess": (r,), "r_hat": (r,)},
+         "sv_u_phi":    {"ess": (r,), "r_hat": (r,)},
+         "sv_u_sigma2": {"ess": (r,), "r_hat": (r,)},
+         "rho_eps":     {"ess_min":…, "ess_median":…, "r_hat_max":…},
+         "sv_eps_phi":  {…}, "sv_eps_sigma2": {…},
+         "nu_u": {"ess":…, "r_hat":…}, "nu_eps": {…}}
+    """
+    from mcmc.diagnostics import ess, split_r_hat        # lazy: diagnostics imports gibbs
+
+    def _scalar(x: np.ndarray) -> dict:
+        ch = np.asarray(x, float)[None, :]               # (1, n_draws)
+        return {"ess": float(ess(ch)), "r_hat": float(split_r_hat(ch))}
+
+    def _per_column(X: np.ndarray) -> dict:
+        """X is (n_draws, k) -> per-column ESS / R-hat."""
+        X = np.asarray(X, float)
+        return {"ess": np.array([ess(X[:, j][None, :]) for j in range(X.shape[1])]),
+                "r_hat": np.array([split_r_hat(X[:, j][None, :]) for j in range(X.shape[1])])}
+
+    def _summary(X: np.ndarray) -> dict:
+        """X is (n_draws, k) with k large (per-series) -> a readable summary."""
+        d = _per_column(X)
+        e, rh = d["ess"], d["r_hat"]
+        return {"ess_min": float(np.nanmin(e)), "ess_median": float(np.nanmedian(e)),
+                "r_hat_max": float(np.nanmax(rh))}
+
+    out: dict = {}
+    n_keep = draws["A"].shape[0]
+    if n_keep < 4:                                       # ess/split_r_hat need a chain
+        return out
+
+    if leverage:
+        out["rho_u"] = _per_column(draws["rho_u"])
+        if sv_idio and "rho_eps" in draws:
+            out["rho_eps"] = _summary(draws["rho_eps"])
+    if sv:
+        out["sv_u_phi"] = _per_column(draws["sv_u"][:, :, 1])
+        out["sv_u_sigma2"] = _per_column(draws["sv_u"][:, :, 2])
+        if sv_idio and "sv_eps" in draws:
+            out["sv_eps_phi"] = _summary(draws["sv_eps"][:, :, 1])
+            out["sv_eps_sigma2"] = _summary(draws["sv_eps"][:, :, 2])
+    if student_t:
+        out["nu_u"] = _scalar(draws["nu_u"])
+        out["nu_eps"] = _scalar(draws["nu_eps"])
+    return out
+
+
 def variant_kwargs(cell: str, *, leverage: bool = False,
                    timing: str = "contemporaneous") -> dict:
     r"""
@@ -220,6 +292,7 @@ def fit_dfm_mcmc(
     lev_prop_rho: float = 0.06,
     store_states: bool = False,
     store_vol: bool = False,
+    compute_diagnostics: bool = True,
     verbose: bool = True,
 ) -> dict:
     r"""
@@ -282,6 +355,13 @@ def fit_dfm_mcmc(
                               (``~10`` mildly informative, ``1e5`` near-flat).
     store_states : bool       also store the per-draw head factor path F (T, r)
                               (memory ~ n_keep * T * r floats).
+    compute_diagnostics : bool  compute ESS and split-R-hat for rho, phi, sigma^2
+                              (and nu) from the stored draws and return them under
+                              ``res["diagnostics"]``.  Default **on**: rho mixes so
+                              badly (audit P6) that a rho_hat without its ESS is not
+                              a measurement.  Pure instrumentation — it reads the
+                              draws and consumes no RNG, so switching it off cannot
+                              change a single draw (asserted in ``test_diagnostics``).
     verbose : bool            progress log.
 
     Returns
@@ -295,6 +375,10 @@ def fit_dfm_mcmc(
         ``theta_mean`` : dict — posterior means (A, Q, Lambda, R, nu_u, nu_eps,
             Sigma_0), in the same layout as a ``theta`` dict.
         ``meta`` : dict — schedule, dimensions, seed, wall-clock.
+        ``diagnostics`` : dict — ESS / split-R-hat for ``rho_u`` (per factor),
+            ``sv_u_phi``, ``sv_u_sigma2`` (per factor), ``nu_*``, and a summary
+            (min / median ESS, max R-hat) for the ``M`` per-series quantities.
+            Present iff ``compute_diagnostics``.
     """
     if tails not in ("student_t", "gaussian"):
         raise ValueError(
@@ -605,6 +689,21 @@ def fit_dfm_mcmc(
     }
     if leverage and acc_count > 0:
         meta["acceptance"] = {k: v / acc_count for k, v in acc_accum.items()}
+
+    # ── convergence diagnostics (pure instrumentation: reads draws, no RNG) ──
+    # Mandatory by default: no rho_hat without its ESS (audit P6).
+    res = {"draws": draws, "theta_mean": theta_mean, "meta": meta}
+    if compute_diagnostics:
+        res["diagnostics"] = _chain_diagnostics(
+            draws, sv=sv, sv_idio=sv_idio, leverage=leverage, student_t=student_t)
+
     if verbose:
         print(f"  [gibbs] done: {keep} kept draws in {meta['wall_clock_s']:.1f}s")
-    return {"draws": draws, "theta_mean": theta_mean, "meta": meta}
+        d = res.get("diagnostics", {})
+        if "rho_u" in d:
+            print(f"  [gibbs] ESS(rho_u)={np.round(d['rho_u']['ess'], 0)}  "
+                  f"split-Rhat={np.round(d['rho_u']['r_hat'], 3)}")
+        if "sv_u_phi" in d:
+            print(f"  [gibbs] ESS(phi_u)={np.round(d['sv_u_phi']['ess'], 0)}  "
+                  f"ESS(sigma2_u)={np.round(d['sv_u_sigma2']['ess'], 0)}")
+    return res
