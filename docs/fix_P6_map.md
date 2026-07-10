@@ -300,17 +300,69 @@ correttezza da far restare verde.
 
 ---
 
-## 7. Baseline
+## 7. Baseline (PASSO 2 — GATE 2 ✅)
 
-*(Da compilare al PASSO 2, dopo il GATE 1. Sezione riservata.)*
+DGP: per-fattore Spec II, `r=3`, `Q` **diagonale** (così il bench misura il mixing di
+`ρ` e nient'altro: nessun effetto P1/P4/P5), `ρ_vero = [−0.70, −0.15, +0.45]`,
+`sv_u = [(0,.97,.25), (0,.92,.18), (0,.95,.22)]`, `T=600`, Branch B (laggato).
+**2 catene × 4000 iterazioni, burn-in 1500 ⇒ 5000 draw totali.** Wall-clock 27 min.
+Comando: `python src/mcmc/bench_p6_rho.py --n-iter 4000 --burn-in 1500 --chains 2`.
 
-| | `ESS(ρ_k)` | `split-R̂(ρ_k)` | `ρ̂_k` [CI 90%] |
-|---|---|---|---|
-| RW (baseline) | — | — | — |
-| griddy | — | — | — |
+### RW (`prop_sd = 0.06`, il sampler attuale)
 
-DGP: per-fattore Spec II, `r=3`, `Q` diagonale, `ρ_vero = [−0.70, −0.15, +0.45]`,
-`sv_u = [(0,.97,.25), (0,.92,.18), (0,.95,.22)]`, Branch B (laggato).
+| canale | `ρ` vero | `ρ̂` | CI 90% | **ESS** | **split-R̂** | MCSE |
+|---|---|---|---|---|---|---|
+| `k=0` (dominante) | −0.70 | **−0.513** | [−0.670, −0.324] | **62.5** | 1.002 | 0.014 |
+| `k=1` (debole) | −0.15 | −0.264 | [−0.727, **+0.304**] | **17.3** | **1.156** | 0.074 |
+| `k=2` (positivo) | +0.45 | +0.434 | [+0.226, +0.627] | **58.7** | 1.020 | 0.015 |
+
+ESS per catena: `[[23.9, 14.9, 33.1], [45.4, 5.8, 26.7]]` — le due catene non
+concordano nemmeno sull'ESS. `acceptance(ρ_u) = 0.501`.
+
+**Efficienza `ESS/draw`: `[1.25%, 0.35%, 1.17%]`.**
+
+### Come va letto (e perché il criterio del GATE 2 va riformulato)
+
+⚠️ **L'ESS grezzo non è confrontabile fra catene di lunghezza diversa** — cresce
+linearmente con `n_iter`. L'audit riportava `ESS = [21, 13, 20]` su **1500** draw, cioè
+un'efficienza di `1.4% / 0.9% / 1.3%`. Qui, su **5000** draw, l'efficienza è
+`1.25% / 0.35% / 1.17%`. **È lo stesso identico problema**, misurato meglio: la catena
+non è rotta, è *lentissima*, e allungarla compra ESS in proporzione senza mai risolvere.
+
+L'invariante da usare nel confronto col griddy è dunque **`ESS/draw`**, e la soglia del
+GATE 3 (`ESS > 150–200`) va letta su questo numero di draw: `150/5000 = 3%`,
+`200/5000 = 4%`. Il baseline sta a `0.35–1.25%`: **serve un fattore 3–10×.**
+
+### Tre fatti che il baseline aggiunge all'audit
+
+1. **`R̂` smaschera il canale debole dove l'ESS da solo non basta.** `k=1` ha
+   `R̂ = 1.156` (≫ 1.05): le due catene **non hanno trovato lo stesso posterior**. Il
+   suo CI al 90% è `[−0.727, +0.304]` — copre lo zero e **entrambi i segni**. Il
+   leverage del canale debole non è identificato, punto. (Coerente con P2: è lo stesso
+   canale la cui `h^u_k` satura al tetto informativo.)
+
+2. **I due canali forti *sono* convergiuti** (`R̂ = 1.002` e `1.020`) — e nonostante
+   ciò `ρ̂_0 = −0.513` con CI `[−0.670, −0.324]`, che **esclude il vero −0.70**.
+   Questo è un fatto nuovo e importante: **non è (solo) non-convergenza**. Con
+   `MCSE = 0.014`, lo scarto dal vero è ~13 MCSE. O il posterior a `T=600` è
+   genuinamente concentrato lontano dal vero (identificazione debole di `ρ` letto da
+   `η` e `z` entrambi **latenti** — un errors-in-variables che `T` non cura), oppure c'è
+   un bias residuo nel regressore. **Il griddy non può risolvere questo**: campiona
+   meglio lo *stesso* posterior. Va tenuto separato dal criterio del GATE 3, che
+   riguarda l'**efficienza**, non la posizione del posterior.
+
+3. **`acceptance(ρ) = 0.50` è "sana"** secondo i test attuali (`0.05 < acc < 0.95`) —
+   e la catena ha `ESS/draw = 0.35%`. **L'acceptance non è un indicatore di mixing.**
+   Un altro motivo per cui la strumentazione del GATE 1 non era un lusso.
+
+### Verdetto GATE 2
+
+✅ **Superato.** Il baseline conferma il problema dell'audit (efficienza `0.35–1.25%`,
+`R̂ = 1.156` sul canale debole), quindi **il problema non è cambiato** e si procede al
+PASSO 3. Con una precisazione da portare avanti: il griddy sarà giudicato
+sull'**efficienza `ESS/draw`** e su `R̂`, *non* sulla capacità di spostare `ρ̂_0` verso
+−0.70 — quella è una domanda diversa (identificazione, non mixing) che il GATE 3 non
+può e non deve decidere.
 
 ---
 
