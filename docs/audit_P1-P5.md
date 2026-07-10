@@ -400,15 +400,18 @@ sulla singola `ĥ_k` è ancora più debole di così.
 
 ### Sotto B, si pone?
 
-**In forma molto attenuata, e senza rimedio disponibile.** Attenuata perché `corr(Q)`
-reale è ≤ 0.099 ⇒ +0.4%. Senza rimedio perché, come stabilito in P1, sotto B **non
-esiste** un FFBS `r`-dimensionale in cui inserire `R_ξ`: accendere il coupling
-richiederebbe scrivere un blocco Omori multivariato che oggi non c'è.
+**In forma molto attenuata, e senza rimedio *sotto leverage*.** Attenuata perché
+`corr(Q)` reale è ≤ 0.099 ⇒ +0.4%. Sotto **Branch B** non c'è un FFBS `r`-dimensionale
+in cui inserire il coupling: il blocco comune sono `r` canali Omori scalari, e
+accenderlo lì richiederebbe una mistura di Omori congiunta che non deriviamo
+(`.tex` `subsec:lev-branches-allproc` (iii)).
 
-Questo cambia la formulazione della mappa. La mappa dice: *"se coupled-QML on/off
-dipende da (a) `corr(Q)` e (b) PIT/coverage"* — implicando che sia una decisione da
-prendere su un flag. **Sotto B non è un flag: è un progetto.** E con `corr(Q) ≈ 0.1`
-sarebbe un progetto per guadagnare `0.4%` di calibrazione.
+Sul **path senza leverage** (Spec II, `sv=True, leverage=False`), invece, il coupling
+ora **c'è**: `common_vol_coupling="qml"` (2026-07-10). È la forma **QML** — covarianza
+di misura costante `Σ_ξ = (π²/2)R_ξ`, senza mistura — non la literal instabile.
+Verificata stabile a `corr(Q)=0.92` (`φ̂ = 0.856` sul fattore meno persistente, contro
+`0.422` della literal; `test_spec2_recovery` [3]). Resta **non-default**: con
+`corr(Q) ≈ 0.1` non paga il doppio costo e la perdita del raffinamento della mistura.
 
 ### È bloccante per il forecast/GaR?
 
@@ -430,15 +433,24 @@ Ora sì, in `diagnostics.py` (pure, nessun effetto sul sampler):
 
 Sull'EM reale: `+0.04%` di sovra-confidenza. Gate: `test_diagnostics.py`.
 
-**La mossa giusta è: default disaccoppiato ora, misura sul pannello reale, decidi dopo
-— e con ogni probabilità la risposta resterà "no".** Confermo la lettura della mappa,
-con la correzione che `corr(Q)` non è più ignoto: sappiamo già che è ~0.1 sull'EM. Va
-riconfermato sui draw MCMC (sotto SV la `Q` può cambiare), ma la prior è forte.
+E ora c'è anche il **rimedio**, non solo la diagnostica (2026-07-10): la **QML** è
+implementata come opzione esplicita, `common_vol_coupling="qml"` (path senza leverage).
+`diagnostics.recommend_coupling(Q)` dà la raccomandazione: `"decoupled"` sotto una
+soglia di sovra-confidenza (5% ⇒ `corr(Q)≈0.35`), `"qml"` sopra — ma solo *"IFF a
+PIT/coverage check also shows tail mis-calibration"*, mai sul numero da solo, come il
+`.tex` prescrive.
 
-**Non c'è motivo di accendere il coupling prima.** Al contrario: a `Q` diagonale il
-disaccoppiato è **esatto**, e la costruzione literal del `.tex` (`Σ = diag(v_s) R_ξ
-diag(v_s)`) è **instabile** (distorce il fattore meno persistente, `φ 0.90→0.42`), come
-il refactor ha già documentato.
+**La mossa giusta resta: default disaccoppiato ora, misura sul pannello reale, decidi
+dopo — e con ogni probabilità la risposta resterà "no".** Confermo la lettura della
+mappa, con la correzione che `corr(Q)` non è più ignoto: sappiamo già che è ~0.1
+sull'EM. Va riconfermato sui draw MCMC (sotto SV la `Q` può cambiare), ma la prior è
+forte.
+
+**Non c'è motivo di accendere il coupling prima.** A `Q` diagonale il disaccoppiato è
+**esatto**, e la QML per giunta *perde* il raffinamento della mistura (a `Q` diagonale è
+una singola gaussiana `π²/2`, non la mistura KSC), quindi non conviene finché `corr(Q)`
+resta piccolo. La literal (`Σ = diag(v_s) R_ξ diag(v_s)`) resta **instabile** (`φ
+0.90→0.42`) e dietro `allow_experimental`, tenuta solo per esibire quel finding.
 
 **Agganci che il modulo di forecast deve avere perché accendere il coupling *dopo* non
 costringa a riscriverlo.** Il forecast consuma i draw, non il sampler, quindi la regola

@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from mcmc.constants import KSC7
+from mcmc.constants import KSC7, LOG_CHI2_MEAN
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -556,6 +556,7 @@ def sample_common_vol_mv(
     sigma_prior: str = "inverse_gamma",
     half_normal_B: float = 1.0,
     use_asis: bool = False,
+    coupling: str = "decoupled",
     R_xi: np.ndarray | None = None,
     allow_experimental: bool = False,
     ksc: dict = KSC7,
@@ -583,34 +584,45 @@ def sample_common_vol_mv(
     (the known offset ``log q_kk`` of the thesis is absorbed by standardising with
     ``q_kk`` before the log-square).
 
-    Two couplings, selected by ``R_xi``:
+    Three couplings, selected by ``coupling`` (``subsec:vol-all-processes``, the
+    "caveat on the cross-covariance"):
 
-    * **Commit 1 — ``R_xi = None`` (decoupled, ``R_xi = I``).** The ``r`` measurements
-      are treated as marginally independent → ``r`` independent scalar KSC sub-sweeps
-      (:func:`sample_log_vol_process`). Exact when ``Q`` is diagonal; the
+    * ``"decoupled"`` (**default**) — the ``r`` measurements are treated as marginally
+      independent → ``r`` independent scalar KSC sub-sweeps
+      (:func:`sample_log_vol_process`). **Exact when ``Q`` is diagonal**; the
       theory-sanctioned near-diagonal fast path otherwise. At ``r = 1`` the
       standardisation ``e_1 = sqrt(w/q_11) u_1`` equals the scalar block's
       ``tilde_u = sqrt(w) Q^{-1/2} u``, so with the same RNG this reproduces the
       common path of :func:`sample_volatility_block` bit-for-bit.
-    * **Commit 2 — ``R_xi`` an ``(r, r)`` matrix** (the log-square correlation matrix
-      from :func:`logsq_corr_matrix`, i.e. ``R_xi[j,k] = Corr(log zeta_bar_j^2,
-      log zeta_bar_k^2)`` under ``corr(Q)``). The ``r`` factors are coupled by a
-      **single r-dim FFBS**: per-factor KSC indicators give the mean/variance, and
-      the measurement covariance is ``Sigma_xi,t = diag(v_{s_k,t}) R_xi
-      diag(v_{s_k,t})`` (subsec:vol-all-processes, Harvey–Ruiz–Shephard 1994).
-
-      ⚠️ **EXPERIMENTAL — do not use as default (finding 2026-07-08).** This
-      correlation-scaled form — the literal "mixture componentwise + retained
-      cross-covariance" — mixes the *unconditional* correlation ``R_xi`` with the
-      mixture's *conditional* variances ``v_{s_k}``; the inconsistency **distorts**
-      the less-persistent factor at strong ``corr(Q)`` (phi collapses, sigma2
-      explodes; ``test_spec2_recovery`` diagnostic).  The consistent QML variant
-      (constant exact covariance ``[[pi^2/2, g],[g, pi^2/2]]``, no mixture) is
-      *stable* but does **not** improve point recovery over the decoupled sampler —
-      positively-correlated measurement noise is redundant information, so coupling
-      aids *calibration*, not accuracy.  **Default = ``R_xi = None`` (decoupled),**
-      the tested, theory-sanctioned near-diagonal path; the coupled route is a
-      pending design decision (docs/REFACTOR_PLAN.md, 1d).
+    * ``"qml"`` — the **quasi-maximum-likelihood** coupled pass (Harvey, Ruiz and
+      Shephard 1994): keep the *exact constant* covariance of the log-square vector,
+      ``Sigma_xi = (pi^2/2) R_xi`` with ``R_xi = corr`` of the log-squares
+      (:func:`logsq_corr_matrix`), and drop the componentwise mixture — the
+      measurement is a **single** Gaussian, centred at the log-χ²₁ mean
+      (``LOG_CHI2_MEAN``), with that constant covariance, drawn by one r-dim FFBS
+      **without** an indicator step.  This is the *consistent* coupled form: unlike
+      the literal one below it never mixes conditional variances with an
+      unconditional correlation, so it is **stable at strong ``corr(Q)``** — the
+      reason it is the option the thesis holds in reserve.  Its price is that it
+      **drops the mixture's marginal refinement**, so at diagonal ``Q`` it does *not*
+      reduce to ``"decoupled"`` (a single ``N(·, pi^2/2)`` in place of the 7-component
+      KSC mixture), and off the near-diagonal regime its benefit is *calibration*, not
+      point accuracy — positively-correlated measurement noise is redundant
+      information.  **Not a default; a data-driven robustness option** to be switched
+      on only if the estimated ``corr(Q)`` proves materially non-diagonal *and* the
+      predictive tail is seen to be mis-calibrated (``docs/audit_P1-P5.md`` §P4;
+      inspect with :func:`mcmc.diagnostics.recommend_coupling`).  **Reachable only on
+      the no-leverage Spec II path**: under Branch~A/B the common block is not this
+      function (``subsec:lev-branches-allproc``, detail (iii)).
+    * ``"literal"`` — the correlation-scaled form ``Sigma_xi,t = diag(v_{s_k,t})
+      R_xi diag(v_{s_k,t})`` with per-factor KSC indicators (pass the matrix in
+      ``R_xi``, or leave ``None`` to build it from ``Q``).  ⚠️ **EXPERIMENTAL, requires
+      ``allow_experimental=True``** — it mixes the *unconditional* correlation with the
+      mixture's *conditional* variances, and the inconsistency **distorts** the
+      less-persistent factor at strong ``corr(Q)`` (phi 0.90 → 0.42 at 0.92;
+      ``test_spec2_recovery`` diagnostic).  Kept only as the reference implementation
+      of the finding that this literal realisation is unstable — the ``"qml"`` form is
+      the one to use if a coupled pass is ever wanted.
 
     Parameters
     ----------
@@ -619,27 +631,33 @@ def sample_common_vol_mv(
     w_u : (T,)            factor tail weights (``w_u[0]`` unused: no ``u_0``).
     logh_u : (T, r)       current per-factor log-vol paths (indicator conditional).
     sv_u : (r, 3)         current per-factor ``(mu, phi, sigma2)``.
-    R_xi : None or (r, r) decoupled (Commit 1) or the log-square correlation (Commit 2).
-                          Passing a matrix requires ``allow_experimental=True``.
-    allow_experimental : bool  opt-in to the coupled branch.  It is **not** reachable
-                          from :func:`mcmc.gibbs.fit_dfm_mcmc` on any path (and does
-                          not exist at all under Branch~B, whose common block is r
-                          independent Omori/FFBS channels) — the flag exists so that
-                          the reference implementation of the thesis' multivariate
-                          method stays runnable from tests and one-off studies,
-                          never by accident.  See ``docs/audit_P1-P5.md`` §P1/§P4.
+    coupling : str        ``"decoupled"`` (default) / ``"qml"`` / ``"literal"``.
+    R_xi : None or (r, r) the ``"literal"`` correlation matrix; ``None`` builds it from
+                          ``Q``.  Passing a matrix selects ``"literal"`` for backward
+                          compatibility.  Ignored by ``"decoupled"`` and ``"qml"``.
+    allow_experimental : bool  opt-in required for ``"literal"`` only.
 
     Returns ``{"logh_u": (T, r), "h_u": (T, r), "sv_u": (r, 3)}``.
     """
-    if R_xi is not None and not allow_experimental:
+    if coupling not in ("decoupled", "qml", "literal"):
+        raise ValueError(f"coupling={coupling!r}: 'decoupled', 'qml' or 'literal'.")
+    # Back-compat: a matrix R_xi is the old way of selecting the literal branch.
+    if R_xi is not None and coupling == "decoupled":
+        coupling = "literal"
+    if coupling == "literal" and not allow_experimental:
         raise ValueError(
-            "coupled R_xi is EXPERIMENTAL and not the sampler's method: the literal "
-            "correlation-scaled form Sigma = diag(v_s) R_xi diag(v_s) is unstable "
-            "(it distorts the less-persistent factor, phi 0.90 -> 0.42 at "
-            "corr(Q)=0.92), and on the real panel corr(Q) <= 0.1 makes its benefit "
-            "~0.4% of calibration. The decoupled block (R_xi=None) is exact at "
-            "diagonal Q. Pass allow_experimental=True only for a deliberate study "
-            "(docs/audit_P1-P5.md, P1/P4)."
+            "coupling='literal' is EXPERIMENTAL: the correlation-scaled form "
+            "Sigma = diag(v_s) R_xi diag(v_s) is unstable (it distorts the "
+            "less-persistent factor, phi 0.90 -> 0.42 at corr(Q)=0.92). For a "
+            "coupled pass use coupling='qml' (stable); pass allow_experimental=True "
+            "only for a deliberate study of the literal form (docs/audit_P1-P5.md)."
+        )
+    if coupling != "decoupled" and use_asis:
+        raise ValueError(
+            f"use_asis is not wired on the coupled joint-FFBS path (coupling="
+            f"{coupling!r}); ASIS wraps the per-factor scalar Family B draw of the "
+            f"decoupled block. Use coupling='decoupled' with use_asis, or coupling="
+            f"{coupling!r} without."
         )
     u_head = np.asarray(u_head, float)
     Tm1, r = u_head.shape
@@ -657,8 +675,8 @@ def sample_common_vol_mv(
     logh_new = np.zeros((T, r))
     sv_new = np.zeros((r, 3))
 
-    if R_xi is None:
-        # ── Commit 1: R_xi = I → r independent scalar KSC sub-sweeps ──────────
+    if coupling == "decoupled":
+        # ── R_xi = I → r independent scalar KSC sub-sweeps ────────────────────
         for k in range(r):
             mu_k, phi_k, s2_k = sv_u[k]
             # sqrt(w)*(u_k/sqrt(q_kk)) with the operand order of the scalar block:
@@ -680,7 +698,34 @@ def sample_common_vol_mv(
                 logh_new[:, k] = x_a; sv_new[k] = (0.0, phi_a, s2_a)
         return {"logh_u": logh_new, "h_u": np.exp(logh_new), "sv_u": sv_new}
 
-    # ── Commit 2: coupled r-dim FFBS with the log-square cross-correlation ────
+    if coupling == "qml":
+        # ── QML: constant exact covariance, NO mixture, one r-dim FFBS ────────
+        # Harvey-Ruiz-Shephard (1994): approximate the log-square vector by a single
+        # Gaussian keeping its exact first two moments — mean LOG_CHI2_MEAN (per
+        # component) and covariance Sigma_xi = (pi^2/2) R_xi, R_xi the log-square
+        # correlation matrix from corr(Q).  Constant in t (no indicator), stable at
+        # strong corr(Q).  At diagonal Q, Sigma_xi = (pi^2/2) I: a single Gaussian
+        # of variance pi^2/2 — NOT the KSC mixture, so this does NOT nest 'decoupled'.
+        R_xi_corr = logsq_corr_matrix(np.asarray(Q, float))    # (r, r), 1 on diagonal
+        Sigma_xi = (np.pi * np.pi / 2.0) * R_xi_corr           # exact constant cov
+        mask = np.zeros(T, bool); mask[1:] = True
+        y_eff = np.zeros((T, r))
+        y_eff[1:] = YS - LOG_CHI2_MEAN                         # mean-centred measurement
+        R_eff = np.zeros((T, r, r))
+        R_eff[1:] = Sigma_xi                                   # constant across t
+        phi_vec = np.asarray(sv_u, float)[:, 1].copy()
+        s2_vec = np.asarray(sv_u, float)[:, 2].copy()
+        logh_new = _mv_ar1_ffbs(y_eff, R_eff, mask, phi_vec, s2_vec, rng)
+        for k in range(r):
+            sv_new[k] = draw_ar1_params(
+                logh_new[:, k], rng, fix_mu0=fix_mu0, a_sig=prior_a, b_sig=prior_b,
+                sigma_prior=sigma_prior, half_normal_B=half_normal_B,
+                sigma2_cur=float(s2_vec[k]))
+        return {"logh_u": logh_new, "h_u": np.exp(logh_new), "sv_u": sv_new}
+
+    # ── literal: coupled r-dim FFBS with the log-square cross-correlation ─────
+    if R_xi is None:                                           # coupling='literal', no matrix
+        R_xi = logsq_corr_matrix(np.asarray(Q, float))
     R_xi = np.asarray(R_xi, float)
     m_ksc = ksc["m"]; v2_ksc = ksc["v2"]
     log_q = np.log(ksc["q"]); half_log_v2 = 0.5 * np.log(v2_ksc)
@@ -766,14 +811,17 @@ def sample_volatility_block_specII(
     half_normal_B: float = 1.0,
     use_asis: bool = False,
     sv_idio: bool = True,
+    common_vol_coupling: str = "decoupled",
     R_xi: np.ndarray | None = None,
     ksc: dict = KSC7,
 ) -> dict:
     r"""
     Step (b), **Specification II, no leverage**: the ``r`` per-factor common
     volatilities (via :func:`sample_common_vol_mv`) and the ``M`` idiosyncratic
-    ones (unchanged), and their AR(1) parameters.  ``R_xi = None`` is the decoupled
-    default (see :func:`sample_common_vol_mv`).
+    ones (unchanged), and their AR(1) parameters.  ``common_vol_coupling`` selects
+    the common-block measurement coupling — ``"decoupled"`` (default), ``"qml"``
+    (stable coupled) or ``"literal"`` (experimental); see
+    :func:`sample_common_vol_mv`.
 
     ``sv_idio=False`` is the **D2-a** restriction (``subsec:variants-restrictions``,
     "common volatility only"): the idiosyncratic part of the sampler is omitted,
@@ -797,7 +845,8 @@ def sample_volatility_block_specII(
     cm = sample_common_vol_mv(u_head, Q, w_u, logh_u, sv_u, rng, offset=offset,
                               fix_mu0=fix_mu0, prior_a=prior_a, prior_b=prior_b,
                               sigma_prior=sigma_prior, half_normal_B=half_normal_B,
-                              use_asis=use_asis, R_xi=R_xi, ksc=ksc)
+                              use_asis=use_asis, coupling=common_vol_coupling,
+                              R_xi=R_xi, ksc=ksc)
 
     if sv_idio:
         logh_eps_new, sv_eps_new = _sample_idio_vol(

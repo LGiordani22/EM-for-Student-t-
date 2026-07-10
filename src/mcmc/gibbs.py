@@ -277,6 +277,7 @@ def fit_dfm_mcmc(
     hw_A: float = 1e5,
     sv: bool = False,
     sv_idio: bool = True,
+    common_vol_coupling: str = "decoupled",
     sv_offset: float = 1e-6,
     sv_init: tuple[float, float, float] = (0.0, 0.95, 0.05),
     sv_fix_mu0: bool = True,
@@ -328,6 +329,17 @@ def fit_dfm_mcmc(
     sv_idio : bool            ``False`` is D2-a (common volatility only): step (b)
                               omits the idiosyncratic block, ``h^eps == 1``, and
                               Family B is drawn for the r common processes only.
+    common_vol_coupling : str  measurement coupling of the r per-factor common
+                              volatilities, **no-leverage Spec II path only**:
+                              ``"decoupled"`` (default, exact at diagonal Q),
+                              ``"qml"`` (stable coupled — the Harvey-Ruiz-Shephard
+                              constant-covariance form, a data-driven robustness
+                              option, ``docs/audit_P1-P5.md`` §P4), or ``"literal"``
+                              (experimental, unstable).  Raises under ``leverage``
+                              (the common block is then r independent Omori channels,
+                              so it would be a silent no-op).  Inspect the
+                              recommendation with
+                              :func:`mcmc.diagnostics.recommend_coupling`.
     use_family_a_priors : bool  turn on the weakly-informative Family A priors
                               (tab:param-prior-tuning), anchored on the EM warm
                               start; ``False`` (default) keeps the flat-prior
@@ -402,6 +414,19 @@ def fit_dfm_mcmc(
         )
     if q_prior not in ("inverse_wishart", "huang_wand"):
         raise ValueError(f"q_prior={q_prior!r}: 'inverse_wishart' or 'huang_wand'.")
+    if common_vol_coupling not in ("decoupled", "qml", "literal"):
+        raise ValueError(f"common_vol_coupling={common_vol_coupling!r}: "
+                         f"'decoupled', 'qml' or 'literal'.")
+    if common_vol_coupling != "decoupled" and leverage:
+        # Under leverage the common block is r independent Omori/FFBS channels, not
+        # sample_common_vol_mv, so the coupling would be a silent no-op (audit P1,
+        # .tex subsec:lev-branches-allproc (iii)).  Fail loudly instead.
+        raise ValueError(
+            f"common_vol_coupling={common_vol_coupling!r} is only reachable on the "
+            f"no-leverage Spec II path: under leverage the common block is r "
+            f"independent Omori/FFBS channels, with no joint measurement covariance "
+            f"to couple. Use leverage=False, or common_vol_coupling='decoupled'."
+        )
     if leverage and not sv:
         raise ValueError(
             "leverage=True requires sv=True: with the volatility frozen "
@@ -585,6 +610,7 @@ def fit_dfm_mcmc(
                 prior_a=sv_prior_a, prior_b=sv_prior_b,
                 sigma_prior=sv_sigma_prior, half_normal_B=sv_half_normal_B,
                 use_asis=use_asis, sv_idio=sv_idio,
+                common_vol_coupling=common_vol_coupling,
             )
             h_u, h_eps = vb["h_u"], vb["h_eps"]
             logh_u, logh_eps = vb["logh_u"], vb["logh_eps"]

@@ -19383,10 +19383,17 @@ the componentwise mixture --- which is stable but drops the mixture's marginal
 refinement. \emph{The default we adopt is therefore the decoupled sampler}
 ($R_\xi=\mathbf I$): it is exact when $\mQ$ is diagonal, the sanctioned
 near-diagonal approximation otherwise, and free of the instability. The coupled
-pass, in its stable QML form, is held as an \emph{option} to be switched on
-\emph{only if} the estimated factor-innovation correlations prove materially
-non-diagonal \emph{and} the calibration of the predictive tail is seen to suffer
---- a data-driven choice, not a default. Two qualifications, both taken up in
+pass, in its stable QML form, is \emph{implemented} and held as an \emph{option}
+(the ``qml'' setting of the common-volatility block, alongside the ``decoupled''
+default and the ``literal'' form kept only to exhibit its instability), to be
+switched on \emph{only if} the estimated factor-innovation correlations prove
+materially non-diagonal \emph{and} the calibration of the predictive tail is seen
+to suffer --- a data-driven choice, not a default, made from the estimated
+$\operatorname{corr}(\mQ)$ (a diagnostic reports the induced over-confidence and
+the resulting recommendation). Its price, as noted, is that it drops the mixture's
+marginal refinement, so it does \emph{not} reduce to the decoupled block even when
+$\mQ$ is diagonal: there it is a single Gaussian of variance $\pi^2/2$ in place of
+the seven-component mixture. Two qualifications, both taken up in
 later. \emph{First}, the choice must be
 made \emph{once}, from the data, and held fixed for the whole chain: the offset
 mixture and the quasi-maximum-likelihood covariance are two distinct approximations

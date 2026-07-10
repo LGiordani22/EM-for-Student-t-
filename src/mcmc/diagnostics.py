@@ -103,6 +103,48 @@ def coupling_overconfidence(Q: np.ndarray) -> dict:
     }
 
 
+def recommend_coupling(Q: np.ndarray, *, tol: float = 0.05) -> dict:
+    r"""
+    **The data-driven recommendation** for ``fit_dfm_mcmc(common_vol_coupling=...)``
+    — the decision the thesis says to make *once*, from the estimated ``Q``, and hold
+    fixed for the whole chain (``docs/audit_P1-P5.md`` §P4; ``.tex``
+    ``subsec:vol-all-processes``, the cross-covariance caveat).
+
+    It is **advice, not a switch**: the choice is yours.  The decoupled common-vol
+    block is *exact* at diagonal ``Q`` and over-confident away from it; the QML
+    coupled pass widens the posterior to its honest width (calibration, not point
+    accuracy).  The relevant quantity is not ``corr(Q)`` itself but the induced
+    over-confidence :func:`coupling_overconfidence` — second-order in the
+    off-diagonals — so the threshold is on that:
+
+    * ``overconfidence <= tol``  →  ``"decoupled"`` (default; on the real panel
+      ``corr(Q) ~ 0.1`` gives ``~0.4%`` and this is what it returns);
+    * ``overconfidence >  tol``  →  ``"qml"`` **worth considering** — but the thesis
+      makes it a *joint* condition: switch only if the tail is *also* seen to be
+      mis-calibrated (a PIT / coverage check on the second stage), never on this
+      number alone.
+
+    ``tol = 0.05`` (5% over-confidence, ``corr(Q) ~ 0.35``) is a deliberately loose
+    default: below it the coupling buys nothing worth the doubled cost and the lost
+    mixture refinement.  Run on the **posterior** ``Q`` draws (mean), not only the EM
+    fit, since SV can move it.
+
+    Returns ``{"overconfidence": float, "corr_max_offdiag": float,
+    "recommend": "decoupled"|"qml", "tol": float, "note": str}``.
+    """
+    oc = coupling_overconfidence(Q)
+    corr = _corr_from_cov(Q)
+    off = corr[np.triu_indices_from(corr, k=1)]
+    rec = "qml" if oc["overconfidence"] > tol else "decoupled"
+    note = ("decoupled is near-exact here" if rec == "decoupled" else
+            "consider qml IFF a PIT/coverage check also shows tail mis-calibration")
+    return {
+        "overconfidence": oc["overconfidence"],
+        "corr_max_offdiag": float(np.max(np.abs(off))) if off.size else 0.0,
+        "recommend": rec, "tol": float(tol), "note": note,
+    }
+
+
 def leverage_whitening_attenuation(Q: np.ndarray) -> dict:
     r"""
     **P5.**  The attenuation of the Branch-B leverage ``rho_k`` induced by the

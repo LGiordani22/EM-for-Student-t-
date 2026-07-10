@@ -72,7 +72,7 @@ def _simulate(phi, s2, Q, T, seed):
     return logh, u[1:]                                # true logh (T,r), u_head (T-1,r)
 
 
-def _minigibbs(u_head, Q, T, R_xi, n_iter, burn, seed):
+def _minigibbs(u_head, Q, T, R_xi, n_iter, burn, seed, coupling=None):
     r = u_head.shape[1]
     logh_cur = np.zeros((T, r))
     sv_cur = np.tile([0.0, 0.90, 0.10], (r, 1))
@@ -81,8 +81,12 @@ def _minigibbs(u_head, Q, T, R_xi, n_iter, burn, seed):
     sv_draws = []
     gen = np.random.default_rng(seed)
     for it in range(n_iter):
-        out = sample_common_vol_mv(u_head, Q, w_u, logh_cur, sv_cur, gen, R_xi=R_xi,
-                                   allow_experimental=R_xi is not None)
+        if coupling is not None:
+            out = sample_common_vol_mv(u_head, Q, w_u, logh_cur, sv_cur, gen,
+                                       coupling=coupling)
+        else:
+            out = sample_common_vol_mv(u_head, Q, w_u, logh_cur, sv_cur, gen, R_xi=R_xi,
+                                       allow_experimental=R_xi is not None)
         logh_cur, sv_cur = out["logh_u"], out["sv_u"]
         if it >= burn:
             acc += logh_cur
@@ -152,12 +156,60 @@ def test_coupling():
           f"  <- correlation-scaled distortion (design decision pending)")
 
 
+def test_qml():
+    print("\n[3] QML coupled pass: stable where the literal collapses")
+    T = 1500
+    phi_true = np.array([0.98, 0.90]); s2_true = np.array([0.05, 0.12])
+
+    # (a) QML recovers the per-factor paths on a near-diagonal DGP — it is a valid
+    #     sampler, not only a stable one.
+    Qd = np.array([[1.0, 0.05], [0.05, 1.6]])
+    ltd, uhd = _simulate(phi_true, s2_true, Qd, T, seed=303)
+    lq, sq = _minigibbs(uhd, Qd, T, None, 400, 120, seed=5, coupling="qml")
+    cq = _path_corr(lq, ltd)
+    for k in range(2):
+        _check(f"QML factor {k}: path corr > 0.5", cq[k] > 0.5, f"corr={cq[k]:.3f}")
+    _check("QML: mu fixed at 0", np.allclose(sq[:, 0], 0.0))
+    _check("QML: phi distinct (phi0>phi1)", sq[0, 1] > sq[1, 1], f"phi={sq[:,1].round(3)}")
+
+    # (b) THE selling point — strong corr(Q)=0.92: QML is STABLE (phi not collapsed),
+    #     whereas the literal correlation-scaled form distorts the less-persistent
+    #     factor (phi 0.90 -> ~0.4).  Same DGP, same seed as [2]'s diagnostic.
+    Q = np.array([[1.0, 0.92], [0.92, 1.0]])
+    lt, uh = _simulate(phi_true, s2_true, Q, T, seed=101)
+    lq2, sq2 = _minigibbs(uh, Q, T, None, 400, 120, seed=7, coupling="qml")
+    ll2, sl2 = _minigibbs(uh, Q, T, logsq_corr_matrix(Q), 400, 120, seed=7)  # literal
+    print(f"    [diag] strong corr(Q)=0.92, less-persistent factor phi (true 0.90):")
+    print(f"    [diag]   QML     : phi={sq2[:,1].round(3)}  (stable)")
+    print(f"    [diag]   literal : phi={sl2[:,1].round(3)}  (collapses)")
+    _check("QML stable at corr(Q)=0.92: both phi > 0.6", np.all(sq2[:, 1] > 0.6),
+           f"phi={sq2[:,1].round(3)}")
+    _check("QML beats the literal on the less-persistent factor's phi",
+           sq2[1, 1] > sl2[1, 1], f"QML={sq2[1,1]:.3f} vs literal={sl2[1,1]:.3f}")
+
+    # (c) construction: at diagonal Q the QML measurement covariance is (pi^2/2) I,
+    #     a SINGLE Gaussian — so QML does NOT nest 'decoupled' (which uses the KSC
+    #     mixture).  Check the two give different draws on the same rng/state.
+    Qdiag = np.diag([1.0, 1.6])
+    lt3, uh3 = _simulate(phi_true, s2_true, Qdiag, 400, seed=9)
+    a = sample_common_vol_mv(uh3, Qdiag, np.ones(400), np.zeros((400, 2)),
+                             np.tile([0.0, 0.95, 0.05], (2, 1)),
+                             np.random.default_rng(1), coupling="qml")
+    b = sample_common_vol_mv(uh3, Qdiag, np.ones(400), np.zeros((400, 2)),
+                             np.tile([0.0, 0.95, 0.05], (2, 1)),
+                             np.random.default_rng(1), coupling="decoupled")
+    _check("QML != decoupled at diagonal Q (drops the mixture refinement)",
+           not np.allclose(a["logh_u"], b["logh_u"]),
+           "identical draws would mean QML wrongly nests decoupled")
+
+
 def main() -> int:
     print("=" * 72)
-    print("PHASE 1 / 1d — per-factor common SV recovery (Commit 1 + Commit 2)")
+    print("PHASE 1 / 1d — per-factor common SV recovery (decoupled + QML + literal)")
     print("=" * 72)
     test_recovery_diag()
     test_coupling()
+    test_qml()
     print("\n" + "=" * 72)
     print(f"  {_PASS} passed, {_FAIL} failed")
     print("=" * 72)

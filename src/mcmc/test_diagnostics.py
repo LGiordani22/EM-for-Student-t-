@@ -41,6 +41,7 @@ from mcmc.diagnostics import (                                            # noqa
     coupling_overconfidence,
     leverage_whitening_attenuation,
     posterior_corr_Q,
+    recommend_coupling,
 )
 
 _PASS = 0
@@ -186,6 +187,62 @@ def test_real_panel():
            f"{np.max(np.abs(lam['bias_pct'])):.3f}%")
 
 
+def test_recommend_coupling_and_qml_wiring():
+    print("\n[6] recommend_coupling + QML wiring (the data-driven robustness option)")
+
+    # small corr(Q) -> recommend decoupled; large -> recommend qml
+    rec_lo = recommend_coupling(_equicorr(3, 0.10))
+    rec_hi = recommend_coupling(_equicorr(3, 0.60))
+    _check("corr(Q)=0.10 -> recommend 'decoupled'", rec_lo["recommend"] == "decoupled",
+           f"{rec_lo}")
+    _check("corr(Q)=0.60 -> recommend 'qml'", rec_hi["recommend"] == "qml", f"{rec_hi}")
+    _check("recommendation keys off over-confidence, not corr(Q) directly",
+           rec_lo["overconfidence"] < rec_lo["tol"] < rec_hi["overconfidence"])
+    _check("diagonal Q -> decoupled (near-exact)",
+           recommend_coupling(np.diag([0.2, 1.0, 3.0]))["recommend"] == "decoupled")
+
+    # end-to-end: fit_dfm_mcmc accepts common_vol_coupling='qml' on the no-leverage
+    # Spec II path and runs finite.
+    from mcmc.gibbs import fit_dfm_mcmc, load_warm_init
+    from mcmc.simulate_sv import simulate_dfm_sv
+    w = load_warm_init("small")
+    theta = dict(w["theta"]); theta["Sigma_0"] = np.asarray(theta["Sigma_0"])
+    fl, bm, oc, r = w["freq_list"], w["block_map"], w["ordered_cols"], w["r"]
+    sim = simulate_dfm_sv(theta, T=120, freq_list=fl, block_map=bm, ordered_cols=oc,
+                          r=r, seed=11, sv_u=(0.0, 0.95, 0.15), sv_eps=(0.0, 0.9, 0.10))
+    res = fit_dfm_mcmc(sim["Y"], theta, fl, bm, oc, n_iter=50, burn_in=10, seed=3,
+                       sv=True, common_vol_coupling="qml", store_vol=True, verbose=False)
+    _check("fit(common_vol_coupling='qml'): runs, h_u finite",
+           np.all(np.isfinite(res["draws"]["h_u"])))
+
+    # guard: QML under leverage is a silent no-op -> must raise
+    try:
+        fit_dfm_mcmc(sim["Y"], theta, fl, bm, oc, n_iter=10, burn_in=1, seed=3,
+                     sv=True, leverage=True, timing="lagged",
+                     common_vol_coupling="qml", verbose=False)
+        ok = False
+    except ValueError:
+        ok = True
+    _check("fit(common_vol_coupling='qml', leverage=True) raises (would be a no-op)", ok)
+
+    # guard: unknown coupling
+    try:
+        fit_dfm_mcmc(sim["Y"], theta, fl, bm, oc, n_iter=10, burn_in=1, seed=3,
+                     sv=True, common_vol_coupling="lkj", verbose=False)
+        ok = False
+    except ValueError:
+        ok = True
+    _check("fit(common_vol_coupling='lkj') raises", ok)
+
+    # the default is unchanged: decoupled == not passing the arg, bit-for-bit
+    a = fit_dfm_mcmc(sim["Y"], theta, fl, bm, oc, n_iter=40, burn_in=10, seed=3,
+                     sv=True, store_vol=True, verbose=False)
+    b = fit_dfm_mcmc(sim["Y"], theta, fl, bm, oc, n_iter=40, burn_in=10, seed=3,
+                     sv=True, store_vol=True, common_vol_coupling="decoupled", verbose=False)
+    _check("common_vol_coupling='decoupled' is the default (bitwise)",
+           np.array_equal(a["draws"]["h_u"], b["draws"]["h_u"]))
+
+
 def test_gate1_diagnostics_do_not_move_the_draws():
     print("\n[5] GATE 1 (fix P6): the ESS/R-hat hook is pure instrumentation")
     from mcmc.gibbs import fit_dfm_mcmc, load_warm_init
@@ -248,6 +305,7 @@ def main():
     test_coupling_overconfidence()
     test_leverage_whitening_attenuation()
     test_real_panel()
+    test_recommend_coupling_and_qml_wiring()
     test_gate1_diagnostics_do_not_move_the_draws()
     print("\n" + "=" * 72)
     print(f"  {_PASS} passed, {_FAIL} failed")
