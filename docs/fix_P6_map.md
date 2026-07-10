@@ -355,6 +355,62 @@ GATE 3 (`ESS > 150–200`) va letta su questo numero di draw: `150/5000 = 3%`,
    e la catena ha `ESS/draw = 0.35%`. **L'acceptance non è un indicatore di mixing.**
    Un altro motivo per cui la strumentazione del GATE 1 non era un lusso.
 
+### Griddy (PASSO 3 — `rho_sampler="griddy"`, griglia uniforme 401 punti su (−1,1))
+
+Stesso DGP, stessi semi, stesso schedule. Wall-clock **3170 s** (contro 1632 s dell'RW).
+
+| canale | `ρ` vero | `ρ̂` | CI 90% | **ESS** | **split-R̂** | MCSE |
+|---|---|---|---|---|---|---|
+| `k=0` | −0.70 | −0.513 | [−0.705, −0.320] | **58.4** | 1.043 | 0.015 |
+| `k=1` | −0.15 | −0.361 | [−0.945, **+0.405**] | **16.0** | **1.135** | 0.100 |
+| `k=2` | +0.45 | +0.415 | [+0.220, +0.615] | **69.7** | 1.033 | 0.014 |
+
+ESS per catena: `[[28.9, 7.5, 21.4], [29.1, 8.1, 114.4]]`. `acceptance(ρ_u) = 1.000`.
+**Efficienza `ESS/draw`: `[1.17%, 0.32%, 1.39%]`.**
+
+### GATE 3 — il confronto, e il verdetto
+
+| | `ESS/draw` `k=0` | `k=1` | `k=2` | `R̂` `k=1` | ESS/secondo |
+|---|---|---|---|---|---|
+| **RW** (baseline) | 1.25% | 0.35% | 1.17% | 1.156 | **0.038** |
+| **griddy** (fix) | 1.17% | 0.32% | 1.39% | 1.135 | 0.018 |
+
+❌ **Il griddy NON migliora il mixing.** L'efficienza è **identica** entro il rumore di
+stima dell'ESS (che a questi livelli è enorme: `k=2` dà `21.4` in una catena e `114.4`
+nell'altra). `R̂(ρ_1)` resta `1.135 > 1.05`. E poiché il griddy costa il doppio in
+wall-clock, in **ESS al secondo è due volte peggiore dell'RW.**
+
+**Questo non è un fallimento del fix: è una diagnosi.** Il griddy fa esattamente ciò per
+cui è stato scritto — verificato in `test_passo4` [7]: campiona dallo stesso target
+dell'RW (media e sd coincidenti a 3 decimali) ed è **indipendente dal valore corrente**
+(partendo da `ρ=−0.99` o `ρ=+0.99` restituisce lo stesso draw). La random-walk lungo
+`ρ` è **eliminata**. E l'ESS non si muove.
+
+Se ne deduce, per esclusione, che **l'autocorrelazione di `ρ` non nasceva dalla sua
+mossa**: nasce dal **blocking**. `ρ` è estratto condizionatamente al path `log h` e a
+`σ²_η`; quel path è a sua volta estratto condizionatamente a `ρ`. Rendere il draw di
+`ρ` perfetto *dato* il path non aiuta, perché è il path a muoversi lentamente nella
+direzione che conta. La cresta `ρ ↔ path ↔ σ²_η` è **reale**, ed è esattamente ciò che
+l'audit sospettava senza poterlo dimostrare.
+
+Secondo il criterio del PASSO 3 (`ESS < ~100 su qualche canale, o R̂ alto`), **il GATE 3
+seleziona il ramo "il griddy ha curato la RW ma non il blocking"**: ci si ferma, non si
+tentano altri fix, e si produce la mappa del piano B → `docs/fix_P6_blockingB_map.md`.
+
+### Un secondo risultato, non richiesto ma decisivo per i test
+
+Il CI del canale debole si **allarga** col griddy: `[−0.945, +0.405]` contro
+`[−0.727, +0.304]`. Il posterior di `ρ_1` **non è identificato** — copre entrambi i
+segni — e la sua media a catena corta è un numero arbitrario dentro quell'intervallo
+(`−0.264` con l'RW, `−0.607` con il griddy a `n_iter=700`, `−0.361` qui a 4000).
+
+Conseguenza diretta: **3 check di `test_perfactor_leverage` fallivano per il motivo
+giusto.** Asserivano *"l'ordinamento di `ρ_k` è recuperato"* e la *parità A/B su `ρ`* —
+cioè proprietà di una quantità **non identificata**. Erano verdi perché l'RW, non
+convergendo, restava dove il path lo portava. Il fix non li ha rotti: li ha **smascherati**.
+(Il canale dominante e quello positivo, che *sono* identificati, passano con entrambi i
+kernel.)
+
 ### Verdetto GATE 2
 
 ✅ **Superato.** Il baseline conferma il problema dell'audit (efficienza `0.35–1.25%`,

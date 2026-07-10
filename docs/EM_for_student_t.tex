@@ -19387,7 +19387,7 @@ pass, in its stable QML form, is held as an \emph{option} to be switched on
 \emph{only if} the estimated factor-innovation correlations prove materially
 non-diagonal \emph{and} the calibration of the predictive tail is seen to suffer
 --- a data-driven choice, not a default. Two qualifications, both taken up in
-\S\ref{subsec:lev-branches-allproc}, detail~(iii). \emph{First}, the choice must be
+later. \emph{First}, the choice must be
 made \emph{once}, from the data, and held fixed for the whole chain: the offset
 mixture and the quasi-maximum-likelihood covariance are two distinct approximations
 of the same conditional, so letting the sampler switch between them according to the
@@ -20283,8 +20283,7 @@ must be honoured per factor once the single common process is split into the
 $r$ per-factor volatilities.
 
 \emph{(iii) A full $\mQ$ enters the two branches differently, and only Branch~B
-must approximate.} The cross-covariance question raised for the base block
-(\S\ref{subsec:vol-all-processes}) does not affect the two leverage routes
+must approximate.} The cross-covariance question raised for the base block does not affect the two leverage routes
 symmetrically, and the asymmetry is instructive. Under Specification~II the
 factor innovation has the joint conditional density
 \begin{equation}
@@ -20304,8 +20303,7 @@ linearise it. The exact density \eqref{eq:lev-level-joint} can therefore be used
 as it stands: moving a single $\log h^u_{k,t}$ costs one $r$-dimensional quadratic
 form, an $O(r^2)$ evaluation with $r$ small. There is no Gaussian approximation of
 the measurement, no offset mixture, and hence no measurement covariance to
-correlate: the difficulty simply does not arise, and the coupled/decoupled fork of
-\S\ref{subsec:vol-all-processes} has no counterpart on this route. (The
+correlate: the difficulty simply does not arise, and the coupled/decoupled fork of has no counterpart on this route. (The
 implementation reported here evaluates \eqref{eq:lev-level-joint} in its
 \emph{per-component} form $\sum_k\!\big[-\tfrac12\log h^u_{k,t}
 -\tfrac{w^u_t u_{k,t}^2}{2\,q_{kk}h^u_{k,t}}\big]$, which coincides with the joint
@@ -20329,7 +20327,7 @@ detail~(i). Coupling Branch~B would require a \emph{joint $r$-dimensional
 sign-augmented Omori mixture} --- an approximation to the joint law of
 $(\xi_{1,t},\dots,\xi_{r,t},\eta^u_{t+1})$ rather than of each
 $(\xi_{k,t},\eta^u_{k,t+1})$ separately --- which we do not derive: the
-quasi-maximum-likelihood option of \S\ref{subsec:vol-all-processes} belongs to the
+quasi-maximum-likelihood option belongs to the
 symmetric, linear-Gaussian base block and is \emph{not} a drop-in for the leveraged
 lagged sampler.
 

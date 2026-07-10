@@ -344,6 +344,15 @@ def draw_rho_scalar(rho_cur, eta, k, sigma2, prop_sd, rng):
 
     ``eta_t`` realised AR(1) innovations, ``k_t = sigma * z_t`` the contemporaneous
     leverage regressor, both over the leverage-bearing transitions.
+
+    .. warning::
+       **Mixes very badly** (``docs/audit_P1-P5.md`` §P6): one move per sweep from a
+       fixed proposal, anchored at the current value, against a posterior ridge with
+       the log-vol path and ``sigma_eta^2``.  Measured efficiency ``ESS/draw``
+       ``0.35–1.25%`` on the per-factor DGP; widening ``prop_sd`` does **not** help
+       (acceptance collapses, ESS does not rise).  Retained for Branch~A and as the
+       comparison baseline; the default on Branch~B is
+       :func:`draw_rho_griddy`.
     """
     n_lev = eta.shape[0]
     rs = rho_cur + prop_sd * rng.standard_normal()
@@ -352,6 +361,89 @@ def draw_rho_scalar(rho_cur, eta, k, sigma2, prop_sd, rng):
     if np.log(rng.random()) < new - cur:
         return float(rs), 1
     return float(rho_cur), 0
+
+
+def _rho_logpost_grid(grid, eta, k, n_lev, sigma2):
+    r"""The Family~C log-posterior of :func:`_rho_logpost_scalar`, evaluated on a whole
+    grid at once (``(G, n_lev)`` work, one pass).  Kept separate so that the scalar
+    form stays the single readable statement of the target."""
+    grid = np.asarray(grid, float)
+    om = 1.0 - grid * grid                                   # (G,)
+    res = eta[None, :] - grid[:, None] * k[None, :]          # (G, n_lev)
+    ssr = np.einsum("gt,gt->g", res, res)                    # (G,)
+    return -0.5 * n_lev * np.log(om) - 0.5 * ssr / (sigma2 * om)
+
+
+def draw_rho_griddy(rho_cur, eta, k, sigma2, rng, *, grid_size=401, log_prior=None,
+                    eps=1e-6):
+    r"""
+    **Griddy-Gibbs** draw of a scalar leverage ``rho`` from its full conditional
+    (``eq:param-rho-cond``), on the compact support ``(-1, 1)``.
+
+    The fix for P6 (``docs/audit_P1-P5.md``, ``docs/fix_P6_map.md``).  The
+    RW-Metropolis :func:`draw_rho_scalar` anchors every proposal at the current value
+    and takes **one** step per sweep, so it random-walks along the ``rho``--path--
+    ``sigma_eta`` ridge at ``ESS/draw ~ 0.5%``.  A griddy draw is **independent of the
+    current value**: the walk disappears.
+
+    Same pattern as :func:`mcmc.sample_params.draw_nu_griddy` — evaluate the
+    un-normalised log-target on a grid, stabilise by its max, weight each point by its
+    cell width (trapezoidal), normalise, sample — with **one** deliberate difference:
+
+    * ``nu`` lives on the unbounded ``(2, infty)``, so its grid is **geometric** and
+      the *log-concavity* of its target (a thesis result) is what justifies a coarse
+      grid;
+    * ``rho`` lives on the **compact** ``(-1, 1)``, so its grid is **uniform**, and no
+      log-concavity is needed — nor does it hold.  The first term of the target,
+      ``-(n/2) log(1 - rho^2)``, has second derivative ``n(1+rho^2)/(1-rho^2)^2 > 0``:
+      it is **convex**.  Empirically the full target is unimodal in the informative
+      regime, but on 400 random draws of ``(n_lev, sigma^2, scales)`` about 0.8% are
+      non-concave and one was bimodal.  A fine grid on a bounded support resolves any
+      of those; a log-concavity argument copied from ``nu`` would be wrong.
+
+    Parameters
+    ----------
+    rho_cur : float       accepted and **ignored** (the draw is independent of it);
+                          kept so the call sites are interchangeable with the RW.
+    eta, k : (n_lev,)     as in :func:`draw_rho_scalar`.
+    sigma2 : float        current ``sigma_eta^2``.
+    grid_size : int       uniform grid points on ``(-1+eps, 1-eps)``.
+    log_prior : callable or None   ``rho -> log p(rho)``; ``None`` is the flat
+                          Uniform(-1,1) the thesis adopts as default.  This is the hook
+                          for the Fisher-``z`` shrinkage it names as the alternative,
+                          without touching the kernel.
+
+    Returns ``(rho_new, 1)`` — the trailing ``1`` mirrors the RW's acceptance flag; a
+    griddy draw is always "accepted", exactly as Branch~B's FFBS path draw reports
+    ``acc = 1.0``.  Acceptance is therefore *not* a mixing diagnostic here: read ESS.
+    """
+    n_lev = eta.shape[0]
+    if n_lev == 0:
+        return float(rho_cur), 1
+    grid = np.linspace(-1.0 + eps, 1.0 - eps, grid_size)
+    logp = _rho_logpost_grid(grid, eta, k, n_lev, sigma2)
+    if log_prior is not None:
+        logp = logp + np.array([float(log_prior(g)) for g in grid])
+    logp -= logp.max()
+    dens = np.exp(logp)
+    probs = dens * np.gradient(grid)              # trapezoidal cell weights
+    total = probs.sum()
+    if not np.isfinite(total) or total <= 0:
+        return 0.0, 1                             # degenerate target -> no leverage
+    probs /= total
+    return float(rng.choice(grid, p=probs)), 1
+
+
+def draw_rho(rho_cur, eta, k, sigma2, rng, *, sampler="griddy", prop_sd=0.06,
+             grid_size=401, log_prior=None):
+    """Dispatch the Family~C draw: ``"griddy"`` (default, P6 fix) or ``"rw"`` (the
+    RW-Metropolis baseline, kept for the GATE-3 comparison and for Branch~A)."""
+    if sampler == "griddy":
+        return draw_rho_griddy(rho_cur, eta, k, sigma2, rng,
+                               grid_size=grid_size, log_prior=log_prior)
+    if sampler == "rw":
+        return draw_rho_scalar(rho_cur, eta, k, sigma2, prop_sd, rng)
+    raise ValueError(f"rho_sampler={sampler!r}: 'griddy' or 'rw'.")
 
 
 # NB: the vector-rho machinery (draw_rho_vec / draw_rho_common / dominant_dir_z,

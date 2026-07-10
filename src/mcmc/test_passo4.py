@@ -148,9 +148,17 @@ def test_end_to_end(theta, fl, bm, oc, r):
     acc = res["meta"]["acceptance"]
     _check("FFBS path acceptance == 1.0 (direct draw)",
            acc["path_u"] == 1.0 and acc["path_eps"] == 1.0, f"{acc}")
-    _check("sigma2 / rho acceptances in (0.05,0.95)",
-           all(0.05 < acc[k] < 0.95 for k in ("sigma2", "rho_u", "rho_eps")),
-           f"{ {k: round(v,2) for k,v in acc.items()} }")
+    # sigma2 stays a Metropolis move; rho is now a griddy draw (fix P6), so its
+    # "acceptance" is 1.0 by construction — exactly as the FFBS path draw reports.
+    # Acceptance is therefore NOT a mixing diagnostic for rho: read ESS (below).
+    _check("sigma2 acceptance in (0.05,0.95) — still Metropolis",
+           0.05 < acc["sigma2"] < 0.95, f"{ {k: round(v,2) for k,v in acc.items()} }")
+    _check("rho acceptance == 1.0 (griddy = direct draw from the full conditional)",
+           acc["rho_u"] == 1.0 and acc["rho_eps"] == 1.0,
+           f"rho_u={acc['rho_u']}, rho_eps={acc['rho_eps']}")
+    d = res["diagnostics"]["rho_u"]
+    _check("rho ESS is reported (no rho_hat without its ESS)",
+           d["ess"].shape == (r,) and np.all(d["ess"] > 0), f"ESS={np.round(d['ess'],1)}")
     rho_u = res["theta_mean"]["rho_u"]
     jdom = int(np.argmax(np.abs(rho_u_true)))
     _check("dominant rho_u component has negative sign", rho_u[jdom] < 0,
@@ -163,6 +171,58 @@ def test_end_to_end(theta, fl, bm, oc, r):
     else:
         c = float(np.corrcoef(lhu, sim["logh_u_true"])[0, 1])
     _check("per-factor h^u tracks the common path (avg corr>0.4)", c > 0.4, f"avg corr={c:.3f}")
+
+
+def test_rho_griddy_same_target():
+    print("\n[7] fix P6: the griddy draws from the SAME target as the RW-Metropolis")
+    from mcmc.sample_leverage import draw_rho, draw_rho_griddy, draw_rho_scalar
+    rng = np.random.default_rng(0)
+
+    # Correctness seam: on a fixed (eta, k, sigma2) the RW chain and the iid griddy
+    # draws must agree on the posterior mean AND sd — not just the mean, which a
+    # biased-but-centred kernel could also match.
+    for rho_true, n in ((-0.70, 600), (-0.15, 60), (0.45, 600), (0.0, 600)):
+        s2 = 0.0625; sig = np.sqrt(s2)
+        z = rng.standard_normal(n)
+        eta = rho_true * sig * z + sig * np.sqrt(1 - rho_true ** 2) * rng.standard_normal(n)
+        k = sig * z
+        r_rw = 0.0; chain = []
+        for it in range(20000):
+            r_rw, _ = draw_rho_scalar(r_rw, eta, k, s2, 0.06, rng)
+            if it >= 8000:
+                chain.append(r_rw)
+        gr = np.array([draw_rho_griddy(0.0, eta, k, s2, rng)[0] for _ in range(3000)])
+        dm = abs(float(np.mean(chain)) - float(gr.mean()))
+        ds = abs(float(np.std(chain)) - float(gr.std()))
+        _check(f"rho_true={rho_true:+.2f}, n={n}: same posterior mean and sd",
+               dm < 0.02 and ds < 0.02,
+               f"|d mean|={dm:.4f}, |d sd|={ds:.4f}")
+
+    # the griddy ignores the current value (that is the whole point)
+    s2 = 0.05
+    z = rng.standard_normal(300); eta = -0.5 * np.sqrt(s2) * z + np.sqrt(s2 * 0.75) * rng.standard_normal(300)
+    k = np.sqrt(s2) * z
+    a = draw_rho_griddy(-0.99, eta, k, s2, np.random.default_rng(5))[0]
+    b = draw_rho_griddy(+0.99, eta, k, s2, np.random.default_rng(5))[0]
+    _check("griddy draw is independent of the current value (no random walk)", a == b,
+           f"from -0.99 -> {a:.4f};  from +0.99 -> {b:.4f}")
+    _check("griddy always 'accepts' (flag = 1)",
+           draw_rho_griddy(0.0, eta, k, s2, rng)[1] == 1)
+
+    # the dispatcher, and its guard
+    r1, _ = draw_rho(0.0, eta, k, s2, np.random.default_rng(9), sampler="griddy")
+    r2, _ = draw_rho(0.0, eta, k, s2, np.random.default_rng(9), sampler="rw")
+    _check("dispatcher: 'griddy' and 'rw' are different kernels", r1 != r2)
+    try:
+        draw_rho(0.0, eta, k, s2, rng, sampler="hmc"); ok = False
+    except ValueError:
+        ok = True
+    _check("dispatcher: unknown rho_sampler raises", ok)
+
+    # a flat log_prior must not move the draw (the Fisher-z hook is additive)
+    c = draw_rho_griddy(0.0, eta, k, s2, np.random.default_rng(11))[0]
+    d = draw_rho_griddy(0.0, eta, k, s2, np.random.default_rng(11), log_prior=lambda r: 0.0)[0]
+    _check("flat log_prior leaves the draw bit-identical", c == d)
 
 
 def test_p3_flat_start_immunity(theta, fl, bm, oc, r):
@@ -213,6 +273,7 @@ def main():
     test_rho_kernel_omori()
     test_skewness_lagged(theta)
     test_end_to_end(theta, fl, bm, oc, r)
+    test_rho_griddy_same_target()
     test_p3_flat_start_immunity(theta, fl, bm, oc, r)
     print("\n" + "=" * 72)
     print(f"  {_PASS} passed, {_FAIL} failed")

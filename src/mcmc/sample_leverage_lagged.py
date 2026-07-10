@@ -91,7 +91,7 @@ from mcmc.sample_vol import _inv_sqrt_spd
 from mcmc.sample_leverage import (
     _draw_phi_lev,
     _draw_sigma2_lev,
-    draw_rho_scalar,
+    draw_rho,
 )
 
 
@@ -308,6 +308,9 @@ def sample_volatility_block_leverage_lagged(
     offset: float = 1e-6,
     prop_sigma2: float = 0.20,
     prop_rho: float = 0.06,
+    rho_sampler: str = "griddy",
+    rho_grid_size: int = 401,
+    rho_log_prior=None,
     omori: dict = OMORI10,
     inv_sqrt_spd=None,
     **_ignored,
@@ -324,6 +327,13 @@ def sample_volatility_block_leverage_lagged(
 
     ``sv_idio=False`` is the **D2-a** restriction (``subsec:variants-restrictions``):
     ``h^eps ≡ 1`` frozen, no idiosyncratic Family~B / Family~C draw.
+
+    ``rho_sampler`` selects the Family~C kernel (fix P6, ``docs/fix_P6_map.md``):
+    ``"griddy"`` (default) draws ``rho`` from its full conditional on the compact
+    ``(-1,1)`` support, **independently of the current value**; ``"rw"`` is the
+    RW-Metropolis baseline (``ESS/draw ~ 0.5%``), kept for comparison.  With the
+    griddy the returned ``acc["rho_*"]`` is ``1.0`` by construction — as for the FFBS
+    path draw — so **acceptance is not a mixing diagnostic**: read ``ESS``.
 
     Returns ``h_u, h_eps, logh_u, logh_eps, sv_u, sv_eps, rho_u, rho_eps`` and the
     acceptance rates ``acc`` (path = 1.0; sigma2 and rho remain Metropolis).
@@ -404,7 +414,9 @@ def sample_volatility_block_leverage_lagged(
         eta_k = lh_k[1:] - phi_k * lh_k[:-1]
         lev_k = has_tr_u[1:]
         k_reg = (np.sqrt(s2_k) * g_k[:-1])[lev_k]
-        rho_k, a_rk = draw_rho_scalar(rho_k, eta_k[lev_k], k_reg, s2_k, prop_rho, rng)
+        rho_k, a_rk = draw_rho(rho_k, eta_k[lev_k], k_reg, s2_k, rng,
+                               sampler=rho_sampler, prop_sd=prop_rho,
+                               grid_size=rho_grid_size, log_prior=rho_log_prior)
         logh_u_new[:, k] = lh_k
         sv_u_new[k] = (0.0, phi_k, s2_k)
         rho_u_new[k] = rho_k
@@ -455,7 +467,9 @@ def sample_volatility_block_leverage_lagged(
         eta_i = lh_i[1:] - phi_i * lh_i[:-1]
         lev_i = has_tr_i[1:]
         k_i = (np.sqrt(s2_i) * g_i[:-1])[lev_i]
-        rho_i, a_ri = draw_rho_scalar(rho_i, eta_i[lev_i], k_i, s2_i, prop_rho, rng)
+        rho_i, a_ri = draw_rho(rho_i, eta_i[lev_i], k_i, s2_i, rng,
+                               sampler=rho_sampler, prop_sd=prop_rho,
+                               grid_size=rho_grid_size, log_prior=rho_log_prior)
         acc_s += a_si; acc_re += a_ri
 
         logh_eps_new[:, i] = lh_i

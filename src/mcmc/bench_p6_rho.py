@@ -150,8 +150,11 @@ def main() -> int:
     p.add_argument("--burn-in", type=int, default=1500)
     p.add_argument("--chains", type=int, default=2)
     p.add_argument("--label", type=str, default="")
+    p.add_argument("--rho-sampler", type=str, default="griddy",
+                   choices=("griddy", "rw"))
     a = p.parse_args()
-    out = run_bench(n_iter=a.n_iter, burn_in=a.burn_in, chains=a.chains)
+    out = run_bench(n_iter=a.n_iter, burn_in=a.burn_in, chains=a.chains,
+                    rho_sampler=a.rho_sampler)
     print_bench(out, a.label)
     return 0
 

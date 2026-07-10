@@ -290,6 +290,9 @@ def fit_dfm_mcmc(
     lev_prop_path: float = 0.25,
     lev_prop_sigma2: float = 0.20,
     lev_prop_rho: float = 0.06,
+    rho_sampler: str = "griddy",
+    rho_grid_size: int = 401,
+    rho_log_prior=None,
     store_states: bool = False,
     store_vol: bool = False,
     compute_diagnostics: bool = True,
@@ -355,6 +358,17 @@ def fit_dfm_mcmc(
                               (``~10`` mildly informative, ``1e5`` near-flat).
     store_states : bool       also store the per-draw head factor path F (T, r)
                               (memory ~ n_keep * T * r floats).
+    rho_sampler : str         Family C kernel, **Branch B only** (fix P6):
+                              ``"griddy"`` (default) draws rho from its full
+                              conditional on the compact (-1,1) support, independently
+                              of the current value; ``"rw"`` is the RW-Metropolis
+                              baseline.  Branch A is untouched and always uses the RW.
+                              Under the griddy ``meta["acceptance"]["rho_*"] == 1.0``
+                              by construction — read ESS, not acceptance.
+    rho_grid_size : int       griddy grid points on (-1, 1).
+    rho_log_prior : callable or None  ``rho -> log p(rho)``; ``None`` is the flat
+                              Uniform(-1,1) default of the thesis.  The hook for the
+                              Fisher-z shrinkage it names as the alternative.
     compute_diagnostics : bool  compute ESS and split-R-hat for rho, phi, sigma^2
                               (and nu) from the stored draws and return them under
                               ``res["diagnostics"]``.  Default **on**: rho mixes so
@@ -541,6 +555,12 @@ def fit_dfm_mcmc(
             lev_sampler = (sample_volatility_block_leverage
                            if timing == "contemporaneous"
                            else sample_volatility_block_leverage_lagged)
+            # The Family C griddy (fix P6) is wired on Branch B only — Branch A keeps
+            # its RW-Metropolis untouched, by explicit scope decision.
+            lev_kw = {} if timing == "contemporaneous" else {
+                "rho_sampler": rho_sampler, "rho_grid_size": rho_grid_size,
+                "rho_log_prior": rho_log_prior,
+            }
             vb = lev_sampler(
                 Y, f_aug, theta_cur, w_u, w_eps, logh_u, logh_eps,
                 sv_u, sv_eps, rho_u, rho_eps, rng,
@@ -548,7 +568,7 @@ def fit_dfm_mcmc(
                 sigma_prior=sv_sigma_prior, half_normal_B=sv_half_normal_B,
                 use_asis=use_asis, fix_mu0=sv_fix_mu0, sv_idio=sv_idio,
                 prop_path=lev_prop_path, prop_sigma2=lev_prop_sigma2,
-                prop_rho=lev_prop_rho,
+                prop_rho=lev_prop_rho, **lev_kw,
             )
             h_u, h_eps = vb["h_u"], vb["h_eps"]
             logh_u, logh_eps = vb["logh_u"], vb["logh_eps"]
