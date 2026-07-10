@@ -26,6 +26,14 @@ quick, decisive checks:
       is exactly 1.0, the dominant common leverage is recovered with the right
       (negative) sign, and the h^u path is tracked.
 
+  [6] **P3 immunity** (``docs/audit_P1-P5.md``): Branch B escapes the flat warm
+      start ``log h = 0`` **without any warm-seed**.  Branch A cannot — its
+      single-move Metropolis sits in the state-vol feedback trap and needs the
+      blocked KSC-FFBS seed of ``sample_leverage.py:463`` — whereas B draws the
+      whole path from its full conditional (``_ffbs_tv``), so at ``rho = 0`` the
+      first sweep is already a full Omori/FFBS jump.  This test asserts that no
+      such rescue exists in the lagged sampler and that none is needed.
+
 Run
 ---
     python src/mcmc/test_passo4.py
@@ -157,6 +165,42 @@ def test_end_to_end(theta, fl, bm, oc, r):
     _check("per-factor h^u tracks the common path (avg corr>0.4)", c > 0.4, f"avg corr={c:.3f}")
 
 
+def test_p3_flat_start_immunity(theta, fl, bm, oc, r):
+    print("\n[6] P3 immunity: Branch B escapes the flat warm start with NO warm-seed")
+    import inspect
+    import mcmc.sample_leverage_lagged as lagged
+    import mcmc.sample_leverage as contemp
+
+    src_b = inspect.getsource(lagged)
+    src_a = inspect.getsource(contemp)
+    _check("Branch A carries the warm-seed rescue (the P3 fix)",
+           "sample_common_vol_mv" in src_a)
+    _check("Branch B carries NO warm-seed: it needs none (direct FFBS)",
+           "sample_common_vol_mv" not in src_b)
+
+    # ... and it is not merely absent, it is unnecessary: from log h == 0 the first
+    # sweep is a full Omori/FFBS jump (rho = 0 => G = phi, c = 0, W = sigma2), so the
+    # sampler leaves the flat state at once and recovers a persistent phi.  Branch A,
+    # without its seed, sits in the trap h~1 -> homoskedastic states -> u~homosk. -> h~1.
+    sim = simulate_dfm_sv(theta, T=500, freq_list=fl, block_map=bm, ordered_cols=oc, r=r,
+                          seed=9, sv_u=(0.0, 0.97, 0.22), sv_eps=(0.0, 0.95, 0.15),
+                          rho_u=np.array([-0.6, -0.3, -0.2])[:r], rho_eps=-0.3,
+                          timing="lagged")
+    res = fit_dfm_mcmc(sim["Y"], {**theta, "Sigma_0": np.asarray(theta["Sigma_0"])},
+                       fl, bm, oc, n_iter=400, burn_in=150, seed=4,
+                       sv=True, leverage=True, timing="lagged",
+                       store_vol=True, verbose=False)
+    logh = np.log(res["draws"]["h_u"])                 # (n_keep, T, r)
+    phi = res["theta_mean"]["sv_u"][:, 1]
+    _check("Branch B leaves the flat path (h is not stuck at 1)",
+           float(np.mean(np.std(logh, axis=1))) > 0.1,
+           f"mean sd(log h) = {float(np.mean(np.std(logh, axis=1))):.3f}")
+    _check("Branch B recovers a persistent phi from the flat start (all > 0.7)",
+           np.all(phi > 0.7), f"phi={np.round(phi,3)}")
+    _check("Branch B never degrades phi to negative (the Branch-A failure mode)",
+           np.all(phi > 0.0), f"phi={np.round(phi,3)}")
+
+
 def main():
     print("=" * 72)
     print("PASSO 4 — leverage (Branch B, lagged + Omori mixture + FFBS) gate")
@@ -169,6 +213,7 @@ def main():
     test_rho_kernel_omori()
     test_skewness_lagged(theta)
     test_end_to_end(theta, fl, bm, oc, r)
+    test_p3_flat_start_immunity(theta, fl, bm, oc, r)
     print("\n" + "=" * 72)
     print(f"  {_PASS} passed, {_FAIL} failed")
     print("=" * 72)

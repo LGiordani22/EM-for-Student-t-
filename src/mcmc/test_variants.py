@@ -287,6 +287,54 @@ def test_huang_wand(theta, fl, bm, oc, Y):
            np.all(np.isfinite(res["draws"]["Q"])) and "hw_a" in res["draws"])
 
 
+def test_p1_coupled_unreachable(theta, fl, bm, oc, Y):
+    print("\n[8] P1: the coupled R_xi branch is unreachable from the sampler")
+    import inspect
+    import mcmc.gibbs as gibbs_mod
+    import mcmc.sample_vol as sv_mod
+    import mcmc.sample_leverage_lagged as lagged_mod
+
+    # (a) fit_dfm_mcmc has no R_xi surface at all — not a default, not a kwarg.
+    sig = inspect.signature(fit_dfm_mcmc)
+    _check("fit_dfm_mcmc exposes no R_xi parameter", "R_xi" not in sig.parameters,
+           f"params={list(sig.parameters)}")
+    _check("gibbs.py never mentions R_xi",
+           "R_xi" not in inspect.getsource(gibbs_mod))
+
+    # (b) the coupled branch demands an explicit opt-in.
+    try:
+        sv_mod.sample_common_vol_mv(
+            np.zeros((5, 2)), np.eye(2), np.ones(6), np.zeros((6, 2)),
+            np.tile([0.0, 0.9, 0.05], (2, 1)), np.random.default_rng(0),
+            R_xi=np.eye(2))
+        ok = False
+    except ValueError:
+        ok = True
+    _check("sample_common_vol_mv(R_xi=...) raises without allow_experimental", ok)
+
+    # (c) Branch B never calls the multivariate common block at all: its common
+    #     volatility is r independent Omori/FFBS channels, so there is no r-dim
+    #     FFBS in which a measurement cross-covariance could even be inserted.
+    _check("sample_leverage_lagged never references sample_common_vol_mv",
+           "sample_common_vol_mv" not in inspect.getsource(lagged_mod))
+
+    called = []
+    real = sv_mod.sample_common_vol_mv
+
+    def _tripwire(*a, **k):
+        called.append(1)
+        return real(*a, **k)
+
+    sv_mod.sample_common_vol_mv = _tripwire
+    try:
+        _fit(Y, theta, fl, bm, oc, n_iter=40, burn_in=10,
+             sv=True, leverage=True, timing="lagged")
+    finally:
+        sv_mod.sample_common_vol_mv = real
+    _check("a Branch-B run never enters sample_common_vol_mv (tripwire)",
+           not called, f"calls={len(called)}")
+
+
 def main():
     print("=" * 72)
     print("PHASE 8 — grid cells as restrictions + Huang-Wand (2d)")
@@ -307,6 +355,7 @@ def main():
     test_rho_zero(theta, fl, bm, oc, Y)
     test_family_a_priors_all_paths(theta, fl, bm, oc, Y)
     test_huang_wand(theta, fl, bm, oc, Y)
+    test_p1_coupled_unreachable(theta, fl, bm, oc, Y)
 
     print("\n" + "=" * 72)
     print(f"  {_PASS} passed, {_FAIL} failed")

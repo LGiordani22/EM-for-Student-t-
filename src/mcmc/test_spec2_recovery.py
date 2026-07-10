@@ -81,7 +81,8 @@ def _minigibbs(u_head, Q, T, R_xi, n_iter, burn, seed):
     sv_draws = []
     gen = np.random.default_rng(seed)
     for it in range(n_iter):
-        out = sample_common_vol_mv(u_head, Q, w_u, logh_cur, sv_cur, gen, R_xi=R_xi)
+        out = sample_common_vol_mv(u_head, Q, w_u, logh_cur, sv_cur, gen, R_xi=R_xi,
+                                   allow_experimental=R_xi is not None)
         logh_cur, sv_cur = out["logh_u"], out["sv_u"]
         if it >= burn:
             acc += logh_cur

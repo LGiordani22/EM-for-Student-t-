@@ -128,7 +128,15 @@ esattamente e ogni lettore a valle vede un path coerente.
 > (costante, senza mistura) è stabile ma non batte il disaccoppiato sul punto.
 > Motivo di fondo: rumore di misura positivamente correlato è informazione
 > **ridondante** ⇒ il coupling può solo *abbassare* l'accuratezza puntuale; il suo
-> beneficio è la **calibrazione**. Default = disaccoppiato; coupled = `EXPERIMENTAL`.
+> beneficio è la **calibrazione**.
+>
+> ⚠️ **Corretto dall'audit (`docs/audit_P1-P5.md` §P1).** Non è "un flag `R_xi` da
+> accendere": il ramo coupled **non è raggiungibile** da `fit_dfm_mcmc` (la stringa
+> `R_xi` non compare in `gibbs.py`) e richiede ora un `allow_experimental=True`
+> esplicito. Sotto **Branch B non esiste affatto**: il blocco comune sono `r` canali
+> Omori/FFBS scalari indipendenti, quindi non c'è alcun FFBS `r`-dimensionale in cui
+> una covarianza di misura possa entrare. Accenderlo sotto B sarebbe *scrivere un
+> blocco nuovo*, non cambiare un argomento. Congelato da `test_variants` [8].
 
 ### `sample_leverage.py` — Branch A (timing contemporaneo, Metropolis)
 Il drift di leverage rende la transizione non-lineare-gaussiana: niente KSC+FFBS,
@@ -142,12 +150,14 @@ si usa un **Metropolis single-move** sul path (`eq:lev-mh-target`).
   attraverso `Q^{-1/2}`. Validato bit-for-bit a `r=1` contro il kernel scalare.
 - **Due whitening distinti**, e non vanno confusi: la *misura* è per componente
   `√(w/q_kk)u_k`; lo *shock grezzo* usa la `Q^{-1/2}` simmetrica piena.
-- ⚠️ **Trappola nota (P3)**: dal warm start piatto (`log h = 0`) la misura χ²₁
-  per-fattore è troppo rumorosa perché il single-move esca (`h~1 → stati omoschedastici
-  → u omoschedastici → h~1`), e `φ` degrada. Il kernel è corretto (provato in
-  standalone); il problema è il *mixing del loop*. Fix adottato: **warm-seed** del
-  path da un draw KSC-FFBS a blocchi (il path esatto a `ρ=0`) quando entra piatto.
-  Target invariato.
+- ⚠️ **Trappola nota (P3), A-SPECIFICA**: dal warm start piatto (`log h = 0`) la misura
+  χ²₁ per-fattore è troppo rumorosa perché il single-move esca (`h~1 → stati
+  omoschedastici → u omoschedastici → h~1`), e `φ` degrada. Il kernel è corretto
+  (provato in standalone); il problema è il *mixing del loop*. Fix adottato:
+  **warm-seed** del path da un draw KSC-FFBS a blocchi (il path esatto a `ρ=0`) quando
+  entra piatto. Target invariato. **Branch B è immune per costruzione** e non ha (né
+  serve) alcun warm-seed: estrae il path dalla sua full conditional, quindi da `log h=0`
+  con `ρ=0` la prima sweep è già un salto FFBS pieno. Congelato da `test_passo4` [6].
 
 ### `sample_leverage_lagged.py` — Branch B (timing laggato, Omori + FFBS)
 Il timing laggato accoppia `z_t` con `η_{t+1}`. Con l'identità dei segni
@@ -162,8 +172,13 @@ cui B mescola molto meglio di A (nessun Metropolis sul path, accettazione = 1).
   prima transizione con leverage è quella *dentro* `log h_2`.
 - ⚠️ **P5**: A e B usano whitening di magnitudine diversi (A: `|z^u_k|` esatto con `Q`
   piena; B: `|e_k|` per componente, la linearizzazione che rende possibile l'FFBS).
-  Coincidono a `Q` diagonale. È ciò che il `.tex` prescrive, non un bug — ma i due
-  branch concordano sui parametri condivisi solo a meno della convenzione.
+  Coincidono a `Q` diagonale. È ciò che il `.tex` prescrive, non un bug.
+  **Quantificato dall'audit**: l'attenuazione di `ρ` sotto B è esattamente
+  `λ(c_k) = (2/π)(c·arcsin c + √(1−c²))` con `c_k = (Q^{1/2})_{kk}/√q_kk` (verificata
+  MC). Sempre un'attenuazione, **mai un'inversione di segno** (il segno usa il whitening
+  pieno). Sul pannello reale `c_k ≥ 0.9986` ⇒ bias **−0.1%**. La linearizzazione di
+  Omori di suo **non** attenua (`E[zg]/E[g²] = 1.0000`). Ispezionabile con
+  `diagnostics.leverage_whitening_attenuation(Q)`.
 
 ### `sample_asis.py` — il booster di mixing
 `(φ, σ_η²)` e il path stanno su una **cresta path/scala** (path più liscio ⇒ `σ_η²`
@@ -195,11 +210,23 @@ con `ρ` vettoriale — usato dai gate storici, bit-identico) e **per-fattore Sp
 Option A** (`sv_u_perfactor` `(r,3)`), l'unico in cui `(φ_k, σ_k, ρ_k)` distinti sono
 identificati.
 
-### `diagnostics.py` — convergenza e recovery
+### `diagnostics.py` — convergenza, recovery, metriche d'audit
 `split_r_hat`, `ess`, `diagnostics_table`; gli harness `run_recovery_mcmc[_sv,
 _leverage]` e `compare_branches_AB`; `leverage_skewness_check` (verifica che `ρ<0`
 produca innovazioni asimmetriche a sinistra — il meccanismo che dà skew alla
 predittiva).
+
+**Metriche d'audit** (`docs/audit_P1-P5.md`), funzioni pure di `Q` / dei draw:
+- `posterior_corr_Q(draws)` — le correlazioni posteriori fra innovazioni dei fattori.
+  **Chiude P1, P4 e P5 insieme**, perché tutti e tre sono di secondo ordine in
+  `corr(Q)` e il blocco disaccoppiato è *esatto* a `Q` diagonale. È anche il
+  robustness check che il `.tex` prescrive per Huang–Wand.
+- `coupling_overconfidence(Q)` — `√(1+(r−1)R̄_ξ) − 1`, quanto il disaccoppiato è
+  sovra-sicuro. `+0.4%` a `corr(Q)=0.10`; `+42%` a `0.90`.
+- `leverage_whitening_attenuation(Q)` — `λ(c_k)` di P5, con `bias_pct` per fattore.
+
+Gate: `test_diagnostics.py` (21 check), che verifica la forma chiusa di `λ` **contro
+Monte Carlo sulla definizione**, non contro sé stessa.
 
 ---
 
@@ -325,19 +352,46 @@ Sotto Spec II ogni `h^u_k` è letta attraverso **un solo** log-quadrato per peri
 (la media su `r` letture simultanee che la restrizione scalare regalava non c'è più).
 Misurato sul DGP per-fattore (`T=600, r=3`, `Q` diagonale):
 
-- i `ρ_k` si recuperano **tutti e tre**, ordinamento e segni, su **entrambi** i branch,
-  e A e B concordano;
+- i `ρ_k` si recuperano **tutti e tre**, ordinamento e segni, su **entrambi** i branch;
 - i **path** `h^u_k` no, e non uniformemente: canali con sd incondizionata di log-vol
   `1.03` e `0.70` → `corr` `0.89` / `0.86`, `φ̂ ≈ 0.95`; un canale con sd `0.46`
   **collassa** (`corr 0.26`, `φ̂ 0.62`; su Branch A non si separa nemmeno dagli altri).
+
+⚠️ **Corretto dall'audit (`docs/audit_P1-P5.md` §P2).** La conclusione che stava qui —
+"per-fattore serve `~r×` più `T`" — è **falsa**, e va scomposta in due cose diverse:
+
+- `T` cura la **stima dei parametri**: `φ̂` del canale debole va `0.45 → 0.88 → 0.90`
+  passando da `T=600` a `1200` a `2400` (Branch B);
+- `T` **non** cura il **tetto informativo**: la `corr(ĥ_k, h_k)` satura a `~0.63`.
+  Uno smoother a *parametri veri* su una sola log-χ²₁ per periodo dà `0.524` a `T=600`
+  e `0.551` a `T=4800`. È estrazione di segnale **per periodo**: più periodi aggiungono
+  periodi, non informazione per periodo.
+
+E **non è mixing**: ASIS, che esiste per rompere la cresta path/scala, *peggiora* il
+canale debole (`φ̂ → −0.11`). Non c'è segnale da mescolare meglio.
 
 Quindi: **il rischio a `T` corto si concentra sui fattori a bassa volatilità**, e il
 leverage sopravvive più a lungo del path. Poiché sono `h` e `ρ` insieme a fissare
 scala e asimmetria della predittiva, questo è esattamente ciò che degrada la coda.
 Il target è il **nowcasting real-time**, dove `T` effettivo è corto: è il regime
-operativo. Mitigazioni da pesare (non ancora decise): fallback alla volatilità comune
-scalare a `T` corto; prior più stretti su `σ_η`/`ρ`; pooling parziale dei
-`(φ_k,σ²_k,ρ_k)` tra fattori; oppure per-fattore solo oltre una soglia misurata di `T`.
+operativo. **Prima mossa: misurare `σ̂_η,k/√(1−φ̂_k²)` sul pannello reale** — è già nei
+draw (`draws["sv_u"]`), zero righe. Se tutti i fattori hanno sd ≳ 0.7, P2 non morde.
+Mitigazioni successive (non ancora decise): prior più stretti su `σ_η`/`ρ`; pooling
+parziale dei `(φ_k,σ²_k,ρ_k)` tra fattori — ma il pooling **erode la lettura
+per-fattore**, che è la ragione dichiarata per adottare Spec II, quindi è una scelta
+di modellazione, non di sampler.
+
+**⚠️ Branch A degrada al crescere di `T`** (`n_iter` fisso): a `T=1200` `corr(ĥ)` scende
+a `[0.80, 0.24, 0.60]` e `ρ̂` collassa a `[-0.18, +0.06, +0.09]` — il leverage è perso e
+un segno si inverte. Causa: `_lev_path_mh` fa **una mossa single-move per coordinata
+per sweep**; raddoppiare `T` raddoppia i gradi di libertà del path senza dare una
+sweep in più. Branch B (FFBS diretto) **migliora** con `T`. Argomento misurato pro-B.
+
+**⚠️ Tutti i valori di `ρ̂` citati in questo documento e in `REFACTOR_PLAN.md` sono
+inaffidabili.** Sono misurati con catene da 600–900 iterazioni, e `ESS(ρ) ≈ 3–23` su
+2000 draw (audit §P6): l'errore Monte Carlo domina. Vanno rimisurati dopo aver risolto
+il mixing di `ρ` (griddy-Gibbs), che è **l'unico problema realmente bloccante** per il
+GaR — `ρ` è il parametro che dà la skew alla densità del PIL.
 
 **P4 — disaccoppiato vs calibrazione.** Il sampler disaccoppiato è
 *sovra-sicuro* (comprime la volatilità posteriore). Per l'obiettivo densità/GaR il
@@ -345,6 +399,14 @@ target **è** la calibrazione, quindi l'unico beneficio del coupling è allineat
 Se accenderlo dipende da (a) quanto vale davvero `corr(Q)` sul pannello reale
 (il disaccoppiato è *esatto* a `Q` diagonale) e (b) un check PIT/coverage sul secondo
 stadio — **non** dall'accuratezza puntuale, che è ciò che finora è stato misurato.
+
+⚠️ **Attenuato dall'audit.** `corr(Q)` dal fit EM è **quasi diagonale**: off-diagonali
+max `0.053` (`small`) e `0.099` (`big`), da cui `R_ξ` off-diagonale ≤ `0.0036` (la
+correlazione dei *log-quadrati* è di secondo ordine). La sovra-confidenza sulla
+precisione congiunta, `√(1+(r−1)R̄_ξ) − 1`, vale **+0.4%**. Va riconfermato sui draw
+MCMC (sotto SV la `Q` può muoversi) con `diagnostics.posterior_corr_Q(draws)` e
+`diagnostics.coupling_overconfidence(Q)`. **Non c'è motivo di accendere il coupling
+prima**, e sotto Branch B non esiste da accendere.
 
 **Timing A vs B — ancora aperto.** Entrambi implementati e derivati. B mescola molto
 meglio (FFBS diretto, niente trappola single-move). Da decidere empiricamente.
@@ -365,7 +427,8 @@ DFM-forward no. La volatilità è prevedibile solo quando NFCI-laggato la segnal
 | `test_passo1.py` | il sampler no-SV (controparte MCMC dell'EM) | 9 |
 | `test_passo2.py` | SV base: filtro combinato ≡ filtro standard a `h=1`; FFBS log-vol; recovery e2e | 13 |
 | `test_passo3.py` | Branch A: kernel `ρ`, meccanismo di skew, nesting a `ρ=0`, e2e | 8 |
-| `test_passo4.py` | Branch B: tabelle Omori (con tolleranza), FFBS, recovery | 13 |
+| `test_passo4.py` | Branch B: tabelle Omori (con tolleranza), FFBS, recovery, **immunità P3** (esce dal warm start piatto senza warm-seed) | 18 |
+| `test_diagnostics.py` | metriche d'audit: `corr(Q)` posteriore, sovra-confidenza (P4), `λ(c)` di P5 verificata contro MC | 21 |
 | `test_asis.py` | invarianza del posterior + **ESS(φ) ×2.1**; identità di riscalatura con segno | 14 |
 | `test_spec2_recovery.py` | recovery per-fattore `r>1`, `(φ_k,σ²_k)` distinti | 10 |
 | `test_variants.py` | la griglia come restrizioni; D1-a per bit-identità; prior su ogni path; HW e2e | 38 |

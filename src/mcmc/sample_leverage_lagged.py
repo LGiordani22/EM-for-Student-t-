@@ -48,9 +48,26 @@ Two boundary details specific to the common block: **(i)** the augmenting sign i
 ``d^u_k = sign(z^u_k)`` of the FULL-whitening raw shock
 ``z^u = sqrt(w) Q^{-1/2}(sqrt H)^{-1} u`` (not ``sign(u_k)``; the magnitude uses
 the per-component ``e_k = sqrt(w/q_kk) u_k`` so ``xi_k = y*_k - log h_k`` stays
-linear in ``log h_k`` — exact at diagonal ``Q``, decoupled default otherwise);
+linear in ``log h_k`` — exact at diagonal ``Q``);
 **(ii)** ``z^u_0`` is undefined (``u_t`` exists for ``t>=1``), so the first
 leverage-bearing transition is into ``log h_2`` (``has_u[0]=False``).
+
+*How wrong is the magnitude whitening away from diagonal Q?* (``docs/audit_P1-P5.md``
+§P5, quantified — the old "differs mildly for full Q" was vague.)  The Family~C
+regressor is ``g_k = sign(z_k)|zbar_k|`` against a true drift ``rho z_k``, so with
+``Var(zbar_k)=1`` the estimate is attenuated by exactly
+
+    rho_hat/rho = E[|z_k||zbar_k|] = lambda(c_k),
+    lambda(c) = (2/pi)(c*arcsin c + sqrt(1-c^2)),   c_k = (Q^{1/2})_kk / sqrt(q_kk),
+
+verified by Monte Carlo.  Always an attenuation, **never a sign flip** (the sign uses
+the exact whitening): ``lambda(1)=1`` at diagonal ``Q``, ``0.98`` at ``corr(Q)=0.3``,
+``0.88`` at ``0.8``.  An attenuated ``|rho|`` understates the predictive left skew, so
+it errs *against* the Growth-at-Risk objective — but on the real panel ``c_k>=0.9986``
+and the bias is ``-0.1%``, so no correction is applied.  The Omori linearisation
+itself (``a_j + b_j(xi-m_j)`` for ``exp(xi/2)``) does **not** attenuate:
+``E[zg]/E[g^2] = 1.0000``, ``corr(g,z) = 0.997``.  Inspect at any ``Q`` with
+:func:`mcmc.diagnostics.leverage_whitening_attenuation`.
 
 Family B ``(phi, sigma^2)`` and Family C scalar ``rho_i`` reuse the Branch-A
 routines of :mod:`mcmc.sample_leverage` *verbatim* — the **same** algebraic

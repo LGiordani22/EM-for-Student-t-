@@ -440,10 +440,19 @@ def test_common_vol_mv_seam(_S):
            f"{mv['sv_u'][0]} vs {vb['sv_u']}")
     _check("mv shapes (T,r)/(r,3)", mv["logh_u"].shape == (T, 1) and mv["sv_u"].shape == (1, 3))
     # Commit 2 (coupled r-dim FFBS) runs and is finite at r=1 (R_xi=[[1]]).
+    # EXPERIMENTAL: needs the explicit opt-in (audit P1) — the guard is asserted below.
     mvc = sample_common_vol_mv(u_head, Q, w_u, logh_u0.reshape(T, 1), np.array([sv_u]),
-                               np.random.default_rng(1), R_xi=np.eye(1))
+                               np.random.default_rng(1), R_xi=np.eye(1),
+                               allow_experimental=True)
     _check("coupled r-dim FFBS runs finite (r=1)",
            mvc["logh_u"].shape == (T, 1) and np.all(np.isfinite(mvc["logh_u"])))
+    try:
+        sample_common_vol_mv(u_head, Q, w_u, logh_u0.reshape(T, 1), np.array([sv_u]),
+                             np.random.default_rng(1), R_xi=np.eye(1))
+        ok = False
+    except ValueError:
+        ok = True
+    _check("coupled R_xi raises without allow_experimental (audit P1)", ok)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

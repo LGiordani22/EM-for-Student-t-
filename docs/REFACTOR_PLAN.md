@@ -554,6 +554,24 @@ Plugs into `gibbs.py` (1b) as the common-block replacement; `sv_u` is `(r,3)`.
 
 ## Appendix — Known problems & open decisions (running log)
 
+> **⚠️ AVVISO (2026-07-10, `docs/audit_P1-P5.md`) — ogni `ρ̂` citato in questo file è
+> inaffidabile.** Le stime di leverage riportate sotto (Phase 4, Phase 7, P0, P2) sono
+> misurate con catene da 600–900 iterazioni. `ESS(ρ) ≈ 3–23 su 2000 draw`: l'errore
+> Monte Carlo domina, e con quell'ESS non si distingue una catena non convergente da un
+> bias sistematico. `ρ` è aggiornato con **una sola** mossa RW (`prop_sd=0.06`, da
+> `ρ=0`) per sweep, e allargare la proposta non aiuta (accettazione crolla, ESS no).
+> Fix raccomandato: **griddy-Gibbs su `ρ`** (il log-posterior è 1-D su `(−1,1)`, liscio,
+> già scritto in `_rho_logpost_scalar`; il pattern esiste in `draw_nu_griddy`).
+> Da fare **prima** di puntare il sampler sul pannello reale — `ρ` è il parametro che
+> dà la skew alla densità del PIL. Vedi audit §P6.
+>
+> L'audit ha inoltre **chiuso P1, P3, P4, P5** (2026-07-10): il ramo coupled è
+> irraggiungibile e assente sotto B; P3 è A-specifico e B è immune per costruzione;
+> `corr(Q)` reale ≤ 0.099 rende P4 (+0.4%) e P5 (−0.1%) trascurabili. Tutti congelati
+> da test (`test_variants` [8], `test_passo4` [6], `test_diagnostics`).
+> **Correzione a P2**: `T` cura i parametri, **non** il tetto informativo (`corr(ĥ,h)`
+> del canale debole satura a ~0.63 per qualunque `T`), e Branch A *degrada* con `T`.
+
 A consolidated list of the substantive issues surfaced during the refactor, with
 pointers to where each is detailed and its current disposition. Newest first.
 

@@ -557,6 +557,7 @@ def sample_common_vol_mv(
     half_normal_B: float = 1.0,
     use_asis: bool = False,
     R_xi: np.ndarray | None = None,
+    allow_experimental: bool = False,
     ksc: dict = KSC7,
 ) -> dict:
     r"""
@@ -619,9 +620,27 @@ def sample_common_vol_mv(
     logh_u : (T, r)       current per-factor log-vol paths (indicator conditional).
     sv_u : (r, 3)         current per-factor ``(mu, phi, sigma2)``.
     R_xi : None or (r, r) decoupled (Commit 1) or the log-square correlation (Commit 2).
+                          Passing a matrix requires ``allow_experimental=True``.
+    allow_experimental : bool  opt-in to the coupled branch.  It is **not** reachable
+                          from :func:`mcmc.gibbs.fit_dfm_mcmc` on any path (and does
+                          not exist at all under Branch~B, whose common block is r
+                          independent Omori/FFBS channels) — the flag exists so that
+                          the reference implementation of the thesis' multivariate
+                          method stays runnable from tests and one-off studies,
+                          never by accident.  See ``docs/audit_P1-P5.md`` §P1/§P4.
 
     Returns ``{"logh_u": (T, r), "h_u": (T, r), "sv_u": (r, 3)}``.
     """
+    if R_xi is not None and not allow_experimental:
+        raise ValueError(
+            "coupled R_xi is EXPERIMENTAL and not the sampler's method: the literal "
+            "correlation-scaled form Sigma = diag(v_s) R_xi diag(v_s) is unstable "
+            "(it distorts the less-persistent factor, phi 0.90 -> 0.42 at "
+            "corr(Q)=0.92), and on the real panel corr(Q) <= 0.1 makes its benefit "
+            "~0.4% of calibration. The decoupled block (R_xi=None) is exact at "
+            "diagonal Q. Pass allow_experimental=True only for a deliberate study "
+            "(docs/audit_P1-P5.md, P1/P4)."
+        )
     u_head = np.asarray(u_head, float)
     Tm1, r = u_head.shape
     T = Tm1 + 1

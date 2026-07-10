@@ -25,6 +25,118 @@ from mcmc.gibbs import fit_dfm_mcmc
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Audit metrics (docs/audit_P1-P5.md) — pure functions of Q / of the draws.
+#
+# corr(Q) is the single number that closes P1, P4 and P5 at once: the decoupled
+# common-volatility block is *exact* at diagonal Q; the coupling's benefit and the
+# Branch-B leverage attenuation are both second-order in the off-diagonals.  These
+# helpers make it inspectable at every run instead of asserted once.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _corr_from_cov(Q: np.ndarray) -> np.ndarray:
+    d = np.sqrt(np.diag(np.asarray(Q, float)))
+    return np.asarray(Q, float) / np.outer(d, d)
+
+
+def posterior_corr_Q(draws: dict, *, cred: float = 0.90) -> dict:
+    r"""
+    Posterior correlation matrix of the factor innovations, from ``draws["Q"]``.
+
+    **Closes P1, P4 and P5 empirically.**  The decoupled block is exact at diagonal
+    ``Q``; the coupled-``R_xi`` correction (P1/P4) and the Branch-B whitening
+    attenuation (P5) are both second-order in ``corr(Q)``.  On the EM fit the
+    off-diagonals are ``<= 0.099``; this recomputes them from the *posterior* draws,
+    where the volatility may have moved them.
+
+    It is also the check the thesis prescribes for the Huang--Wand switch
+    (``eq:param-Q-hw-prior``, ".tex" ~20684): *re-estimate under the hierarchical
+    prior and confirm the posterior correlations among the factor innovations do not
+    move*.  Run it on both and compare ``mean``.
+
+    Returns ``{"mean": (r,r), "lo": (r,r), "hi": (r,r), "max_offdiag": float}``
+    (element-wise posterior mean and central ``cred`` credible band of the
+    correlations).
+    """
+    Qs = np.asarray(draws["Q"], float)                  # (n_keep, r, r)
+    C = np.array([_corr_from_cov(Q) for Q in Qs])       # (n_keep, r, r)
+    a = 0.5 * (1.0 - float(cred))
+    mean = C.mean(axis=0)
+    off = mean[np.triu_indices_from(mean, k=1)]
+    return {
+        "mean": mean,
+        "lo": np.quantile(C, a, axis=0),
+        "hi": np.quantile(C, 1.0 - a, axis=0),
+        "max_offdiag": float(np.max(np.abs(off))) if off.size else 0.0,
+    }
+
+
+def coupling_overconfidence(Q: np.ndarray) -> dict:
+    r"""
+    **P4.**  How overconfident the *decoupled* common-volatility block is, at a given
+    ``Q``.
+
+    The block treats the ``r`` per-factor log-squares ``y*_{k,t}`` as marginally
+    independent.  They are in fact correlated through ``corr(Q)``, with log-square
+    correlation ``R_xi[j,k] = g(corr(Q)_{jk}) / (pi^2/2)``
+    (:func:`mcmc.sample_vol.logsq_corr_matrix`).  Ignoring that correlation credits
+    the sampler with more independent information than there is; for ``r`` roughly
+    equicorrelated channels the joint precision is inflated by
+
+        sqrt(1 + (r-1) * mean_offdiag(R_xi))  -  1 .
+
+    Second-order in ``corr(Q)``: ``+0.4%`` at ``corr(Q)=0.10`` (the real panel),
+    ``+3.6%`` at ``0.30``, ``+42%`` at ``0.90``.  Under Spec II each channel carries
+    its *own* state, so the effect on a single ``h_k`` is weaker still.
+
+    Returns ``{"R_xi": (r,r), "max_R_xi": float, "overconfidence": float}``.
+    """
+    from mcmc.sample_vol import logsq_corr_matrix
+    Q = np.asarray(Q, float)
+    r = Q.shape[0]
+    R_xi = logsq_corr_matrix(_corr_from_cov(Q))
+    off = R_xi[np.triu_indices_from(R_xi, k=1)]
+    mean_off = float(np.mean(off)) if off.size else 0.0
+    return {
+        "R_xi": R_xi,
+        "max_R_xi": float(np.max(np.abs(off))) if off.size else 0.0,
+        "overconfidence": float(np.sqrt(1.0 + (r - 1) * mean_off) - 1.0),
+    }
+
+
+def leverage_whitening_attenuation(Q: np.ndarray) -> dict:
+    r"""
+    **P5.**  The attenuation of the Branch-B leverage ``rho_k`` induced by the
+    per-component magnitude whitening.
+
+    Branch~B takes the *sign* from the fully-whitened raw shock
+    ``d_k = sign(z^u_k)`` but the *magnitude* from the per-component
+    ``|zbar_k| = exp(xi_k/2)`` — the linearisation that makes the FFBS possible
+    (``eq:lev-omori-cond``).  Its Family~C regressor is therefore
+    ``g_k = sign(z_k)|zbar_k|`` while the true drift is ``rho z_k``, so with
+    ``Var(zbar_k) = 1``
+
+        rho_hat / rho  =  E[|z_k| |zbar_k|]  =  lambda(c_k),
+        lambda(c) = (2/pi) ( c*arcsin(c) + sqrt(1-c^2) ),
+        c_k = Corr(z_k, zbar_k) = (Q^{1/2})_kk / sqrt(q_kk).
+
+    ``lambda(1) = 1`` (exact at diagonal ``Q``), ``lambda(0) = 0.6366``.  It is always
+    an **attenuation, never a sign flip** — the sign uses the full whitening.  An
+    attenuated ``|rho|`` *understates* the predictive left skew, i.e. errs against
+    the Growth-at-Risk objective; but on the real panel ``c_k >= 0.9986``, so the
+    bias is ``-0.1%`` and no correction is warranted (``docs/audit_P1-P5.md`` §P5).
+
+    Returns ``{"c": (r,), "lambda": (r,), "bias_pct": (r,)}``.
+    """
+    Q = np.asarray(Q, float)
+    vals, vecs = np.linalg.eigh(0.5 * (Q + Q.T))
+    Q_half = (vecs * np.sqrt(np.clip(vals, 0.0, None))) @ vecs.T
+    c = np.diag(Q_half) / np.sqrt(np.diag(Q))
+    c = np.clip(c, -1.0, 1.0)
+    lam = (2.0 / np.pi) * (c * np.arcsin(c) + np.sqrt(np.clip(1.0 - c * c, 0.0, None)))
+    return {"c": c, "lambda": lam, "bias_pct": 100.0 * (lam - 1.0)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Convergence diagnostics
 # ─────────────────────────────────────────────────────────────────────────────
 
