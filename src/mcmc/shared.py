@@ -139,24 +139,40 @@ def realized_deflated_d_u(
     optionally deflated by the common stochastic-volatility path.
 
     This is :func:`em_e_step.compute_d_u` stripped of the posterior-uncertainty
-    trace term (``term2``), with the innovation quadratic divided by ``h^u_t``.
+    trace term (``term2``).  The tail weight ``w^u_t`` is conjugate-Gamma with
+    rate driven by ``d^u_t = u_t' Var(u_t|.)^{-1} u_t`` (up to ``w``), and under
+    the stochastic-volatility sandwich ``Var(u_t|.) = (1/w) sqrt(H^u_t) Q
+    sqrt(H^u_t)`` (eq:param-hu-matrix) this is
+    ``d^u_t = u_t' H_t^{-1/2} Q^{-1} H_t^{-1/2} u_t = (H_t^{-1/2} u_t)' Q^{-1}
+    (H_t^{-1/2} u_t)``.
 
-    Equivalence to EM (verified in ``test_shared``)
-    -----------------------------------------------
-    With ``h_u = None`` this returns exactly
-    ``compute_d_u(f_states, P_smooth=0, P_lag=0, A, Q, r)``.
+    ``h_u`` shape selects the specification:
+
+    * ``None`` — no SV; returns exactly ``compute_d_u(P=0, P_lag=0)`` (EM seam).
+    * ``(T,)`` — a **single** common volatility ``h^u_t``: the scalar-common
+      restriction ``H^u_t = h^u_t I``, at which the inside placement
+      ``Q^{1/2} H Q^{1/2}`` (eq:vol-inside) and the outside one
+      ``sqrt(H) Q sqrt(H)`` (eq:vol-outside) coincide, both ``= h^u_t Q``, so the
+      specification fork is vacuous; the whole quadratic is divided by that scalar.
+    * ``(T, r)`` — **per-factor** volatilities under the Specification II sandwich
+      (the model actually estimated, ``eq:vol-outside``): the
+      innovation is deflated component-wise by ``sqrt(h^u_{i,t})`` *before* the
+      ``Q^{-1}`` quadratic.  With equal columns this reduces to the ``(T,)`` case.
 
     Convention: ``d_u[0] = NaN`` (no f_{-1} in sample), as in EM.
     """
     T = f_states.shape[0]
     d_u = np.full(T, np.nan)
+    per_factor = h_u is not None and np.ndim(h_u) == 2
     for t in range(1, T):
         f_t = f_states[t][0:r]
         f_tm1 = f_states[t - 1][0:r]
         innovation = f_t - A @ f_tm1
+        if per_factor:
+            innovation = innovation / np.sqrt(h_u[t])       # H_t^{-1/2} u_t
         term1 = float(innovation @ np.linalg.solve(Q, innovation))
-        if h_u is not None:
-            term1 = term1 / float(h_u[t])
+        if h_u is not None and not per_factor:
+            term1 = term1 / float(h_u[t])                   # scalar-common H = h I
         d_u[t] = term1
     return d_u
 
@@ -270,38 +286,69 @@ def draw_A_Q(
     P11: np.ndarray,
     T_eff: int | float,
     rng: np.random.Generator,
+    *,
+    Psi0: np.ndarray | None = None,
+    nu0: float = 0.0,
+    A0: np.ndarray | None = None,
+    kappa: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     r"""
-    Draw (A, Q) from the flat-prior matrix-normal--inverse-Wishart posterior,
-    built on the *same* weighted moments used by :func:`em_m_step.update_A_Q`.
+    Draw (A, Q) from the matrix-normal--inverse-Wishart posterior, built on the
+    *same* weighted moments used by :func:`em_m_step.update_A_Q`.
 
     The moments ``P00, P10, P11`` come from
     :func:`em_m_step.compute_weighted_moments` — in the sampler with the combined
-    precision ``g_t = w_t / h_t`` in place of the EM weight ``w_t``.
+    precision ``g_t = w_t / h_t`` in place of the EM weight ``w_t``.  This is the
+    **scalar-volatility** draw: it applies when ``G^u_t = g^u_t Q^{-1}`` factors
+    out of eq:param-A-precision — i.e. when the ``r`` common volatilities coincide
+    (``h^u_t I``) or are absent (``h ≡ 1``, the no-SV "current model" cell).  The
+    per-factor Spec II case does *not* collapse and is handled by
+    :func:`draw_A_Q_perfactor`.
 
     Point-estimate seam (verified in ``test_shared``)
     -------------------------------------------------
     The posterior mean of A and the inverse-Wishart scale reproduce the EM
-    point estimate exactly::
+    point estimate exactly (flat prior)::
 
         A_hat = P10 @ inv(P00)                       == update_A_Q(...)[0]
         S     = P11 - A_hat @ P10.T  (= T_eff * Q)   ;  S / T_eff == update_A_Q(...)[1]
 
-    Draw (thesis eq:param-AQ, flat-prior limit)
-    -------------------------------------------
-        Q ~ InvWishart(scale = S, df = T_eff)
-        vec(A) | Q ~ N( vec(A_hat),  Q (x) inv(P00) )
+    Priors (tab:param-prior-tuning; ``None``/``0`` ⇒ the flat limit above,
+    reproduced **bit-for-bit**)
+    ---------------------------------------------------------------------
+    Natural-conjugate MNIW, ``Q ~ IW(Psi0, nu0)`` (eq:param-Q-post) and, given
+    ``Q``, the matrix-Normal ``A | Q ~ MN(A0, Q, Omega0)`` with among-column
+    (regressor) covariance ``Omega0 = (kappa I)^{-1}`` — the "diffuse
+    matrix-Normal centred at the EM fit with a tiny prior precision ``kappa I``"
+    of the tuning table.  (It is the Kronecker special case ``V0 = Q ⊗ Omega0``
+    of the general Gaussian prior ``vec(A) ~ N(vec(A0), V0)`` of eq:param-AQ,
+    which is what keeps the *joint* conjugacy alive here.)  Posterior::
 
-    i.e. A is matrix-normal with among-row covariance Q and among-column
-    (regressor) covariance ``inv(P00)``.
+        P00n  = P00 + kappa I,      P10n = P10 + kappa A0
+        A_hat = P10n @ inv(P00n)
+        S     = Psi0 + P11 + kappa A0 A0' - A_hat @ P10n.T
+        Q         ~ InvWishart(scale = S, df = nu0 + T_eff)
+        vec(A)|Q  ~ N( vec(A_hat),  Q (x) inv(P00n) )
+
+    Huang--Wand (eq:param-Q-hw-post) is the same draw with the IW hyperparameters
+    swapped for ``(2 nu* diag(1/a), nu* + r - 1)`` — see :func:`hw_iw_prior`.
     """
     r = P00.shape[0]
 
+    if kappa:
+        P00 = P00 + kappa * np.eye(r)
+        if A0 is not None:
+            A0 = np.asarray(A0, float)
+            P10 = P10 + kappa * A0
+            P11 = P11 + kappa * (A0 @ A0.T)
+
     A_hat = np.linalg.solve(P00, P10.T).T          # A_hat = P10 inv(P00)
     S = P11 - A_hat @ P10.T                         # residual scatter = T_eff * Q_EM
+    if Psi0 is not None:
+        S = S + np.asarray(Psi0, float)
     S = 0.5 * (S + S.T)
 
-    Q_draw = np.atleast_2d(invwishart.rvs(df=T_eff, scale=S, random_state=rng))
+    Q_draw = np.atleast_2d(invwishart.rvs(df=T_eff + nu0, scale=S, random_state=rng))
 
     P00_inv = np.linalg.inv(P00)
     P00_inv = 0.5 * (P00_inv + P00_inv.T)
@@ -310,6 +357,181 @@ def draw_A_Q(
     Z = rng.standard_normal((r, r))
     A_draw = A_hat + L_row @ Z @ L_col.T
 
+    return A_draw, Q_draw
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4b. Huang--Wand hierarchical inverse-Wishart on Q (optional, sec ~20639-20694)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def hw_iw_prior(a: np.ndarray, nu_star: float = 2.0) -> tuple[np.ndarray, float]:
+    r"""
+    The inverse-Wishart hyperparameters ``(Psi0, nu0)`` implied by the
+    Huang--Wand hierarchical prior (eq:param-Q-hw-prior) at the current auxiliary
+    scales ``a = (a_1, ..., a_r)``::
+
+        Q | a ~ IW( 2 nu*  diag(1/a_1, ..., 1/a_r),   nu* + r - 1 )
+
+    Conditional on ``a`` this is an *ordinary* inverse-Wishart, so the Family~A
+    draw (:func:`draw_A_Q` / :func:`draw_A_Q_perfactor`) runs unchanged with
+    ``Psi0 -> 2 nu* diag(1/a)``, ``nu0 -> nu* + r - 1`` — the Gibbs step of
+    eq:param-Q-hw-post.  Marginalising ``a`` out gives a **half-t_{nu*}** prior on
+    each innovation standard deviation ``sqrt(Q_jj)`` (scale ``A_j``) and a
+    marginal correlation law ``propto (1-rho^2)^{(nu*-2)/2}`` — **uniform** at
+    ``nu* = 2``: the variance tails and the correlation shape are controlled
+    separately, which the plain IW's single ``nu0`` cannot do.
+    """
+    a = np.asarray(a, float).ravel()
+    r = a.size
+    Psi0 = 2.0 * float(nu_star) * np.diag(1.0 / a)
+    nu0 = float(nu_star) + r - 1.0
+    return Psi0, nu0
+
+
+def draw_hw_aux(
+    Q: np.ndarray,
+    rng: np.random.Generator,
+    *,
+    nu_star: float = 2.0,
+    A_scales: float | np.ndarray = 1e5,
+) -> np.ndarray:
+    r"""
+    Draw the ``r`` Huang--Wand auxiliary scales from their closed inverse-gamma
+    full conditionals (eq:param-Q-hw-aux) — the ``r`` scalar draws appended to
+    Family~A when the hierarchical prior is switched on::
+
+        a_j | Q, .  ~  IG( (nu* + r)/2,   nu* (Q^{-1})_jj + 1/A_j^2 ),   j = 1..r
+
+    Parameters
+    ----------
+    Q : (r, r)                 the current factor-innovation covariance draw.
+    nu_star : float            ``nu*`` — the half-t degrees of freedom on each
+                               ``sqrt(Q_jj)``; ``2`` gives near-half-Cauchy
+                               margins *and* uniform marginal correlations.
+    A_scales : float or (r,)   the half-t scale(s) ``A_j``, "set large relative to
+                               the plausible innovation scale of the standardised
+                               panel" (``A ~ 10`` mildly informative, ``~1e5``
+                               near-flat).
+
+    Returns ``a`` (r,).  Prior draw (no data): ``a_j ~ IG(1/2, 1/A_j^2)``.
+    """
+    Q = np.asarray(Q, float)
+    r = Q.shape[0]
+    Qinv_diag = np.diag(np.linalg.inv(Q))
+    A_j = np.broadcast_to(np.asarray(A_scales, float), (r,))
+    shape = 0.5 * (float(nu_star) + r)
+    rate = float(nu_star) * Qinv_diag + 1.0 / (A_j ** 2)      # IG scale parameter
+    return 1.0 / rng.gamma(shape=shape, scale=1.0 / rate, size=r)
+
+
+def draw_A_Q_perfactor(
+    f_head: np.ndarray,
+    h_u: np.ndarray,
+    w_u: np.ndarray,
+    A_cur: np.ndarray,
+    rng: np.random.Generator,
+    *,
+    Psi0: np.ndarray | None = None,
+    nu0: float = 0.0,
+    A0: np.ndarray | None = None,
+    V0_inv: np.ndarray | None = None,
+    _return_moments: bool = False,
+):
+    r"""
+    Draw (A, Q) under Specification II — *per-factor* common stochastic
+    volatility — from the two-step conditional Gibbs move of the thesis
+    (\S ``Sampling the Parameters (Gibbs Step (d))``, Family~A).
+
+    Under Spec II the VAR(1) innovation covariance is the sandwich
+    ``Var(u_t|.) = (1/w^u_t) sqrt(H^u_t) Q sqrt(H^u_t)`` (eq:param-hu-matrix,
+    ``H^u_t = diag(h_u[t, :])``).  The per-period whitening
+    ``C_t = sqrt(w^u_t) H_t^{-1/2}`` does **not** commute with ``A``, so the
+    scalar-weighted moments of the first stage are no longer sufficient and the
+    closed matrix-normal--inverse-Wishart draw does not survive.  We therefore
+    draw the block as a two-step Gibbs move:
+
+    * **Q | A_cur** (eq:param-Q-post): with the whitened residuals
+      ``check_u_t = C_t (f_t - A_cur f_{t-1}) ~ N(0, Q)``,
+      ``Q ~ IW(Psi0 + sum_t check_u_t check_u_t', nu0 + T_eff)``.
+    * **vec(A) | Q** (eq:param-A-vec-model, eq:param-AQ, eq:param-A-precision):
+      a genuine ``r^2``-dimensional Gaussian with precision
+      ``V_n^{-1} = V0_inv + sum_t (f_{t-1} f_{t-1}') (x) G^u_t`` and
+      ``G^u_t = C_t Q^{-1} C_t = w^u_t H_t^{-1/2} Q^{-1} H_t^{-1/2}`` — a *sum of
+      Kronecker products*, one per period, that does not collapse to a single
+      Kronecker because ``G^u_t`` varies with ``t``.
+
+    ``T_eff = T - 1``: the innovation ``u_t = f_t - A f_{t-1}`` exists only for
+    ``t = 1..T-1`` (the effective-count convention of the thesis; the factor side
+    conditions on ``f_1``).
+
+    Collapse seam (verified in ``test_shared``): when ``h_u ≡ 1`` and
+    ``A_cur = A_hat`` the Q-scale reduces to the scalar residual scatter
+    ``P11 - A_hat P10'`` and the A-posterior mean to ``vec(A_hat)``,
+    ``A_hat = P10 P00^{-1}`` with the scalar-weighted moments ``P.. = sum_t w_t ..``
+    — i.e. the per-factor draw reduces to the common-scalar
+    matrix-normal--inverse-Wishart draw of :func:`draw_A_Q`.
+
+    Parameters
+    ----------
+    f_head : (T, r)     the head factor path (first ``r`` of the augmented state).
+    h_u : (T, r)        per-factor common volatilities ``h^u_{i,t}`` (``≡1`` off).
+    w_u : (T,)          factor tail weights ``w^u_t``.
+    A_cur : (r, r)      current transition (the Q|A step conditions on it).
+    Psi0, nu0 : IW prior scale / dof (``None``/``0`` ⇒ flat).
+    A0, V0_inv : Gaussian prior on ``vec(A)`` (``None`` ⇒ flat).
+    _return_moments : if True, also return the posterior moments (for testing).
+    """
+    f_head = np.asarray(f_head, float)
+    h_u = np.asarray(h_u, float)
+    w_u = np.asarray(w_u, float)
+    A_cur = np.asarray(A_cur, float)
+    T, r = f_head.shape
+
+    ft = f_head[1:]                       # (T-1, r)  f_t
+    ftm1 = f_head[:-1]                     # (T-1, r)  f_{t-1}
+    c = np.sqrt(w_u[1:])[:, None] * h_u[1:] ** -0.5   # (T-1, r): diag of C_t
+    T_eff = T - 1
+
+    # ── Q | A_cur  (eq:param-Q-post) ────────────────────────────────────────
+    U = ft - ftm1 @ A_cur.T               # (T-1, r) innovations u_t
+    Uc = c * U                            # (T-1, r) whitened residuals check_u_t
+    S = Uc.T @ Uc                         # sum_t check_u_t check_u_t'
+    if Psi0 is not None:
+        S = S + np.asarray(Psi0, float)
+    S = 0.5 * (S + S.T)
+    df = float(T_eff) + float(nu0)
+    Q_draw = np.atleast_2d(invwishart.rvs(df=df, scale=S, random_state=rng))
+    Qinv = np.linalg.inv(Q_draw)
+    Qinv = 0.5 * (Qinv + Qinv.T)
+
+    # ── vec(A) | Q  (eq:param-AQ, eq:param-A-precision) ──────────────────────
+    P = np.zeros((r * r, r * r))          # V_n^{-1}
+    rhs = np.zeros(r * r)                 # V0_inv vec(A0) + sum_t X_t' Qinv check_f_t
+    for i in range(T_eff):
+        ci = c[i]                                     # diag of C_t (r,)
+        G = (ci[:, None] * Qinv) * ci[None, :]        # G^u_t = C_t Qinv C_t
+        P += np.kron(np.outer(ftm1[i], ftm1[i]), G)
+        fcheck = ci * ft[i]                           # C_t f_t = check_f_t
+        rhs += np.kron(ftm1[i], ci * (Qinv @ fcheck)) # X_t' Qinv check_f_t
+    if V0_inv is not None:
+        P = P + np.asarray(V0_inv, float)
+        if A0 is not None:
+            rhs = rhs + np.asarray(V0_inv, float) @ np.asarray(A0, float).ravel(order="F")
+    P = 0.5 * (P + P.T)
+    V_n = np.linalg.inv(P)
+    V_n = 0.5 * (V_n + V_n.T)
+    m_n = V_n @ rhs                                    # vec(A) posterior mean
+
+    L = np.linalg.cholesky(V_n)
+    vecA = m_n + L @ rng.standard_normal(r * r)
+    A_draw = vecA.reshape((r, r), order="F")
+
+    if _return_moments:
+        return A_draw, Q_draw, {
+            "Q_scale": S, "Q_df": df,
+            "A_mean": m_n.reshape((r, r), order="F"),
+            "A_prec": P,
+        }
     return A_draw, Q_draw
 
 
@@ -359,35 +581,47 @@ def draw_lambda_r_series(
     s_yy: float,
     n_obs: int,
     rng: np.random.Generator,
+    *,
+    a0: float = 0.0,
+    b0: float = 0.0,
+    m0: float = 0.0,
+    M0_inv: float = 0.0,
 ) -> tuple[float, float]:
     r"""
     Draw the (scalar, block-restricted) loading and idiosyncratic variance of one
-    series from the flat-prior normal--inverse-gamma posterior, built on the same
-    weighted sufficient statistics used by :func:`em_m_step.update_Lambda` /
-    :func:`em_m_step.update_R`.
+    series from the conjugate **normal--inverse-gamma** posterior (thesis
+    eq:param-LR-post / eq:param-LR-hyper), built on the same weighted sufficient
+    statistics used by :func:`em_m_step.update_Lambda` / :func:`em_m_step.update_R`.
 
-    Sufficient statistics (weighted by w^eps_t, summed over the observed set):
-        num   = sum_t w_t y_t  E[phi_t]          (cross moment)   -> num in update_Lambda
-        den   = sum_t w_t  E[phi_t^2]            (regressor 2nd moment, = F_i)
-        s_yy  = sum_t w_t y_t^2
+    Because the block restriction leaves each series loading on a *single* factor,
+    ``L_i`` is scalar and the whole NIG is scalar.
+
+    Sufficient statistics (weighted by ``g^eps_t = w^eps_t/h^eps_{i,t}``, summed
+    over the observed set):
+        num   = sum_t g_t y_t phi_t              (cross moment,  = c_i)
+        den   = sum_t g_t phi_t^2                (regressor 2nd moment,  = F_i)
+        s_yy  = sum_t g_t y_t^2
         n_obs = |T_i|
     where ``phi_t`` is the contemporaneous block-factor (monthly) or the MM
     composite (quarterly, via :func:`composite_regressor`).
 
-    Point-estimate seam (verified in ``test_shared``)
-    -------------------------------------------------
-        lambda_hat = num / den                       == update_Lambda(...) loading
-        ssr        = s_yy - num^2/den  (= sum_t w_t E[resid^2])
-        ssr / n_obs                                  == update_R(...) variance
+    Prior (eq:param-LR-post): ``r_i ~ IG(a0, b0)``, ``L_i | r_i ~ N(m0, r_i M0)``
+    (pass the prior precision ``M0_inv = 1/M0``).  Posterior:
+        Fbar = den + M0_inv,   cbar = num + M0_inv m0
+        b_n  = b0 + 1/2 ( s_yy + M0_inv m0^2 - cbar^2/Fbar )
+        r_i     ~ IG( a0 + n_obs/2, b_n )
+        L_i|r_i ~ N( cbar/Fbar, r_i/Fbar )
 
-    Draw (thesis eq:param-LR / eq:param-mf-LQ, flat-prior limit)
-    -----------------------------------------------------------
-        r      ~ InvGamma( n_obs/2 ,  ssr/2 )
-        lambda ~ N( lambda_hat ,  r / den )
+    Flat-prior limit ``a0=b0=m0=M0_inv=0`` reproduces the weighted-LS draw
+    ``r ~ IG(n_obs/2, ssr/2)``, ``L ~ N(num/den, r/den)`` **bit-for-bit** (the EM
+    seam of ``test_shared``).
     """
-    lam_hat = num / den
-    ssr = s_yy - num * num / den           # completion-of-square residual
-    # r ~ InvGamma(shape = n_obs/2, scale = ssr/2)  <=>  1/r ~ Gamma(n_obs/2, scale=2/ssr)
-    r_draw = 1.0 / rng.gamma(shape=n_obs / 2.0, scale=2.0 / ssr)
-    lam_draw = lam_hat + np.sqrt(r_draw / den) * rng.standard_normal()
+    Fbar = den + M0_inv                              # F_i + M0^{-1}
+    cbar = num + M0_inv * m0                         # c_i + M0^{-1} m0
+    lam_hat = cbar / Fbar
+    b_n = b0 + 0.5 * (s_yy + M0_inv * m0 * m0 - cbar * cbar / Fbar)
+    shape = a0 + n_obs / 2.0
+    # r ~ InvGamma(shape, b_n)  <=>  1/r ~ Gamma(shape, scale = 1/b_n)
+    r_draw = 1.0 / rng.gamma(shape=shape, scale=1.0 / b_n)
+    lam_draw = lam_hat + np.sqrt(r_draw / Fbar) * rng.standard_normal()
     return float(lam_draw), float(r_draw)

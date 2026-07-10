@@ -125,13 +125,17 @@ def test_skewness_lagged(theta):
 
 
 def test_end_to_end(theta, fl, bm, oc, r):
-    print("\n[5] short Branch-B Gibbs: runs, FFBS path acceptance=1, dominant sign")
+    print("\n[5] Branch-B (Spec II per-factor) Gibbs: FFBS accept=1, dominant sign, recovery")
+    # Branch B is now per-factor (Option A, Phase 7): h_u is (T, r), rho_u is (r,).
+    # The per-factor SV pays the sqrt(r) data cost (Phase 1), so recovery needs a
+    # longer panel than the old scalar-common gate — T=240 collapses, T=500 recovers
+    # the dominant leverage and tracks every factor's path (verified up to T=900).
     rho_u_true = np.array([-0.6, -0.3, -0.2])[:r]
-    sim = simulate_dfm_sv(theta, T=240, freq_list=fl, block_map=bm, ordered_cols=oc, r=r,
+    sim = simulate_dfm_sv(theta, T=500, freq_list=fl, block_map=bm, ordered_cols=oc, r=r,
                           seed=9, sv_u=(0.0, 0.97, 0.22), sv_eps=(0.0, 0.95, 0.15),
                           rho_u=rho_u_true, rho_eps=-0.3, timing="lagged")
     res = fit_dfm_mcmc(sim["Y"], {**theta, "Sigma_0": np.asarray(theta["Sigma_0"])},
-                       fl, bm, oc, n_iter=900, burn_in=350, thin=1, seed=4,
+                       fl, bm, oc, n_iter=600, burn_in=250, thin=1, seed=4,
                        sv=True, leverage=True, timing="lagged", store_vol=True, verbose=False)
     acc = res["meta"]["acceptance"]
     _check("FFBS path acceptance == 1.0 (direct draw)",
@@ -143,9 +147,14 @@ def test_end_to_end(theta, fl, bm, oc, r):
     jdom = int(np.argmax(np.abs(rho_u_true)))
     _check("dominant rho_u component has negative sign", rho_u[jdom] < 0,
            f"rho_u={np.round(rho_u,3)}")
-    hu = res["draws"]["h_u"].mean(axis=0)
-    c = float(np.corrcoef(np.log(hu), sim["logh_u_true"])[0, 1])
-    _check("h^u path tracked (corr>0.4 short run)", c > 0.4, f"corr={c:.3f}")
+    # per-factor h_u (T, r): every factor should track the common path (avg corr)
+    lhu = np.log(res["draws"]["h_u"].mean(axis=0))          # (T, r)
+    if lhu.ndim == 2:
+        c = float(np.mean([np.corrcoef(lhu[:, k], sim["logh_u_true"])[0, 1]
+                           for k in range(lhu.shape[1])]))
+    else:
+        c = float(np.corrcoef(lhu, sim["logh_u_true"])[0, 1])
+    _check("per-factor h^u tracks the common path (avg corr>0.4)", c > 0.4, f"avg corr={c:.3f}")
 
 
 def main():

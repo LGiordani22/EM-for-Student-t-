@@ -112,9 +112,11 @@ def _build_augmented(F: np.ndarray, r: int) -> np.ndarray:
 def forward_filter_combined(
     Y: np.ndarray,
     theta: dict,
-    g_u: np.ndarray,
+    g_u: np.ndarray | None,
     g_eps: np.ndarray,
     freq_list: list[str],
+    *,
+    Qcov: np.ndarray | None = None,
 ) -> dict:
     r"""
     Forward Kalman filter fed *combined precisions*, for the SV sampler.
@@ -136,8 +138,17 @@ def forward_filter_combined(
 
     Parameters
     ----------
-    g_u : (T,)            combined factor-side precision ``w^u_t / h^u_t``.
-    g_eps : (T, M)        combined idiosyncratic precision ``w^eps_t / h^eps_{i,t}``.
+    g_u : (T,) or None   combined factor-side precision ``w^u_t / h^u_t`` — the
+                         scalar / single common-volatility case (``H^u_t = h^u_t I``),
+                         where ``Q_tilde_t = build_Q_tilde(Q, g_u[t])``. Ignored when
+                         ``Qcov`` is given.
+    g_eps : (T, M)       combined idiosyncratic precision ``w^eps_t / h^eps_{i,t}``.
+    Qcov : (T, r, r) or None
+                         **per-factor Spec II** factor-innovation covariance
+                         ``Q_t = sqrt(H^u_t) Q sqrt(H^u_t) / w^u_t`` (eq:states-aug-Q).
+                         When given, it is embedded as the top-left block of the
+                         singular companion ``Q_tilde_t`` (the four lag blocks stay
+                         zero), overriding the scalar ``g_u`` construction.
 
     Returns the same dict layout as :func:`kalman.kalman_filter`.
     """
@@ -160,7 +171,11 @@ def forward_filter_combined(
 
     f_prev = np.zeros(dim); P_prev = Sigma_0.copy()
     for t in range(T):
-        Q_tilde_t = build_Q_tilde(Q, float(g_u[t]))
+        if Qcov is not None:
+            Q_tilde_t = np.zeros((dim, dim))
+            Q_tilde_t[:r, :r] = Qcov[t]                  # Spec II sandwich, top-left block
+        else:
+            Q_tilde_t = build_Q_tilde(Q, float(g_u[t]))
         R_tilde_t = build_R_tilde(R, g_eps[t])           # per-series vector
         f_p, P_p = kalman_predict(f_prev, P_prev, A_tilde, Q_tilde_t)
         f_pred_arr[t] = f_p; P_pred_arr[t] = P_p
@@ -222,12 +237,29 @@ def ffbs_sample_states(
         else:
             # SV path: combined precision g = w / h (per-series for idiosyncratic).
             T, M = Y.shape
-            g_u = np.asarray(w_u, float) if h_u is None else np.asarray(w_u, float) / np.asarray(h_u, float)
+            h_u_arr = None if h_u is None else np.asarray(h_u, float)
+            per_factor_u = h_u_arr is not None and h_u_arr.ndim == 2
+
+            if per_factor_u:
+                # Spec II: Q_t = sqrt(H^u_t) Q sqrt(H^u_t) / w^u_t (eq:states-aug-Q),
+                # embedded as the top-left block of the singular companion Q_tilde.
+                Qm = np.asarray(theta["Q"], float)
+                w = np.asarray(w_u, float)
+                Qcov = np.empty((T, r, r))
+                for t in range(T):
+                    sh = np.sqrt(h_u_arr[t])
+                    Qcov[t] = (sh[:, None] * Qm * sh[None, :]) / w[t]
+                g_u = None
+            else:
+                # single common volatility (H^u_t = h^u_t I) or none: scalar g_u.
+                g_u = np.asarray(w_u, float) if h_u_arr is None else np.asarray(w_u, float) / h_u_arr
+                Qcov = None
+
             if h_eps is None:
                 g_eps = np.broadcast_to(np.asarray(w_eps, float)[:, None], (T, M)).copy()
             else:
                 g_eps = np.asarray(w_eps, float)[:, None] / np.asarray(h_eps, float)
-            filter_out = forward_filter_combined(Y, theta, g_u, g_eps, freq_list)
+            filter_out = forward_filter_combined(Y, theta, g_u, g_eps, freq_list, Qcov=Qcov)
     f_filt = filter_out["f_filt"]      # (T, 5r)
     P_filt = filter_out["P_filt"]      # (T, 5r, 5r)
     T = f_filt.shape[0]

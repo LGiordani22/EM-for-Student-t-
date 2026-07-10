@@ -40,18 +40,24 @@ i.e. a scalar AR(1) with a **time-varying** transition coefficient ``G_t`` and
 intercept ``c_t`` — a mild generalisation of ``sample_vol._scalar_ar1_ffbs``,
 implemented here as :func:`_ffbs_tv`.
 
-Common factor (``r`` whitened measurements per period): the leverage acts
-through the scalar combination ``rho' z^u_t`` (``.tex`` subsec:lev-branches-allproc),
-so the ``r`` per-period indicators couple *through their sum* in the transition.
-The indicator full conditional therefore carries a transition term, drawn by a
-leave-one-out Gibbs scan over the ``r`` components — the technically delicate
-piece, isolated in :func:`_branch_b_one_process`.
+Common factor — **Option A, per-factor (Spec II, Phase 7)**: the ``r`` common
+volatilities are ``r`` **independent scalar** Omori/FFBS channels (``K = 1`` each,
+via :func:`_branch_b_one_process`), structurally identical to the idiosyncratic
+series (``subsec:lev-branches-allproc``) — no vector ``rho``, no ``rho'rho<1``.
+Two boundary details specific to the common block: **(i)** the augmenting sign is
+``d^u_k = sign(z^u_k)`` of the FULL-whitening raw shock
+``z^u = sqrt(w) Q^{-1/2}(sqrt H)^{-1} u`` (not ``sign(u_k)``; the magnitude uses
+the per-component ``e_k = sqrt(w/q_kk) u_k`` so ``xi_k = y*_k - log h_k`` stays
+linear in ``log h_k`` — exact at diagonal ``Q``, decoupled default otherwise);
+**(ii)** ``z^u_0`` is undefined (``u_t`` exists for ``t>=1``), so the first
+leverage-bearing transition is into ``log h_2`` (``has_u[0]=False``).
 
-Family B ``(phi, sigma^2)`` and Family C ``rho`` reuse the Branch-A routines of
-:mod:`mcmc.sample_leverage` *verbatim* — the conditionals are the **same**
-algebraic skeleton (eq:param-rho-cond), only the regressor changes to the Omori
-one ``k_t = sigma * d_{t-1} e^{m_j/2}(a_j + b_j(xi_{t-1}-m_j))``
-(eq:param-rho-regressor, Branch B).  ``mu = 0`` throughout.
+Family B ``(phi, sigma^2)`` and Family C scalar ``rho_i`` reuse the Branch-A
+routines of :mod:`mcmc.sample_leverage` *verbatim* — the **same** algebraic
+skeleton (eq:param-rho-cond), only the regressor changes to the Omori one
+``k_t = sigma * d_{t-1} e^{m_j/2}(a_j + b_j(xi_{t-1}-m_j))``
+(eq:param-rho-regressor, Branch B).  ``mu = 0`` throughout.  ASIS (``use_asis``,
+Phase 6) wraps each channel's Family~B draw, with the lagged drift mask.
 
 Nesting: at ``rho = 0`` the drift vanishes, ``G_t = phi``, ``W_t = sigma^2``, and
 the FFBS reduces to the base KSC path draw of Passo 2 (with a 10- rather than
@@ -68,10 +74,7 @@ from mcmc.sample_vol import _inv_sqrt_spd
 from mcmc.sample_leverage import (
     _draw_phi_lev,
     _draw_sigma2_lev,
-    dominant_dir_z,
-    draw_rho_common,
     draw_rho_scalar,
-    draw_rho_vec,
 )
 
 
@@ -261,7 +264,7 @@ def _branch_b_one_process(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Orchestrator: step (b) + Family B + Family C for all M+1 processes (Branch B)
+# Orchestrator: step (b) + Family B + Family C for all M+r processes (Branch B)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def sample_volatility_block_leverage_lagged(
@@ -280,10 +283,14 @@ def sample_volatility_block_leverage_lagged(
     *,
     prior_a: float = 2.0,
     prior_b: float = 0.05,
+    sigma_prior: str = "inverse_gamma",
+    half_normal_B: float = 1.0,
+    use_asis: bool = False,
+    fix_mu0: bool = True,
+    sv_idio: bool = True,
     offset: float = 1e-6,
     prop_sigma2: float = 0.20,
     prop_rho: float = 0.06,
-    common_lev_scalar: bool = True,
     omori: dict = OMORI10,
     inv_sqrt_spd=None,
     **_ignored,
@@ -298,9 +305,20 @@ def sample_volatility_block_leverage_lagged(
     returned ``acc["path_*"] = 1.0`` records that the FFBS path is always accepted
     — the structural mixing advantage over Branch A.
 
+    ``sv_idio=False`` is the **D2-a** restriction (``subsec:variants-restrictions``):
+    ``h^eps ≡ 1`` frozen, no idiosyncratic Family~B / Family~C draw.
+
     Returns ``h_u, h_eps, logh_u, logh_eps, sv_u, sv_eps, rho_u, rho_eps`` and the
     acceptance rates ``acc`` (path = 1.0; sigma2 and rho remain Metropolis).
     """
+    if not fix_mu0:
+        raise ValueError("sample_volatility_block_leverage_lagged supports mu=0 only "
+                         "(fix_mu0=True); the leverage AR(1) has no intercept.")
+    if use_asis:
+        if sigma_prior != "half_normal":
+            raise ValueError("use_asis=True requires sigma_prior='half_normal' "
+                             "(CP and NCP must share the Gaussian prior on sigma_eta).")
+        from mcmc.sample_asis import asis_scale_interweave      # lazy: avoid import cycle
     if inv_sqrt_spd is None:
         inv_sqrt_spd = _inv_sqrt_spd
 
@@ -312,50 +330,80 @@ def sample_volatility_block_leverage_lagged(
 
     acc = {"path_u": 1.0, "path_eps": 1.0, "sigma2": 0.0, "rho_u": 0.0, "rho_eps": 0.0}
 
-    # ── Common factor (K = r whitened measurements per t = 1..T-1) ────────────
+    # ── Common factor: r per-factor channels under Option A (Spec II) ─────────
+    # Each factor is its own scalar Omori/FFBS channel (K = 1), structurally like
+    # an idiosyncratic series (subsec:lev-branches-allproc).  Two boundary details
+    # specific to the common block (subsec:lev-branches-allproc (i)-(ii)):
+    #   (i) the augmenting sign is d^u_k = sign(z^u_k) of the FULL-whitening raw
+    #       shock z^u = sqrt(w) Q^{-1/2}(sqrt H)^{-1} u — not sign(u_k) — computed
+    #       once from the current path (frozen for the sweep).  The magnitude uses
+    #       the per-component measurement e_k = sqrt(w/q_kk) u_k (decoupled, Phase 1)
+    #       so xi_k = y*_k - log h_k stays linear in log h_k (exact at diagonal Q).
+    #   (ii) u_t exists only for t >= 1, so z^u_0 is undefined: the first leverage-
+    #        bearing transition is into log h_2 (driven by z_1) — honoured by
+    #        has_u[0] = False (=> has_tr_u[t] = has_u[t-1], leverage into t >= 2).
     Qinv_half = inv_sqrt_spd(Q)
+    qdiag = np.diag(Q)
     u = F[1:] - F[:-1] @ A.T                              # (T-1, r)
-    tilde_u = (np.sqrt(w_u[1:])[:, None]) * (u @ Qinv_half.T)   # (T-1, r) signed
-    ystar_u = np.zeros((T, r)); signs_u = np.zeros((T, r))
-    ystar_u[1:] = np.log(tilde_u ** 2 + offset)
-    signs_u[1:] = np.sign(tilde_u)
-    signs_u[signs_u == 0.0] = 1.0
     has_u = np.zeros(T, bool); has_u[1:] = True
+    b_full = np.zeros((T, r)); b_full[1:] = np.sqrt(w_u[1:])[:, None] * u   # sqrt(w) u
+    E = b_full / np.sqrt(qdiag)[None, :]                  # per-component e_k (T, r); E[0]=0
+    ystar_all = np.log(E ** 2 + offset)                  # (T, r)
+    # full-whitening raw shock at the current path -> the augmenting signs (i)
+    a_u = np.exp(-0.5 * np.asarray(logh_u, float)) * b_full          # diag(exp(-x/2)) sqrt(w) u
+    z_u = a_u @ Qinv_half                                            # (T, r) z^u_k, full whitening
+    signs_all = np.sign(z_u); signs_all[signs_all == 0.0] = 1.0      # (T, r)
+    has_tr_u = np.zeros(T, bool); has_tr_u[1:] = has_u[:-1]          # leverage into t >= 2
 
-    mu_u, phi_u, s2_u = float(sv_u[0]), float(sv_u[1]), float(sv_u[2])
+    sv_u = np.asarray(sv_u, float)
     rho_u = np.asarray(rho_u, float).copy()
-    rho2_u = float(rho_u @ rho_u)
+    logh_u = np.asarray(logh_u, float)
+    logh_u_new = np.zeros((T, r))
+    sv_u_new = np.zeros((r, 3))
+    rho_u_new = np.zeros(r)
+    acc_s_u = 0.0; acc_r_u = 0.0
+    for k in range(r):
+        phi_k, s2_k = float(sv_u[k, 1]), float(sv_u[k, 2])
+        rho_k = float(rho_u[k]); rho2_k = rho_k * rho_k
+        out_k = _branch_b_one_process(ystar_all[:, k:k + 1], signs_all[:, k:k + 1],
+                                      has_u, logh_u[:, k], phi_k, s2_k,
+                                      np.array([rho_k]), rng, omori)
+        lh_k = out_k["logh"]; g_k = out_k["g"][:, 0]     # (T,)
+        # Family B: phi, sigma2 on the lagged drift zeta_t = rho_k g_{t-1}
+        zeta_k = np.zeros(T); zeta_k[1:] = rho_k * g_k[:-1]
+        phi_k = _draw_phi_lev(lh_k, zeta_k, has_tr_u, s2_k, rho2_k, rng)
+        s2_k, a1 = _draw_sigma2_lev(lh_k, zeta_k, has_tr_u, phi_k, rho2_k, s2_k,
+                                    prior_a, prior_b, prop_sigma2, rng,
+                                    sigma_prior=sigma_prior, half_normal_B=half_normal_B)
+        if use_asis:                                     # (2)-(4) NCP interweave (lagged)
+            z_lag = np.zeros(T); z_lag[1:] = g_k[:-1]    # drift into t = rho g_{t-1}
+            lh_k, phi_k, s2_k = asis_scale_interweave(
+                lh_k, ystar_all[:, k], has_u, s2_k, rho_k, z_lag, rng,
+                has_lev=has_tr_u, half_normal_B=half_normal_B)
+            s_k = out_k["s"][:, 0]                        # recompute Omori g at rescaled path
+            g_k = signs_all[:, k] * np.exp(0.5 * omori["m"][s_k]) * (
+                omori["a"][s_k] + omori["b"][s_k] * (ystar_all[:, k] - lh_k - omori["m"][s_k]))
+        # Family C: scalar rho_k on the leverage transitions (k_t = sigma_k g_{t-1})
+        eta_k = lh_k[1:] - phi_k * lh_k[:-1]
+        lev_k = has_tr_u[1:]
+        k_reg = (np.sqrt(s2_k) * g_k[:-1])[lev_k]
+        rho_k, a_rk = draw_rho_scalar(rho_k, eta_k[lev_k], k_reg, s2_k, prop_rho, rng)
+        logh_u_new[:, k] = lh_k
+        sv_u_new[k] = (0.0, phi_k, s2_k)
+        rho_u_new[k] = rho_k
+        acc_s_u += a1; acc_r_u += a_rk
+    acc["sigma2"] = acc_s_u
+    acc["rho_u"] = acc_r_u / max(1, r)
+    rho_u = rho_u_new
 
-    out_u = _branch_b_one_process(ystar_u, signs_u, has_u, logh_u,
-                                  phi_u, s2_u, rho_u, rng, omori)
-    logh_u_new = out_u["logh"]; g_u = out_u["g"]          # (T, r)
-
-    # transition INTO t carries leverage iff z_{t-1} exists -> has_u[t-1]
-    has_tr_u = np.zeros(T, bool); has_tr_u[1:] = has_u[:-1]
-    # Family B regressor zeta_t = rho . g_{t-1}  (drift into t = sigma * zeta_t)
-    zeta_u = np.zeros(T)
-    zeta_u[1:] = g_u[:-1] @ rho_u
-    phi_u = _draw_phi_lev(logh_u_new, zeta_u, has_tr_u, s2_u, rho2_u, rng)
-    s2_u, a1 = _draw_sigma2_lev(logh_u_new, zeta_u, has_tr_u, phi_u, rho2_u, s2_u,
-                                prior_a, prior_b, prop_sigma2, rng)
-    # Family C: rho on leverage-bearing transitions (k_t = sigma * g_{t-1}).
-    # General case = free r-vector; adopted specialization = scalar along the
-    # identified dominant direction g (subsec:common-lev-identif).
-    eta_u = logh_u_new[1:] - phi_u * logh_u_new[:-1]      # (T-1,)
-    lev_u = has_tr_u[1:]
-    K_u = (np.sqrt(s2_u) * g_u[:-1])[lev_u]               # (n_lev, r)
-    g_dom = dominant_dir_z(F, Qinv_half) if (common_lev_scalar and r > 1) else None
-    rho_u, ar = draw_rho_common(rho_u, eta_u[lev_u], K_u, s2_u, prop_rho, rng, g_dom)
-    acc["sigma2"] += a1; acc["rho_u"] = ar
-    sv_u_new = np.array([0.0, phi_u, s2_u])
-
-    # ── Idiosyncratic series (K = 1) ──────────────────────────────────────────
+    # ── Idiosyncratic series (K = 1; omitted under D2-a) ──────────────────────
     signal = F @ Lambda.T
     logh_eps_new = np.zeros((T, M))
-    sv_eps_new = np.zeros((M, 3))
-    rho_eps_new = np.zeros(M)
+    sv_eps_new = np.asarray(sv_eps, float).copy() if not sv_idio else np.zeros((M, 3))
+    rho_eps_new = np.asarray(rho_eps, float).copy() if not sv_idio else np.zeros(M)
     acc_s = 0.0; acc_re = 0.0
-    for i in range(M):
+    M_lev = M if sv_idio else 0
+    for i in range(M_lev):
         obs_t = np.where(~np.isnan(Y[:, i]))[0]
         ystar_i = np.zeros((T, 1)); signs_i = np.zeros((T, 1))
         has_i = np.zeros(T, bool)
@@ -377,7 +425,16 @@ def sample_volatility_block_leverage_lagged(
         zeta_i = np.zeros(T); zeta_i[1:] = rho_i * g_i[:-1]
         phi_i = _draw_phi_lev(lh_i, zeta_i, has_tr_i, s2_i, rho2_i, rng)
         s2_i, a_si = _draw_sigma2_lev(lh_i, zeta_i, has_tr_i, phi_i, rho2_i, s2_i,
-                                      prior_a, prior_b, prop_sigma2, rng)
+                                      prior_a, prior_b, prop_sigma2, rng,
+                                      sigma_prior=sigma_prior, half_normal_B=half_normal_B)
+        if use_asis:                                     # (2)-(4) NCP interweave (lagged)
+            z_lag = np.zeros(T); z_lag[1:] = g_i[:-1]
+            lh_i, phi_i, s2_i = asis_scale_interweave(
+                lh_i, ystar_i[:, 0], has_i, s2_i, rho_i, z_lag, rng,
+                has_lev=has_tr_i, half_normal_B=half_normal_B)
+            s_ii = out_i["s"][:, 0]
+            g_i = signs_i[:, 0] * np.exp(0.5 * omori["m"][s_ii]) * (
+                omori["a"][s_ii] + omori["b"][s_ii] * (ystar_i[:, 0] - lh_i - omori["m"][s_ii]))
         eta_i = lh_i[1:] - phi_i * lh_i[:-1]
         lev_i = has_tr_i[1:]
         k_i = (np.sqrt(s2_i) * g_i[:-1])[lev_i]
@@ -388,9 +445,9 @@ def sample_volatility_block_leverage_lagged(
         sv_eps_new[i] = (0.0, phi_i, s2_i)
         rho_eps_new[i] = rho_i
 
-    if M > 0:
-        acc["sigma2"] = (acc["sigma2"] + acc_s) / (1 + M)
-        acc["rho_eps"] = acc_re / M
+    acc["sigma2"] = (acc["sigma2"] + acc_s) / (r + M_lev)   # r common + M idio draws
+    if M_lev > 0:
+        acc["rho_eps"] = acc_re / M_lev
 
     return {
         "h_u": np.exp(logh_u_new), "h_eps": np.exp(logh_eps_new),

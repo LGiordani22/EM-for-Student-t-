@@ -2,9 +2,12 @@
 src/mcmc/sample_vol.py
 ======================
 
-Gibbs step (b), **base case** (KSC, no leverage): sample the M+1 stochastic
+Gibbs step (b), **base case** (KSC, no leverage): sample the M+r stochastic
 log-volatility paths and their AR(1) parameters, given the states, the tail
-weights and the parameters.
+weights and the parameters.  Specification II (``eq:vol-outside``): r per-factor
+common volatilities + M idiosyncratic.  The legacy :func:`sample_volatility_block`
+is the **scalar-common restriction** ``H^u_t = h^u_t I`` (where the inside/outside
+placements coincide, so it selects no specification) — a test seam, not a model.
 
 Theory: ``docs/EM_for_student_t.tex`` §"Sampling the Volatility Paths: Base
 Case (Gibbs Step (b))".  The construction is Kim-Shephard-Chib (1998):
@@ -34,6 +37,60 @@ from __future__ import annotations
 import numpy as np
 
 from mcmc.constants import KSC7
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cross-covariance of the multivariate log-squares (Spec II common block)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Under Spec II the per-factor log-square residuals are ``xi_bar_k = log zeta_bar_k^2``
+# with ``zeta_bar ~ N(0, corr(Q))`` (subsec:vol-all-processes).  Their correlation
+# matrix ``R_xi`` is the *genuine* correlation matrix of that derived vector, so it
+# is PSD by construction; its (j,k) entry is a fixed function of the underlying
+# Gaussian correlation ``rho = corr(Q)_jk``:
+#     R_xi[j,k] = g(rho) / (pi^2/2),   g(rho) = Cov(log X^2, log Y^2),
+# for a standard bivariate normal (X,Y) of correlation rho (g(0)=0, g(+-1)=pi^2/2).
+# We tabulate ``R_xi(rho)`` once by common-random-number Monte Carlo (deterministic,
+# smooth in rho) and interpolate.
+
+_LOGSQ_TABLE: tuple[np.ndarray, np.ndarray] | None = None
+
+
+def _build_logsq_corr_table(n_grid: int = 161, n_mc: int = 3_000_000,
+                            seed: int = 20260708) -> tuple[np.ndarray, np.ndarray]:
+    rng = np.random.default_rng(seed)
+    X = rng.standard_normal(n_mc)
+    W = rng.standard_normal(n_mc)
+    lX = np.log(X * X); lX -= lX.mean()
+    var = float(np.mean(lX * lX))                     # ~ pi^2/2
+    rhos = np.linspace(-0.999, 0.999, n_grid)
+    corr = np.empty(n_grid)
+    for i, rho in enumerate(rhos):
+        Y = rho * X + np.sqrt(1.0 - rho * rho) * W
+        lY = np.log(Y * Y); lY -= lY.mean()
+        corr[i] = float(np.mean(lX * lY)) / var
+    return rhos, corr
+
+
+def logsq_corr(rho: np.ndarray) -> np.ndarray:
+    """``Corr(log X^2, log Y^2)`` for a std bivariate normal of correlation ``rho``
+    (vectorised, via the cached table)."""
+    global _LOGSQ_TABLE
+    if _LOGSQ_TABLE is None:
+        _LOGSQ_TABLE = _build_logsq_corr_table()
+    grid, val = _LOGSQ_TABLE
+    return np.interp(rho, grid, val)
+
+
+def logsq_corr_matrix(Q: np.ndarray) -> np.ndarray:
+    """The log-square correlation matrix ``R_xi`` implied by ``corr(Q)``
+    (subsec:vol-all-processes).  PSD by construction; 1 on the diagonal."""
+    Q = np.asarray(Q, float)
+    d = np.sqrt(np.clip(np.diag(Q), 1e-300, None))
+    C = Q / np.outer(d, d)                             # corr(Q)
+    R = np.asarray(logsq_corr(np.clip(C, -0.999, 0.999)), float)
+    np.fill_diagonal(R, 1.0)
+    return 0.5 * (R + R.T)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -161,12 +218,34 @@ def draw_ar1_params(
     fix_mu0: bool = True,
     a_sig: float = 2.0,
     b_sig: float = 0.05,
+    sigma_prior: str = "inverse_gamma",
+    half_normal_B: float = 1.0,
+    sigma2_cur: float | None = None,
+    prop_log_sigma: float = 0.2,
     max_tries: int = 50,
 ) -> tuple[float, float, float]:
     r"""
     Draw the AR(1) parameters of a log-volatility process from a conjugate
     regression on the sampled path, with a weak inverse-gamma prior on
     ``sigma2`` and stationarity ``|phi|<1`` enforced by rejection.
+
+    Prior on ``sigma_eta`` (``sigma_prior``, Family~B, thesis
+    ``subsec:param-familyB`` + delicate case (a) of ``subsec:param-prior-tuning``)
+    ---------------------------------------------------------------------------
+    * ``"inverse_gamma"`` (default, the exact **conjugate baseline** used when
+      interweaving is off): ``sigma2 ~ IG(a_sig, b_sig)``, drawn directly
+      (``eq:param-logvol``).
+    * ``"half_normal"`` (Gelman 2006; the ASIS-conjugate choice — the master
+      sampler's recommended prior, turned on with the interweaving of Phase 6):
+      a half-Normal on the **standard deviation** ``sigma_eta ~ N(0, B)``,
+      ``B = half_normal_B``.  This is non-conjugate on the scale, so ``sigma2``
+      is drawn by a **light random-walk Metropolis** on ``log sigma2`` (the
+      "light Metropolis correction the Family~B update already tolerates"),
+      requiring the current ``sigma2_cur`` as the RW anchor; ``phi`` is then the
+      Gaussian conditional truncated to ``|phi|<1``.  In the density of
+      ``v = sigma2`` the half-Normal prior (with the ``sigma_eta -> v`` Jacobian)
+      is ``p(v) ∝ v^{-1/2} exp(-v / (2B))``.  Only supported under ``fix_mu0``
+      (the ``mu = 0`` identification the half-Normal derivation assumes).
 
     Identification convention (``fix_mu0=True``, the default and adopted
     convention)
@@ -196,11 +275,54 @@ def draw_ar1_params(
     only through the very noisy KSC log-square measurement (error variance
     ``pi^2/2 ≈ 4.93`` per measurement) — so an over-tight prior would visibly
     bias the estimate downward.  Both ``a_sig, b_sig`` are exposed so the prior
-    is parametrisable; the same prior is used for all M+1 processes.
+    is parametrisable; the same prior is used for all M+r processes.
     """
     x = np.asarray(logh, float)
     y = x[1:]
     n = y.size
+
+    if sigma_prior == "half_normal":
+        # Half-Normal on sigma_eta (Gelman 2006 / ASIS): light RW-Metropolis on
+        # log sigma2, mu=0 (fix_mu0) only.  Valid Gibbs order: phi | sigma2_cur,
+        # then sigma2 | phi_new.
+        if not fix_mu0:
+            raise ValueError("sigma_prior='half_normal' requires fix_mu0=True "
+                             "(the mu=0 identification the half-Normal assumes).")
+        if sigma2_cur is None or sigma2_cur <= 0:
+            raise ValueError("sigma_prior='half_normal' needs a positive sigma2_cur "
+                             "(the RW-Metropolis anchor).")
+        xp = x[:-1]
+        xtx = float(xp @ xp) + 1e-12
+        phi_hat = float((xp @ y) / xtx)
+        # phi | sigma2_cur  (Gaussian, truncated |phi|<1)
+        phi = float(np.clip(phi_hat, -0.98, 0.98))
+        for _ in range(max_tries):
+            cand = phi_hat + np.sqrt(sigma2_cur / xtx) * rng.standard_normal()
+            if abs(cand) < 0.999:
+                phi = float(cand)
+                break
+        # sigma2 | phi  via RW-MH on log v, target = Gaussian likelihood x
+        # half-Normal-in-v prior  p(v) ∝ v^{-1/2} exp(-v/(2B)).
+        resid = y - phi * xp
+        ssr = float(resid @ resid)
+        inv_2B = 0.5 / half_normal_B
+
+        def _logp_v(v: float) -> float:
+            if v <= 0:
+                return -np.inf
+            # likelihood v^{-n/2} exp(-ssr/2v) + half-Normal prior v^{-1/2} exp(-v/2B)
+            return -(0.5 * n + 0.5) * np.log(v) - 0.5 * ssr / v - inv_2B * v
+
+        log_v = np.log(sigma2_cur)
+        log_vs = log_v + prop_log_sigma * rng.standard_normal()
+        # RW on log v: +log v Jacobian on each side (target expressed in v)
+        cur = _logp_v(sigma2_cur) + log_v
+        new = _logp_v(float(np.exp(log_vs))) + log_vs
+        sigma2 = float(np.exp(log_vs)) if np.log(rng.random()) < new - cur else float(sigma2_cur)
+        return 0.0, phi, max(sigma2, 1e-8)
+
+    if sigma_prior != "inverse_gamma":
+        raise ValueError(f"sigma_prior={sigma_prior!r} not in {{'inverse_gamma','half_normal'}}")
 
     if fix_mu0:
         xp = x[:-1]
@@ -238,7 +360,7 @@ def draw_ar1_params(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# The full step (b): all M+1 processes
+# The full step (b): all M+r processes (Spec II: r per-factor common + M idio)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _inv_sqrt_spd(Q: np.ndarray) -> np.ndarray:
@@ -264,10 +386,37 @@ def sample_volatility_block(
     fix_mu0: bool = True,
     prior_a: float = 2.0,
     prior_b: float = 0.05,
+    sigma_prior: str = "inverse_gamma",
+    half_normal_B: float = 1.0,
     ksc: dict = KSC7,
 ) -> dict:
     r"""
-    Sample all M+1 log-volatility paths and their AR(1) parameters (no leverage).
+    Sample the common + M idiosyncratic log-volatility paths and their AR(1)
+    parameters (no leverage) under the **scalar-common restriction**
+    ``H^u_t = h^u_t I``: one volatility shared by the r factors, read through the
+    ``r`` whitened components ``Q^{-1/2} sqrt(w) u_t`` at once.
+
+    This is *not* "Specification I".  The two specifications of
+    ``subsec:vol-placement`` both give **each factor its own** ``h^u_{i,t}`` in a
+    diagonal ``H^u_t``; they differ only in **where** it enters relative to the
+    mixing ``Q^{1/2}`` — inside, ``Var(u_t) = Q^{1/2} H^u_t Q^{1/2}``
+    (eq:vol-inside), or outside, ``Var(u_t) = sqrt(H^u_t) Q sqrt(H^u_t)``
+    (eq:vol-outside, adopted).  Under the restriction ``H^u_t = h^u_t I`` used
+    here the two placements **coincide** (both equal ``h^u_t Q``) and the fork
+    disappears altogether.
+
+    .. warning::
+       **Not on any sampler path.**  Every SV path of ``fit_dfm_mcmc`` is now
+       per-factor (Specification II); this block is retained solely as the
+       **bit-exact ``r = 1`` seam** against which the per-factor
+       :func:`sample_common_vol_mv` is validated (``test_shared`` [4c]), i.e. as
+       a reference implementation, not as a variant of the model.  The scalar
+       common volatility is *not* a cell of the D1 x D2 grid.
+
+    ``sigma_prior`` (``"inverse_gamma"`` conjugate baseline / ``"half_normal"``
+    with scale ``half_normal_B``) selects the Family~B ``sigma_eta`` prior
+    threaded to :func:`draw_ar1_params`; under the half-Normal the current
+    ``sigma2`` (from ``sv_u`` / ``sv_eps``) anchors the light RW-Metropolis.
 
     Parameters
     ----------
@@ -298,7 +447,9 @@ def sample_volatility_block(
     mu_u, phi_u, s2_u = sv_u
     logh_u_new = sample_log_vol_process(ys_u, tidx_u, T, logh_u, mu_u, phi_u, s2_u, rng, ksc)
     sv_u_new = np.array(draw_ar1_params(logh_u_new, rng, fix_mu0=fix_mu0,
-                                        a_sig=prior_a, b_sig=prior_b))
+                                        a_sig=prior_a, b_sig=prior_b,
+                                        sigma_prior=sigma_prior, half_normal_B=half_normal_B,
+                                        sigma2_cur=float(s2_u)))
 
     # ── Idiosyncratic: one whitened measurement per observed (i, t) ───────────
     signal = F @ Lambda.T                          # (T, M), (Lambda f_t)_i
@@ -313,10 +464,333 @@ def sample_volatility_block(
         logh_eps_new[:, i] = sample_log_vol_process(
             ys_i, obs_t, T, logh_eps[:, i], mu_i, phi_i, s2_i, rng, ksc)
         sv_eps_new[i] = draw_ar1_params(logh_eps_new[:, i], rng, fix_mu0=fix_mu0,
-                                        a_sig=prior_a, b_sig=prior_b)
+                                        a_sig=prior_a, b_sig=prior_b,
+                                        sigma_prior=sigma_prior, half_normal_B=half_normal_B,
+                                        sigma2_cur=float(s2_i))
 
     return {
         "h_u": np.exp(logh_u_new), "h_eps": np.exp(logh_eps_new),
         "logh_u": logh_u_new, "logh_eps": logh_eps_new,
         "sv_u": sv_u_new, "sv_eps": sv_eps_new,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Specification II: the per-factor common-volatility block (multivariate)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _psd_chol(M: np.ndarray) -> np.ndarray:
+    """Cholesky of ``M`` with a small eigenvalue floor (numerical PSD safeguard)."""
+    M = 0.5 * (M + M.T)
+    try:
+        return np.linalg.cholesky(M)
+    except np.linalg.LinAlgError:
+        vals, vecs = np.linalg.eigh(M)
+        vals = np.clip(vals, 1e-12, None)
+        return np.linalg.cholesky((vecs * vals) @ vecs.T)
+
+
+def _mv_ar1_ffbs(
+    y_eff: np.ndarray,
+    R_eff: np.ndarray,
+    mask: np.ndarray,
+    phi: np.ndarray,
+    sigma2: np.ndarray,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    r"""
+    Multivariate **diagonal**-AR(1) forward-filter / backward-sample (eq:ffbs-backward
+    at state dimension ``r``).  The state ``x_t = log h^u_t`` follows ``r`` independent
+    AR(1)s (``Phi = diag(phi)``, ``Q = diag(sigma2)``, ``mu = 0``,
+    ``x_0 ~ N(0, diag(sigma2/(1-phi^2)))``); the measurement (where ``mask_t``) is
+    ``y_eff_t = x_t + N(0, R_eff_t)`` with ``H = I`` and the **full** cross-covariance
+    ``R_eff_t`` that couples the factors (subsec:vol-all-processes).  It is the
+    coupling in the measurement — not the transition — that makes this one r-dim pass.
+    """
+    T = mask.shape[0]
+    r = phi.shape[0]
+    Phi = np.diag(phi)
+    Qd = np.diag(sigma2)
+    stat = np.diag(sigma2 / (1.0 - phi * phi))
+
+    a = np.zeros((T, r))
+    P = np.zeros((T, r, r))
+    for t in range(T):
+        if t == 0:
+            a_pred, P_pred = np.zeros(r), stat
+        else:
+            a_pred = phi * a[t - 1]
+            P_pred = (phi[:, None] * P[t - 1]) * phi[None, :] + Qd
+        if mask[t]:
+            S = P_pred + R_eff[t]
+            K = P_pred @ np.linalg.inv(0.5 * (S + S.T))
+            a[t] = a_pred + K @ (y_eff[t] - a_pred)
+            P[t] = P_pred - K @ P_pred
+        else:
+            a[t], P[t] = a_pred, P_pred
+        P[t] = 0.5 * (P[t] + P[t].T)
+
+    x = np.zeros((T, r))
+    x[T - 1] = a[T - 1] + _psd_chol(P[T - 1]) @ rng.standard_normal(r)
+    for t in range(T - 2, -1, -1):
+        P_pred_next = (phi[:, None] * P[t]) * phi[None, :] + Qd
+        J = P[t] @ Phi.T @ np.linalg.inv(P_pred_next)
+        m = a[t] + J @ (x[t + 1] - phi * a[t])
+        V = P[t] - J @ (Phi @ P[t])
+        x[t] = m + _psd_chol(V) @ rng.standard_normal(r)
+    return x
+
+
+def sample_common_vol_mv(
+    u_head: np.ndarray,
+    Q: np.ndarray,
+    w_u: np.ndarray,
+    logh_u: np.ndarray,
+    sv_u: np.ndarray,
+    rng: np.random.Generator,
+    *,
+    offset: float = 1e-6,
+    fix_mu0: bool = True,
+    prior_a: float = 2.0,
+    prior_b: float = 0.05,
+    sigma_prior: str = "inverse_gamma",
+    half_normal_B: float = 1.0,
+    use_asis: bool = False,
+    R_xi: np.ndarray | None = None,
+    ksc: dict = KSC7,
+) -> dict:
+    r"""
+    Specification-II common-volatility block: the ``r`` **per-factor** log-volatility
+    paths ``log h^u_{k,·}`` and their AR(1) parameters.
+
+    ``use_asis`` (Phase 6, ``sec:asis``): wrap each per-factor Family~B draw with
+    the ancillarity--sufficiency interweaving move (redraw ``(phi, sigma_eta^2)`` in
+    the non-centred coordinates and rescale the path) to break the path/scale ridge.
+    Requires ``sigma_prior='half_normal'`` (CP and NCP must share the σ_η prior).
+
+    Theory: ``subsec:vol-all-processes`` (multivariate common block),
+    ``subsec:vol-placement`` / ``eq:vol-outside`` (the sandwich
+    ``Var(u_t|.) = sqrt(H^u_t) Q sqrt(H^u_t)/w^u_t``), ``eq:vol-logsquare``,
+    ``eq:ffbs-backward``.
+
+    Under Spec II the k-th component of the innovation obeys
+    ``sqrt(w^u_t) u_{k,t} = sqrt(h^u_{k,t}) zeta_{k,t}`` with
+    ``Var(zeta_{k,t}) = q_kk``, so the **per-component** standardized residual
+    ``e_{k,t} = sqrt(w^u_t / q_kk) u_{k,t} ~ N(0, h^u_{k,t})`` and the measurement is
+    ``y*_{k,t} = log(e_{k,t}^2 + c) = log h^u_{k,t} + log chi^2_1`` — exactly the
+    idiosyncratic KSC template with ``q_kk = (Q)_kk`` playing the role of ``r_i``
+    (the known offset ``log q_kk`` of the thesis is absorbed by standardising with
+    ``q_kk`` before the log-square).
+
+    Two couplings, selected by ``R_xi``:
+
+    * **Commit 1 — ``R_xi = None`` (decoupled, ``R_xi = I``).** The ``r`` measurements
+      are treated as marginally independent → ``r`` independent scalar KSC sub-sweeps
+      (:func:`sample_log_vol_process`). Exact when ``Q`` is diagonal; the
+      theory-sanctioned near-diagonal fast path otherwise. At ``r = 1`` the
+      standardisation ``e_1 = sqrt(w/q_11) u_1`` equals the scalar block's
+      ``tilde_u = sqrt(w) Q^{-1/2} u``, so with the same RNG this reproduces the
+      common path of :func:`sample_volatility_block` bit-for-bit.
+    * **Commit 2 — ``R_xi`` an ``(r, r)`` matrix** (the log-square correlation matrix
+      from :func:`logsq_corr_matrix`, i.e. ``R_xi[j,k] = Corr(log zeta_bar_j^2,
+      log zeta_bar_k^2)`` under ``corr(Q)``). The ``r`` factors are coupled by a
+      **single r-dim FFBS**: per-factor KSC indicators give the mean/variance, and
+      the measurement covariance is ``Sigma_xi,t = diag(v_{s_k,t}) R_xi
+      diag(v_{s_k,t})`` (subsec:vol-all-processes, Harvey–Ruiz–Shephard 1994).
+
+      ⚠️ **EXPERIMENTAL — do not use as default (finding 2026-07-08).** This
+      correlation-scaled form — the literal "mixture componentwise + retained
+      cross-covariance" — mixes the *unconditional* correlation ``R_xi`` with the
+      mixture's *conditional* variances ``v_{s_k}``; the inconsistency **distorts**
+      the less-persistent factor at strong ``corr(Q)`` (phi collapses, sigma2
+      explodes; ``test_spec2_recovery`` diagnostic).  The consistent QML variant
+      (constant exact covariance ``[[pi^2/2, g],[g, pi^2/2]]``, no mixture) is
+      *stable* but does **not** improve point recovery over the decoupled sampler —
+      positively-correlated measurement noise is redundant information, so coupling
+      aids *calibration*, not accuracy.  **Default = ``R_xi = None`` (decoupled),**
+      the tested, theory-sanctioned near-diagonal path; the coupled route is a
+      pending design decision (docs/REFACTOR_PLAN.md, 1d).
+
+    Parameters
+    ----------
+    u_head : (T-1, r)     innovations ``u_t = f_t - A f_{t-1}`` for ``t = 1..T-1``.
+    Q : (r, r)            factor-innovation scale (its diagonal standardises each factor).
+    w_u : (T,)            factor tail weights (``w_u[0]`` unused: no ``u_0``).
+    logh_u : (T, r)       current per-factor log-vol paths (indicator conditional).
+    sv_u : (r, 3)         current per-factor ``(mu, phi, sigma2)``.
+    R_xi : None or (r, r) decoupled (Commit 1) or the log-square correlation (Commit 2).
+
+    Returns ``{"logh_u": (T, r), "h_u": (T, r), "sv_u": (r, 3)}``.
+    """
+    u_head = np.asarray(u_head, float)
+    Tm1, r = u_head.shape
+    T = Tm1 + 1
+    qdiag = np.diag(np.asarray(Q, float))
+    inv_sqrt_q = 1.0 / np.sqrt(qdiag)                  # per-factor 1/sqrt(q_kk)
+    sqrt_w1 = np.sqrt(np.asarray(w_u, float)[1:])      # sqrt-weights at t = 1..T-1
+    tidx = np.arange(1, T)
+    logh_cur = np.asarray(logh_u, float)
+
+    # per-factor standardized residuals and log-squares (measurements at t=1..T-1)
+    E = sqrt_w1[:, None] * (u_head * inv_sqrt_q[None, :])       # (T-1, r), e_{k,t} ~ N(0,h_k)
+    YS = np.log(E ** 2 + offset)                                # (T-1, r), y*_{k,t}
+
+    logh_new = np.zeros((T, r))
+    sv_new = np.zeros((r, 3))
+
+    if R_xi is None:
+        # ── Commit 1: R_xi = I → r independent scalar KSC sub-sweeps ──────────
+        for k in range(r):
+            mu_k, phi_k, s2_k = sv_u[k]
+            # sqrt(w)*(u_k/sqrt(q_kk)) with the operand order of the scalar block:
+            e_k = sqrt_w1 * (u_head[:, k] * inv_sqrt_q[k])
+            ys_k = np.log(e_k ** 2 + offset)
+            logh_new[:, k] = sample_log_vol_process(
+                ys_k, tidx, T, logh_cur[:, k], mu_k, phi_k, s2_k, rng, ksc)
+            sv_new[k] = draw_ar1_params(                             # (1) CP draw
+                logh_new[:, k], rng, fix_mu0=fix_mu0, a_sig=prior_a, b_sig=prior_b,
+                sigma_prior=sigma_prior, half_normal_B=half_normal_B,
+                sigma2_cur=float(s2_k))
+            if use_asis:                                             # (2)-(4) NCP interweave
+                from mcmc.sample_asis import asis_scale_interweave
+                y_star = np.empty(T); y_star[1:] = ys_k             # measured t = 1..T-1
+                has = np.zeros(T, bool); has[1:] = True
+                x_a, phi_a, s2_a = asis_scale_interweave(
+                    logh_new[:, k], y_star, has, float(sv_new[k, 2]),
+                    0.0, np.zeros(T), rng, half_normal_B=half_normal_B, ksc=ksc)
+                logh_new[:, k] = x_a; sv_new[k] = (0.0, phi_a, s2_a)
+        return {"logh_u": logh_new, "h_u": np.exp(logh_new), "sv_u": sv_new}
+
+    # ── Commit 2: coupled r-dim FFBS with the log-square cross-correlation ────
+    R_xi = np.asarray(R_xi, float)
+    m_ksc = ksc["m"]; v2_ksc = ksc["v2"]
+    log_q = np.log(ksc["q"]); half_log_v2 = 0.5 * np.log(v2_ksc)
+
+    y_eff = np.zeros((T, r))
+    vstd = np.ones((T, r))                             # measurement std per factor per t
+    for k in range(r):
+        # (i) per-factor indicators s_{k,t} ~ q_j N(y*; logh_k + m_j, v2_j)
+        d = YS[:, k][:, None] - logh_cur[1:, k][:, None] - m_ksc[None, :]      # (T-1, 7)
+        logp = log_q[None, :] - half_log_v2[None, :] - 0.5 * d * d / v2_ksc[None, :]
+        s = np.argmax(logp + rng.gumbel(size=logp.shape), axis=1)             # (T-1,)
+        y_eff[1:, k] = YS[:, k] - m_ksc[s]
+        vstd[1:, k] = np.sqrt(v2_ksc[s])
+
+    # (ii) one r-dim FFBS with Sigma_xi,t = diag(v) R_xi diag(v) (mask t=1..T-1)
+    mask = np.zeros(T, bool); mask[1:] = True
+    R_eff = np.zeros((T, r, r))
+    for t in range(1, T):
+        Dt = vstd[t]
+        R_eff[t] = (Dt[:, None] * R_xi) * Dt[None, :]
+    phi_vec = np.asarray(sv_u, float)[:, 1].copy()
+    s2_vec = np.asarray(sv_u, float)[:, 2].copy()
+    logh_new = _mv_ar1_ffbs(y_eff, R_eff, mask, phi_vec, s2_vec, rng)         # (T, r)
+    for k in range(r):
+        sv_new[k] = draw_ar1_params(
+            logh_new[:, k], rng, fix_mu0=fix_mu0, a_sig=prior_a, b_sig=prior_b,
+            sigma_prior=sigma_prior, half_normal_B=half_normal_B,
+            sigma2_cur=float(s2_vec[k]))
+    return {"logh_u": logh_new, "h_u": np.exp(logh_new), "sv_u": sv_new}
+
+
+def _sample_idio_vol(Y, F, Lambda, R, w_eps, logh_eps, sv_eps, rng,
+                     offset, fix_mu0, prior_a, prior_b, ksc,
+                     *, sigma_prior="inverse_gamma", half_normal_B=1.0, use_asis=False):
+    """The idiosyncratic KSC sub-sweeps (one scalar process per series) — shared
+    by the scalar and the Spec-II common blocks (R diagonal, so unchanged by the
+    per-factor common treatment).  ``use_asis`` wraps each series' Family~B draw
+    with the ASIS interweave (Phase 6, ``sec:asis``)."""
+    T, M = Y.shape
+    signal = F @ Lambda.T                          # (T, M), (Lambda f_t)_i
+    logh_eps_new = np.zeros((T, M))
+    sv_eps_new = np.zeros((M, 3))
+    for i in range(M):
+        obs_t = np.where(~np.isnan(Y[:, i]))[0]
+        eps = Y[obs_t, i] - signal[obs_t, i]
+        e = np.sqrt(w_eps[obs_t] / R[i]) * eps     # N(0, h^eps_{i,t})
+        ys_i = np.log(e ** 2 + offset)
+        mu_i, phi_i, s2_i = sv_eps[i]
+        logh_eps_new[:, i] = sample_log_vol_process(
+            ys_i, obs_t, T, logh_eps[:, i], mu_i, phi_i, s2_i, rng, ksc)
+        sv_eps_new[i] = draw_ar1_params(logh_eps_new[:, i], rng, fix_mu0=fix_mu0,
+                                        a_sig=prior_a, b_sig=prior_b,
+                                        sigma_prior=sigma_prior, half_normal_B=half_normal_B,
+                                        sigma2_cur=float(s2_i))
+        if use_asis:                               # (2)-(4) NCP interweave (per series)
+            from mcmc.sample_asis import asis_scale_interweave
+            y_star = np.zeros(T); y_star[obs_t] = ys_i
+            has = np.zeros(T, bool); has[obs_t] = True
+            x_a, phi_a, s2_a = asis_scale_interweave(
+                logh_eps_new[:, i], y_star, has, float(sv_eps_new[i, 2]),
+                0.0, np.zeros(T), rng, half_normal_B=half_normal_B, ksc=ksc)
+            logh_eps_new[:, i] = x_a; sv_eps_new[i] = (0.0, phi_a, s2_a)
+    return logh_eps_new, sv_eps_new
+
+
+def sample_volatility_block_specII(
+    Y: np.ndarray,
+    f_aug: np.ndarray,
+    theta: dict,
+    w_u: np.ndarray,
+    w_eps: np.ndarray,
+    logh_u: np.ndarray,
+    logh_eps: np.ndarray,
+    sv_u: np.ndarray,
+    sv_eps: np.ndarray,
+    rng: np.random.Generator,
+    *,
+    offset: float = 1e-6,
+    fix_mu0: bool = True,
+    prior_a: float = 2.0,
+    prior_b: float = 0.05,
+    sigma_prior: str = "inverse_gamma",
+    half_normal_B: float = 1.0,
+    use_asis: bool = False,
+    sv_idio: bool = True,
+    R_xi: np.ndarray | None = None,
+    ksc: dict = KSC7,
+) -> dict:
+    r"""
+    Step (b), **Specification II, no leverage**: the ``r`` per-factor common
+    volatilities (via :func:`sample_common_vol_mv`) and the ``M`` idiosyncratic
+    ones (unchanged), and their AR(1) parameters.  ``R_xi = None`` is the decoupled
+    default (see :func:`sample_common_vol_mv`).
+
+    ``sv_idio=False`` is the **D2-a** restriction (``subsec:variants-restrictions``,
+    "common volatility only"): the idiosyncratic part of the sampler is omitted,
+    the ``h^eps_{i,t}`` are frozen at 1, and Family~B is drawn only for the ``r``
+    common processes rather than for all ``M+r``.  ``sv_eps`` is then returned
+    unchanged (frozen, not drawn).
+
+    Returns ``h_u`` (T, r), ``h_eps`` (T, M), ``logh_u`` (T, r), ``logh_eps`` (T, M),
+    ``sv_u`` (r, 3), ``sv_eps`` (M, 3) — the per-factor counterpart of
+    :func:`sample_volatility_block` (whose ``h_u`` is (T,) scalar).
+    """
+    A = np.asarray(theta["A"]); Q = np.asarray(theta["Q"])
+    Lambda = np.asarray(theta["Lambda"]); R = np.asarray(theta["R"]).ravel()
+    r = A.shape[0]
+    F = f_aug[:, :r]
+
+    u_head = F[1:] - F[:-1] @ A.T                   # (T-1, r), u_t = f_t - A f_{t-1}
+    if use_asis and sigma_prior != "half_normal":
+        raise ValueError("use_asis=True requires sigma_prior='half_normal' "
+                         "(CP and NCP must share the Gaussian prior on sigma_eta).")
+    cm = sample_common_vol_mv(u_head, Q, w_u, logh_u, sv_u, rng, offset=offset,
+                              fix_mu0=fix_mu0, prior_a=prior_a, prior_b=prior_b,
+                              sigma_prior=sigma_prior, half_normal_B=half_normal_B,
+                              use_asis=use_asis, R_xi=R_xi, ksc=ksc)
+
+    if sv_idio:
+        logh_eps_new, sv_eps_new = _sample_idio_vol(
+            Y, F, Lambda, R, w_eps, logh_eps, sv_eps, rng,
+            offset, fix_mu0, prior_a, prior_b, ksc,
+            sigma_prior=sigma_prior, half_normal_B=half_normal_B, use_asis=use_asis)
+    else:                                           # D2-a: h^eps frozen at 1
+        logh_eps_new = np.zeros_like(np.asarray(logh_eps, float))
+        sv_eps_new = np.asarray(sv_eps, float).copy()
+
+    return {
+        "h_u": cm["h_u"], "h_eps": np.exp(logh_eps_new),
+        "logh_u": cm["logh_u"], "logh_eps": logh_eps_new,
+        "sv_u": cm["sv_u"], "sv_eps": sv_eps_new,
     }

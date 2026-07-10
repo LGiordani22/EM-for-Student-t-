@@ -62,21 +62,37 @@ def draw_A_Q_block(
     w_u: np.ndarray,
     r: int,
     rng: np.random.Generator,
+    *,
+    Psi0: np.ndarray | None = None,
+    nu0: float = 0.0,
+    A0: np.ndarray | None = None,
+    kappa: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     r"""
-    Draw ``(A, Q)`` from the flat-prior MNIW full conditional given the sampled
-    factor path and factor-side weights.
+    Draw ``(A, Q)`` from the MNIW full conditional given the sampled factor path
+    and factor-side combined precisions ``g^u_t``.
 
     The realized weighted moments are obtained from
     :func:`compute_weighted_moments` with ``P_smooth = P_lag = 0`` (the state is
     *sampled*, so there is no posterior covariance), then passed to
     :func:`draw_A_Q`.  ``T_eff = T - 1`` matches the EM convention (one
     transition per consecutive pair, summed over ``t = 1..T-1``).
+
+    This is the **scalar-volatility** draw of eq:param-AQ: it is exact whenever
+    ``G^u_t`` factors as ``g^u_t Q^{-1}`` — the no-SV cell (``g = w``) and the
+    degenerate ``H^u_t = h^u_t I``.  Per-factor Spec II uses
+    :func:`mcmc.shared.draw_A_Q_perfactor`.
+
+    ``Psi0, nu0`` (IW on ``Q``) and ``A0, kappa`` (natural-conjugate matrix-Normal
+    on ``A``, prior precision ``kappa I`` on the regressors) are the Family~A
+    priors of ``tab:param-prior-tuning``; the defaults are the flat limit and
+    reproduce the EM seam bit-for-bit.
     """
     T = f_aug.shape[0]
     zeros = np.zeros((T, 5 * r, 5 * r))
     mom = compute_weighted_moments(f_aug, zeros, zeros, w_u, r)
-    return draw_A_Q(mom["P00"], mom["P10"], mom["P11"], T - 1, rng)
+    return draw_A_Q(mom["P00"], mom["P10"], mom["P11"], T - 1, rng,
+                    Psi0=Psi0, nu0=nu0, A0=A0, kappa=kappa)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -92,6 +108,11 @@ def draw_Lambda_R_block(
     ordered_cols: list[str],
     r: int,
     rng: np.random.Generator,
+    *,
+    a0: float = 0.0,
+    b0: float | np.ndarray = 0.0,
+    m0: np.ndarray | None = None,
+    M0_inv: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     r"""
     Draw the block-diagonal loading matrix ``Lambda`` (M, r) and the
@@ -107,12 +128,29 @@ def draw_Lambda_R_block(
     ``w_eps`` may be ``(T,)`` (Passo 1: scalar tail weight per period) or
     ``(T, M)`` (Passo 2: the combined precision ``g^eps_{i,t}=w^eps_t/h^eps_{i,t}``
     per series).  In both cases series ``i`` uses its own column.
+
+    Family~A priors (tab:param-prior-tuning, ``L,R`` rows).  The per-series NIG
+    prior ``r_i ~ IG(a0, b0_i)``, ``L_i | r_i ~ N(m0_i, r_i / M0_inv)`` is threaded
+    to :func:`draw_lambda_r_series`:
+
+    * ``a0`` : scalar IG shape (default ``2`` in the tuning table).
+    * ``b0`` : scalar or ``(M,)`` IG scale; ``b0_i=(a0-1)\widehat r_{i,\text{EM}}``
+      centres the idiosyncratic-variance prior mean at the EM value.
+    * ``m0`` : ``None`` or ``(M, r)`` prior mean matrix; series ``i`` reads its
+      own block column ``m0[i, j]`` (``=\widehat L_{i,\text{EM}}``).  The whole
+      loading matrix is passed so the block column is picked with the same ``j``
+      used for the likelihood term.
+    * ``M0_inv`` : scalar prior precision ``1/M0`` on the loading (``\kappa``).
+
+    The flat limit ``a0=b0=M0_inv=0``, ``m0=None`` reproduces the weighted-LS
+    draw **bit-for-bit** (the EM seam of ``test_shared``).
     """
     T, M = Y.shape
     Lambda = np.zeros((M, r))
     R = np.zeros(M)
     w_eps = np.asarray(w_eps, float)
     per_series = (w_eps.ndim == 2)
+    b0_arr = np.broadcast_to(np.asarray(b0, float), (M,))
 
     phi = composite_regressor(f_aug, _MM_WEIGHTS, r)   # (T, r), quarterly regressor
 
@@ -138,7 +176,11 @@ def draw_Lambda_R_block(
         s_yy = float(np.sum(w_i * y_i * y_i))
         n_obs = int(obs_t.size)
 
-        lam, rr = draw_lambda_r_series(num, den, s_yy, n_obs, rng)
+        m0_i = float(m0[i, j]) if m0 is not None else 0.0
+        lam, rr = draw_lambda_r_series(
+            num, den, s_yy, n_obs, rng,
+            a0=a0, b0=float(b0_arr[i]), m0=m0_i, M0_inv=M0_inv,
+        )
         Lambda[i, j] = lam
         R[i] = rr
 
@@ -148,6 +190,36 @@ def draw_Lambda_R_block(
 # ─────────────────────────────────────────────────────────────────────────────
 # (d.3) Degrees of freedom (nu_u, nu_eps) — griddy-Gibbs
 # ─────────────────────────────────────────────────────────────────────────────
+
+def nu_log_prior_exponential(mean: float = 20.0):
+    r"""
+    Proper **exponential** prior on the Student-t degrees of freedom (Family~D,
+    ``subsec:param-familyD`` / ``tab:param-prior-tuning``): ``p(nu) ∝ exp(-nu/mean)``
+    on ``(2, ∞)``.  Decreasing in ``nu`` — it expresses that the tails are
+    genuinely heavy but not pathologically so ("exponential with mean around 20").
+
+    Returns a callable ``nu -> log p(nu)`` (up to an additive constant, which the
+    griddy normalisation discards) for :func:`draw_nu_griddy`'s ``log_prior`` hook.
+    It is log-concave (linear in ``nu``), so it preserves the log-concavity of the
+    ``nu`` full conditional (thesis ``eq:param-nu-logtarget``).  The lower bound
+    ``nu > 2`` is enforced by the griddy bracket, not here.
+    """
+    inv = 1.0 / float(mean)
+    return lambda nu: -inv * float(nu)
+
+
+def nu_log_prior_uniform(lo: float = 2.0, hi: float = 50.0):
+    r"""
+    Proper **bounded-uniform** prior on ``nu`` (Family~D): flat on ``(lo, hi)``,
+    ``-inf`` outside — "a bounded uniform, Unif(2, 50)".  The griddy grid bracket
+    is itself a bounded-uniform prior (thesis note), so this simply *tightens* the
+    effective support to ``(lo, hi)``; grid points outside receive zero weight.
+
+    Returns a callable ``nu -> log p(nu)`` for :func:`draw_nu_griddy`.
+    """
+    def _lp(nu):
+        return 0.0 if (lo < nu < hi) else -np.inf
+    return _lp
 
 def draw_nu_griddy(
     weights: np.ndarray,

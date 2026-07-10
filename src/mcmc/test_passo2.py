@@ -118,21 +118,57 @@ def test_scalar_vol_ffbs():
 
 
 def test_end_to_end(theta, fl, bm, oc, r):
-    print("\n[4] short SV Gibbs recovers the common volatility path")
+    print("\n[4] SV Gibbs (Spec II, per-factor) recovers the common volatility path")
+    # Spec II splits the common vol into r per-factor states, each read by ONE
+    # log-square per period (vs the old scalar-common's r simultaneous readings) —
+    # the "sqrt(r)-averaging" the thesis notes is gone, so each state needs ~r x more
+    # data.  We therefore run a longer panel here (r=3 -> T=750) than the old
+    # scalar-common gate did (T=220); recovery is then strong and stable.
     sv_u = (0.0, 0.97, 0.25)
-    sim = simulate_dfm_sv(theta, T=220, freq_list=fl, block_map=bm, ordered_cols=oc,
+    sim = simulate_dfm_sv(theta, T=750, freq_list=fl, block_map=bm, ordered_cols=oc,
                           r=r, seed=9, sv_u=sv_u, sv_eps=(0.0, 0.95, 0.15))
     Y = sim["Y"]
     res = fit_dfm_mcmc(Y, {**theta, "Sigma_0": np.asarray(theta["Sigma_0"])},
                        fl, bm, oc, n_iter=300, burn_in=120, thin=1, seed=4,
                        sv=True, store_vol=True, verbose=False)
-    hu = res["draws"]["h_u"].mean(axis=0)
-    c = _corr(np.log(hu), sim["logh_u_true"])
-    _check("common log h^u corr with truth (>0.6)", c > 0.6, f"corr={c:.3f}")
-    phi_hat = res["theta_mean"]["sv_u"][1]
+    # Spec II (no leverage): the common block is now r *per-factor* volatilities.
+    # The scalar-common DGP has each factor read the same common h (e_k ~ N(0,h)),
+    # so every per-factor h^u_k should recover that single true common path.
+    lhu = np.log(res["draws"]["h_u"].mean(axis=0))          # (T, r) under Spec II
+    if lhu.ndim == 2:
+        c = float(np.mean([_corr(lhu[:, k], sim["logh_u_true"]) for k in range(lhu.shape[1])]))
+    else:
+        c = _corr(lhu, sim["logh_u_true"])
+    _check("per-factor log h^u corr with truth (>0.6)", c > 0.6, f"avg corr={c:.3f}")
+    sv_u_mean = np.asarray(res["theta_mean"]["sv_u"])
+    phi_hat = float(sv_u_mean[:, 1].mean()) if sv_u_mean.ndim == 2 else float(sv_u_mean[1])
     _check("h^u AR(1) phi recovered (>0.85)", phi_hat > 0.85, f"phi={phi_hat:.3f}")
     nu_eps = res["theta_mean"]["nu_eps"]
     _check("nu_eps stays sane (2.5..15)", 2.5 < nu_eps < 15.0, f"nu_eps={nu_eps:.2f}")
+
+
+def test_half_normal_e2e(theta, fl, bm, oc, r):
+    print("\n[5] Family B half-Normal sigma_eta prior: end-to-end wiring + mu=0")
+    # Short Spec II run under the half-Normal prior (Phase 3): the point is that
+    # the gibbs wiring runs and mu is pinned at 0 for every process; recovery
+    # quality is gated by the kernel test in test_shared [7].
+    sim = simulate_dfm_sv(theta, T=300, freq_list=fl, block_map=bm, ordered_cols=oc,
+                          r=r, seed=11, sv_u=(0.0, 0.95, 0.2), sv_eps=(0.0, 0.95, 0.15))
+    res = fit_dfm_mcmc(sim["Y"], {**theta, "Sigma_0": np.asarray(theta["Sigma_0"])},
+                       fl, bm, oc, n_iter=120, burn_in=50, thin=1, seed=5,
+                       sv=True, sv_sigma_prior="half_normal", sv_half_normal_B=1.0,
+                       store_vol=True, verbose=False)
+    sv_u = np.asarray(res["draws"]["sv_u"])          # (n_keep, r, 3)
+    sv_eps = np.asarray(res["draws"]["sv_eps"])      # (n_keep, M, 3)
+    _check("half-Normal e2e: mu_u == 0 for all draws/factors",
+           np.all(sv_u[..., 0] == 0.0), f"max|mu_u|={np.abs(sv_u[...,0]).max():.2e}")
+    _check("half-Normal e2e: mu_eps == 0 for all draws/series",
+           np.all(sv_eps[..., 0] == 0.0), f"max|mu_eps|={np.abs(sv_eps[...,0]).max():.2e}")
+    s2u_mean = float(sv_u[..., 2].mean())
+    _check("half-Normal e2e: sigma2_u finite & positive", np.isfinite(s2u_mean) and s2u_mean > 0,
+           f"mean sigma2_u={s2u_mean:.4f}")
+    nu_eps = res["theta_mean"]["nu_eps"]
+    _check("half-Normal e2e: nu_eps sane (2.5..15)", 2.5 < nu_eps < 15.0, f"nu_eps={nu_eps:.2f}")
 
 
 def main():
@@ -146,6 +182,7 @@ def main():
     test_filter_equiv(theta, fl, bm, oc, r)
     test_scalar_vol_ffbs()
     test_end_to_end(theta, fl, bm, oc, r)
+    test_half_normal_e2e(theta, fl, bm, oc, r)
     print("\n" + "=" * 72)
     print(f"  {_PASS} passed, {_FAIL} failed")
     print("=" * 72)

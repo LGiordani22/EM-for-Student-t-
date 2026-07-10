@@ -128,9 +128,18 @@ def test_end_to_end(theta, fl, bm, oc, r):
     jdom = int(np.argmax(np.abs(rho_u_true)))
     _check("dominant rho_u component has negative sign", rho_u[jdom] < 0,
            f"rho_u={np.round(rho_u,3)}")
-    hu = res["draws"]["h_u"].mean(axis=0)
-    c = float(np.corrcoef(np.log(hu), sim["logh_u_true"])[0, 1])
-    _check("h^u path still tracked (corr>0.4 short run)", c > 0.4, f"corr={c:.3f}")
+    # Branch A is now per-factor (Spec II, Option A): h_u is (T, r).  The
+    # scalar-common DGP has every factor read the same true common path, so each
+    # per-factor h^u_k should track it; average the per-factor correlation (the
+    # sqrt(r) data cost of per-factor SV means a short run tracks more weakly).
+    lhu = np.log(res["draws"]["h_u"].mean(axis=0))          # (T, r)
+    if lhu.ndim == 2:
+        c = float(np.mean([np.corrcoef(lhu[:, k], sim["logh_u_true"])[0, 1]
+                           for k in range(lhu.shape[1])]))
+    else:
+        c = float(np.corrcoef(lhu, sim["logh_u_true"])[0, 1])
+    _check("per-factor h^u tracks the common path (avg corr>0.3 short run)", c > 0.3,
+           f"avg corr={c:.3f}")
 
 
 def main():

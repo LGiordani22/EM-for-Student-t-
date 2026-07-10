@@ -23,23 +23,26 @@ Identification convention ``mu = 0`` (adopted in Passo 2) is in force here too.
 
 Nesting: at ``rho = 0`` every leverage term vanishes (drift ``rho*sigma*z = 0``,
 variance ``sigma^2(1-rho^2) = sigma^2``), so the contemporaneous sampler reduces
-to the base KSC block of Passo 2 — but we still route ``rho = 0`` runs through the
-base block (``sample_vol.sample_volatility_block``) to keep that path bit-identical.
+to the base KSC block — but we still route ``rho = 0`` runs through the base block
+(``sample_vol.sample_volatility_block_specII``) to keep that path bit-identical
+and, as ``subsec:variants-restrictions`` notes, because the symmetric case needs
+only the seven-component KSC mixture.
 
 Config-aware: ``r``, ``M`` and the per-series structure come from the inputs.
-The common factor carries an ``r``-vector leverage ``rho`` (constraint
-``rho'rho < 1``) as the *general derivation*; each idiosyncratic series carries a
-scalar ``rho_i`` (``|rho_i| < 1``).
 
-Adopted common-leverage specialization (``common_lev_scalar=True``, default):
-only the projection of ``rho`` onto the identified dominant direction ``g`` is
-sampled — a single scalar magnitude, ``rho = m g`` with ``|m| < 1`` — because a
-low-dimensional common factor identifies only that one combination; the ``r-1``
-orthogonal directions are unexercised and, if left free, produce a convergent
-false positive.  This is the *vector posterior restricted to the line* ``{m g}``
-(no re-derivation).  Set ``common_lev_scalar=False`` to recover the free-vector
-sampler.  Theory / motivation: ``subsec:common-lev-identif``.  ``r = 1`` and the
-idiosyncratic scalars are unaffected (no orthogonal directions exist).
+Common leverage — **Option A** (``subsec:lev-attach-choice``, ``eq:lev-cond-common``;
+Phase 4).  Under Specification~II the common block carries ``r`` **per-factor**
+volatilities, and the leverage is ``r`` **independent scalar** correlations
+``rho_i``, each coupling factor ``i``'s log-vol innovation ``eta^u_i`` to its own
+**raw** base shock ``z^u_i`` — the ``i``-th component of
+``z^u_t = sqrt(w) Q^{-1/2} (sqrt H^u_t)^{-1} u_t`` (the full symmetric ``Q^{-1/2}``).
+There is **no vector draw and no ``rho'rho<1`` region** (the thesis retires the
+dominant-direction specialisation): every ``rho_i`` is one scalar Metropolis move
+(:func:`draw_rho_scalar`), exactly as on the idiosyncratic side.  The path draw is
+the *coupled* multivariate single-move Metropolis :func:`_lev_path_mh_mv_common`,
+because ``z^u_{k,t}`` mixes every factor's volatility through ``Q^{-1/2}``.  The
+old vector machinery (``draw_rho_vec``, ``draw_rho_common``, ``dominant_dir_z``,
+``common_lev_scalar``) is gone: both branches are per-factor Option A.
 """
 
 from __future__ import annotations
@@ -132,6 +135,117 @@ def _lev_path_mh(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# (b) multivariate single-move Metropolis on the r per-factor common log-vol
+#     paths under Option A leverage (Spec II) — the coupled path draw
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _lev_path_mh_mv_common(
+    logh_u: np.ndarray,          # (T, r) current per-factor log-vol paths
+    b: np.ndarray,               # (T, r) weighted innovations sqrt(w_t) u_t (0 at t=0)
+    S: np.ndarray,               # (T, r) per-component level SS e_{k,t}^2 (0 at t=0)
+    has_obs: np.ndarray,         # (T,) bool: leverage-bearing transition present at t
+    Qinv_half: np.ndarray,       # (r, r) symmetric Q^{-1/2}
+    phi: np.ndarray,             # (r,)
+    sigma2: np.ndarray,          # (r,)
+    rho: np.ndarray,             # (r,)
+    prop_sd: float,
+    rng: np.random.Generator,
+) -> tuple[np.ndarray, int, int]:
+    r"""
+    One single-move random-walk Metropolis sweep over the ``r`` per-factor common
+    log-vol paths ``x_{k,t} = log h^u_{k,t}`` under **Option A** leverage,
+    Specification~II (``mu = 0``).  This is the *coupled* path draw: the leverage
+    drift keys on the **raw shock**
+    ``z^u_t = sqrt(w) Q^{-1/2} (sqrt(H^u_t))^{-1} u_t`` (eq:lev-cond-common,
+    subsec:lev-attach-choice), whose ``k``-th component
+    ``z^u_{k,t} = [Q^{-1/2} (exp(-x_{.,t}/2) * b_t)]_k`` mixes **every** factor's
+    volatility through the symmetric root ``Q^{-1/2}``.  Moving a single
+    ``x_{k,t}`` therefore shifts the transition-*into*-``t`` drift of **all** ``r``
+    factors (eq:lev-transition-contemp), so the move's Metropolis target sums the
+    ``r`` transition densities into ``t`` — the genuine multivariate coupling the
+    scalar :func:`_lev_path_mh` cannot express (it held only under the scalar-common
+    restriction ``H^u_t = h^u_t I``, where ``Q^{-1/2}`` and ``(sqrt H)^{-1}``
+    commute; that restriction is *not* "Specification I" — the two specifications
+    of ``subsec:vol-placement`` are both per-factor and differ in the placement of
+    ``H^u_t`` around ``Q^{1/2}``).
+
+    Terms of the full conditional of ``x_{k,t}`` that move with it:
+      * **level** (``t>=1``, factor ``k`` only): ``-x/2 - S_{k,t} e^{-x}/2``;
+      * **transition into ``t``** (``t>=1``, **all** factors ``j``): each
+        ``N(x_{j,t}; phi_j x_{j,t-1} + rho_j sqrt(sigma2_j) z^u_{j,t},
+        sigma2_j(1-rho_j^2))`` — ``z^u_{.,t}`` recomputed at the proposal;
+      * **stationary prior** (``t=0``, factor ``k`` only):
+        ``-x^2 / (2 sigma2_k/(1-phi_k^2))``;
+      * **transition out of ``t``** (into ``t+1``, factor ``k`` only): the AR(1)
+        term ``N(x_{k,t+1}; phi_k x_{k,t} + drift_{k,t+1}, .)`` — its drift
+        ``z^u_{k,t+1}`` does **not** depend on ``x_{k,t}`` and is held fixed.
+
+    Returns ``(logh_new (T, r), n_accept, n_propose)``.
+    """
+    T, r = logh_u.shape
+    x = logh_u.copy()
+    sig = np.sqrt(sigma2)                      # (r,)
+    drift_coef = rho * sig                     # (r,) = rho_i sigma_{u,i}
+    var_lev = sigma2 * (1.0 - rho * rho)       # (r,)
+    stat_var = sigma2 / (1.0 - phi * phi)      # (r,)
+    n_acc = 0
+    n_prop = 0
+
+    def _zrow(t: int, xrow: np.ndarray) -> np.ndarray:
+        """z^u_{.,t} = Q^{-1/2} (exp(-xrow/2) * b_t)."""
+        return Qinv_half @ (np.exp(-0.5 * xrow) * b[t])
+
+    for t in range(T):
+        # transition-into-t precomputables (all factors j) — only when t>=1
+        if t >= 1:
+            v_in = var_lev if has_obs[t] else sigma2      # (r,)
+            base_mean = phi * x[t - 1]                    # (r,) phi_j x_{j,t-1}
+        # out-of-t drift into t+1 (factor-wise), z^u_{k,t+1} independent of x[t]
+        if t <= T - 2:
+            v_out = var_lev if has_obs[t + 1] else sigma2
+            z_tp1 = _zrow(t + 1, x[t + 1]) if has_obs[t + 1] else np.zeros(r)
+            drift_tp1 = drift_coef * z_tp1                # (r,)
+
+        for k in range(r):
+            xt_old = x[t, k]
+            xt_new = xt_old + prop_sd * rng.standard_normal()
+
+            # level term (measurement of factor k at t)
+            dlevel = 0.0
+            if has_obs[t]:
+                dlevel = ((-0.5 * xt_new - 0.5 * S[t, k] * np.exp(-xt_new))
+                          - (-0.5 * xt_old - 0.5 * S[t, k] * np.exp(-xt_old)))
+
+            # transition into t
+            if t == 0:
+                dinto = -0.5 * (xt_new * xt_new - xt_old * xt_old) / stat_var[k]
+            else:
+                row_old = x[t]
+                row_new = x[t].copy(); row_new[k] = xt_new
+                mean_old = base_mean + drift_coef * _zrow(t, row_old)
+                mean_new = base_mean + drift_coef * _zrow(t, row_new)
+                res_old = row_old - mean_old
+                res_new = row_new - mean_new
+                dinto = np.sum(-0.5 * res_new * res_new / v_in
+                               + 0.5 * res_old * res_old / v_in)
+
+            # transition out of t (factor k only)
+            dout = 0.0
+            if t <= T - 2:
+                mo_old = phi[k] * xt_old + drift_tp1[k]
+                mo_new = phi[k] * xt_new + drift_tp1[k]
+                dd = ((x[t + 1, k] - mo_new) ** 2 - (x[t + 1, k] - mo_old) ** 2)
+                dout = -0.5 * dd / v_out[k]
+
+            n_prop += 1
+            if np.log(rng.random()) < dlevel + dinto + dout:
+                x[t, k] = xt_new
+                n_acc += 1
+
+    return x, n_acc, n_prop
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Family B under leverage: (phi, sigma^2) — leverage-aware draws
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -164,23 +278,35 @@ def _draw_phi_lev(x, zeta, has_obs, sigma2, rho2, rng):
     return float(np.clip(phi_hat, -0.98, 0.98))
 
 
-def _draw_sigma2_lev(x, zeta, has_obs, phi, rho2, sigma2_cur, a_sig, b_sig, prop_sd, rng):
+def _draw_sigma2_lev(x, zeta, has_obs, phi, rho2, sigma2_cur, a_sig, b_sig, prop_sd, rng,
+                     *, sigma_prior="inverse_gamma", half_normal_B=1.0):
     r"""RW-Metropolis draw of ``sigma^2`` (on ``log sigma^2``) under leverage.
 
-    Target: ``IG(a_sig,b_sig)`` prior times the leverage likelihood, where on
+    Target: the ``sigma_eta`` prior times the leverage likelihood, where on
     leverage transitions the residual is ``x_t - phi x_{t-1} - sqrt(v) zeta_t``
     with variance ``v(1-rho^2)``, and on non-leverage transitions
     ``x_t - phi x_{t-1}`` with variance ``v``.
+
+    ``sigma_prior`` selects the prior kernel in ``v = sigma^2``:
+    ``"inverse_gamma"`` -> ``IG(a_sig,b_sig)`` (``-(a+1)log v - b/v``, the conjugate
+    baseline); ``"half_normal"`` -> half-Normal on ``sigma_eta ~ N(0,B)``,
+    ``B=half_normal_B`` (``-0.5 log v - v/(2B)``, incl.\ the ``sigma_eta->v``
+    Jacobian).  Both are combined with the same leverage likelihood, so the
+    ``(1-rho^2)`` variance factor is honoured either way.
     """
     T = x.shape[0]
     eta = x[1:] - phi * x[:-1]                # (T-1,)
     obs = has_obs[1:]
     zt = zeta[1:]
+    inv_2B = 0.5 / half_normal_B
 
     def _logp(v):
         if v <= 0:
             return -np.inf
-        lp = -(a_sig + 1.0) * np.log(v) - b_sig / v   # IG kernel
+        if sigma_prior == "half_normal":
+            lp = -0.5 * np.log(v) - inv_2B * v            # half-Normal kernel (in v)
+        else:
+            lp = -(a_sig + 1.0) * np.log(v) - b_sig / v   # IG kernel
         sv = np.sqrt(v)
         # leverage transitions
         rl = eta[obs] - sv * zt[obs]
@@ -228,70 +354,15 @@ def draw_rho_scalar(rho_cur, eta, k, sigma2, prop_sd, rng):
     return float(rho_cur), 0
 
 
-def _rho_logpost_vec(rho, eta, K, n_lev, sigma2):
-    rr = float(rho @ rho)
-    if rr >= 1.0:
-        return -np.inf
-    om = 1.0 - rr
-    res = eta - K @ rho
-    return -0.5 * n_lev * np.log(om) - 0.5 * np.sum(res * res) / (sigma2 * om)
-
-
-def draw_rho_vec(rho_cur, eta, K, sigma2, prop_sd, rng):
-    """RW-Metropolis for the common-factor leverage vector ``rho`` (``rho'rho<1``).
-
-    ``K`` is ``(n_lev, r)`` with row ``k_t = sigma * z^u_t``.
-    """
-    n_lev = eta.shape[0]
-    rs = rho_cur + prop_sd * rng.standard_normal(rho_cur.shape[0])
-    cur = _rho_logpost_vec(rho_cur, eta, K, n_lev, sigma2)
-    new = _rho_logpost_vec(rs, eta, K, n_lev, sigma2)
-    if np.log(rng.random()) < new - cur:
-        return rs, 1
-    return rho_cur, 0
-
-
-def dominant_dir_z(F, Qinv_half):
-    r"""Dominant direction of the sampled common-factor path, expressed in the
-    whitened leverage-regressor space (where ``rho_u`` / ``z^u`` live).
-
-    Leading eigenvector ``g_f`` of the factor Gram ``F'F`` (the essentially
-    one-dimensional direction the low-dimensional common factor exercises),
-    mapped through the whitening ``Qinv_half`` and unit-normalised with a fixed
-    sign convention (largest-magnitude component positive) so the direction is
-    deterministic across sweeps.  Theory: ``subsec:common-lev-identif``.
-    """
-    _, V = np.linalg.eigh(F.T @ F)                 # ascending eigenvalues
-    g = Qinv_half @ V[:, -1]
-    g = g / np.linalg.norm(g)
-    g *= np.sign(g[int(np.argmax(np.abs(g)))])
-    return g
-
-
-def draw_rho_common(rho_cur, eta, K, sigma2, prop_sd, rng, g=None):
-    r"""Common-factor leverage draw.
-
-    ``g is None`` — the **general case**: the free ``r``-vector ``rho`` on
-    ``rho'rho<1`` (``draw_rho_vec``, the derivation of Family~C).
-
-    ``g`` given (unit ``r``-vector) — the **adopted specialization** to the
-    identified scalar: sample only the *magnitude* ``m`` along the fixed
-    dominant direction ``g`` and return ``rho = m g``.  Because ``g`` is unit,
-    ``eta - K(m g) = eta - m(Kg)`` and ``1 - (mg)'(mg) = 1 - m^2``, so this is
-    *exactly* the vector posterior restricted to the line ``{m g}`` — one
-    identified leverage correlation, no unexercised orthogonal directions
-    (``subsec:common-lev-identif``).  Returns ``(rho_vec, n_accept)``.
-    """
-    if g is None:
-        return draw_rho_vec(rho_cur, eta, K, sigma2, prop_sd, rng)
-    kk = K @ g                                     # (n_lev,) scalar regressor
-    m_cur = float(np.asarray(rho_cur) @ g)
-    m_new, a = draw_rho_scalar(m_cur, eta, kk, sigma2, prop_sd, rng)
-    return m_new * g, a
+# NB: the vector-rho machinery (draw_rho_vec / draw_rho_common / dominant_dir_z,
+# the rho'rho<1 region and the dominant-direction scalar specialisation) is
+# **removed** (Phase 7).  Under Option A the common leverage is r *independent
+# scalar* correlations (draw_rho_scalar per factor, eq:lev-cond-common) in both
+# Branch A and Branch B — there is no vector draw and no rho'rho<1 region.
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Orchestrator: step (b) + Family B + Family C for all M+1 processes (Branch A)
+# Orchestrator: step (b) + Family B + Family C for all M+r processes (Branch A)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def sample_volatility_block_leverage(
@@ -310,10 +381,14 @@ def sample_volatility_block_leverage(
     *,
     prior_a: float = 2.0,
     prior_b: float = 0.05,
+    sigma_prior: str = "inverse_gamma",
+    half_normal_B: float = 1.0,
+    use_asis: bool = False,
+    fix_mu0: bool = True,
+    sv_idio: bool = True,
     prop_path: float = 0.25,
     prop_sigma2: float = 0.20,
     prop_rho: float = 0.06,
-    common_lev_scalar: bool = True,
     inv_sqrt_spd=None,
 ) -> dict:
     r"""
@@ -321,11 +396,33 @@ def sample_volatility_block_leverage(
 
     Sweeps, for the common factor and each idiosyncratic series: (b) the
     single-move Metropolis log-vol path; Family~B ``(phi, sigma^2)`` (leverage
-    aware); Family~C ``rho`` (Metropolis).  ``mu = 0`` throughout.
+    aware); Family~C ``rho`` (Metropolis).  ``mu = 0`` throughout (the
+    identification convention ``eq:sv-mu-identification``): the leverage AR(1)
+    regressions carry **no intercept**, so ``mu`` is structurally pinned at 0 and
+    every returned ``sv`` row is ``(0, phi, sigma2)``.  ``fix_mu0=False`` is not
+    supported here (raises) — the leverage derivation assumes ``mu=0``.
+
+    ``sigma_prior`` (``"inverse_gamma"`` baseline / ``"half_normal"``,
+    ``B=half_normal_B``) selects the Family~B ``sigma_eta`` prior, threaded to the
+    leverage-aware :func:`_draw_sigma2_lev` (the ``(1-rho^2)`` variance factor is
+    honoured either way).
+
+    ``sv_idio=False`` is the **D2-a** restriction (``subsec:variants-restrictions``):
+    the idiosyncratic volatilities are frozen at ``h^eps ≡ 1`` and neither their
+    Family~B nor their Family~C (``rho_eps``) is drawn — with no ``h^eps`` there is
+    no idiosyncratic log-vol innovation for a leverage correlation to attach to.
 
     Returns ``h_u, h_eps, logh_u, logh_eps, sv_u, sv_eps, rho_u, rho_eps`` and the
     Metropolis acceptance rates ``acc`` (dict).
     """
+    if not fix_mu0:
+        raise ValueError("sample_volatility_block_leverage supports mu=0 only "
+                         "(fix_mu0=True); the leverage AR(1) has no intercept.")
+    if use_asis:
+        if sigma_prior != "half_normal":
+            raise ValueError("use_asis=True requires sigma_prior='half_normal' "
+                             "(CP and NCP must share the Gaussian prior on sigma_eta).")
+        from mcmc.sample_asis import asis_scale_interweave      # lazy: avoid import cycle
     from mcmc.sample_vol import _inv_sqrt_spd as _isqrt
     if inv_sqrt_spd is None:
         inv_sqrt_spd = _isqrt
@@ -338,48 +435,104 @@ def sample_volatility_block_leverage(
 
     acc = {"path_u": 0.0, "path_eps": 0.0, "sigma2": 0.0, "rho_u": 0.0, "rho_eps": 0.0}
 
-    # ── Common factor ────────────────────────────────────────────────────────
-    Qinv_half = inv_sqrt_spd(Q)
-    u = F[1:] - F[:-1] @ A.T                                # (T-1, r)
-    tilde_u = (np.sqrt(w_u[1:])[:, None]) * (u @ Qinv_half.T)  # (T-1, r); z = tilde_u/sqrt(h)
-    tilde_full = np.zeros((T, r)); tilde_full[1:] = tilde_u
+    # ── Common factor: r per-factor volatilities under Option A (Spec II) ──────
+    # Two distinct whitenings (subsec:lev-attach-choice, caution at eq ~16368):
+    #   * measurement (decoupled, per-component): e_{k,t}=sqrt(w/q_kk) u_{k,t};
+    #   * raw shock (the leverage target): z^u_t=sqrt(w) Q^{-1/2}(sqrt H^u_t)^{-1}u_t
+    #     with the FULL symmetric Q^{-1/2} — mixes every factor's volatility.
+    Qinv_half = inv_sqrt_spd(Q)                            # Q^{-1/2} (symmetric)
+    qdiag = np.diag(Q)
+    u = F[1:] - F[:-1] @ A.T                               # (T-1, r), u_t
     has_u = np.zeros(T, bool); has_u[1:] = True
-    S_u = np.sum(tilde_full ** 2, axis=1)                  # ||tilde_u_t||^2
-    kdim_u = np.where(has_u, r, 0)
+    b_u = np.zeros((T, r)); b_u[1:] = np.sqrt(w_u[1:])[:, None] * u   # sqrt(w) u_t
+    S_u = np.zeros((T, r))                                 # per-component level SS
+    S_u[1:] = (w_u[1:][:, None] / qdiag[None, :]) * u ** 2
 
-    mu_u, phi_u, s2_u = float(sv_u[0]), float(sv_u[1]), float(sv_u[2])
-    rho_u = np.asarray(rho_u, float).copy()
-    rho2_u = float(rho_u @ rho_u)
-    gcoef_u = tilde_full @ rho_u                            # rho . tilde_u_t  (T,)
+    logh_u = np.asarray(logh_u, float)
+    sv_u = np.asarray(sv_u, float)                         # (r, 3)
+    rho_u = np.asarray(rho_u, float).copy()                # (r,)
+    phi_u = sv_u[:, 1].copy(); s2_u = sv_u[:, 2].copy()
 
-    logh_u_new, na, npp = _lev_path_mh(logh_u, S_u, kdim_u, gcoef_u, has_u,
-                                       phi_u, s2_u, rho2_u, prop_path, rng)
+    # Warm-start the path from a blocked KSC-FFBS draw when it enters flat (the
+    # warm start's log h == 0).  The per-factor single-move Metropolis mixes far
+    # more slowly than the blocked KSC-FFBS and, coupled to the state feedback,
+    # can otherwise sit in the flat-init trap (h ~ 1 -> homoskedastic states ->
+    # u ~ homoskedastic -> h ~ 1).  Seeding the sweep with the exact rho=0 path
+    # (sample_common_vol_mv, the Spec II common block) leaves the target
+    # unchanged and lets the subsequent Metropolis explore around a sensible path.
+    if not np.any(np.abs(logh_u) > 1e-9):
+        from mcmc.sample_vol import sample_common_vol_mv
+        seed_sv = np.column_stack([np.zeros(r), phi_u, s2_u])
+        logh_u = sample_common_vol_mv(u, Q, w_u, logh_u, seed_sv, rng,
+                                      offset=1e-6)["logh_u"]
+
+    # (b) coupled multivariate single-move path draw (drift keys on the raw shock)
+    logh_u_new, na, npp = _lev_path_mh_mv_common(
+        logh_u, b_u, S_u, has_u, Qinv_half, phi_u, s2_u, rho_u, prop_path, rng)
     acc["path_u"] = na / npp
 
-    # leverage regressors at the new path: z^u_t = tilde_u_t * exp(-x_t/2)
-    z_u = tilde_full * np.exp(-0.5 * logh_u_new)[:, None]   # (T, r)
-    zeta_u = z_u @ rho_u                                    # rho . z^u_t  (T,)
-    # Family B: phi then sigma^2 (leverage aware)
-    phi_u = _draw_phi_lev(logh_u_new, zeta_u, has_u, s2_u, rho2_u, rng)
-    s2_u, a1 = _draw_sigma2_lev(logh_u_new, zeta_u, has_u, phi_u, rho2_u, s2_u,
-                                prior_a, prior_b, prop_sigma2, rng)
-    # Family C: rho on the leverage-bearing transitions t = 1..T-1.  General
-    # case = free r-vector (draw_rho_vec); adopted specialization = scalar along
-    # the identified dominant direction g (subsec:common-lev-identif).
-    eta_u = logh_u_new[1:] - phi_u * logh_u_new[:-1]        # (T-1,)
-    K_u = np.sqrt(s2_u) * z_u[1:]                           # k_t = sigma * z^u_t (T-1, r)
-    g_dom = dominant_dir_z(F, Qinv_half) if (common_lev_scalar and r > 1) else None
-    rho_u, ar = draw_rho_common(rho_u, eta_u, K_u, s2_u, prop_rho, rng, g_dom)
-    acc["sigma2"] += a1; acc["rho_u"] = ar
-    sv_u_new = np.array([0.0, phi_u, s2_u])
+    # raw shocks at the new path: z^u_t = Q^{-1/2} (exp(-x_t/2) * b_t)  (T, r)
+    a_u = np.exp(-0.5 * logh_u_new) * b_u                  # (T, r); 0 at t=0
+    z_u = a_u @ Qinv_half                                  # (T, r): row t = Q^{-1/2} a_t
+    y_star_u = np.log(S_u + 1e-6)                          # KSC log-square for ASIS (T, r)
 
-    # ── Idiosyncratic series ─────────────────────────────────────────────────
+    # Family B + Family C per factor — r independent scalar channels (Option A,
+    # eq:lev-cond-common): no vector draw, no rho'rho<1 region.
+    sv_u_new = np.zeros((r, 3))
+    rho_u_new = np.zeros(r)
+    acc_s_u = 0.0; acc_r_u = 0.0
+    if not use_asis:
+        # single interleaved pass (phi, sigma2, rho per factor) — the raw shock z_u
+        # is fixed (no path rescale), so this is the plain Option A block.
+        for k in range(r):
+            rho_k = float(rho_u[k]); rho2_k = rho_k * rho_k
+            zeta_k = rho_k * z_u[:, k]                          # rho_k z^u_{k,t} (T,)
+            ph_k = _draw_phi_lev(logh_u_new[:, k], zeta_k, has_u, s2_u[k], rho2_k, rng)
+            s2_k, a1 = _draw_sigma2_lev(logh_u_new[:, k], zeta_k, has_u, ph_k, rho2_k,
+                                        s2_u[k], prior_a, prior_b, prop_sigma2, rng,
+                                        sigma_prior=sigma_prior, half_normal_B=half_normal_B)
+            eta_k = logh_u_new[1:, k] - ph_k * logh_u_new[:-1, k]
+            k_reg = np.sqrt(s2_k) * z_u[1:, k]                 # k_t = sigma_k z^u_{k,t}
+            rho_k, a_rk = draw_rho_scalar(rho_k, eta_k, k_reg, s2_k, prop_rho, rng)
+            sv_u_new[k] = (0.0, ph_k, s2_k); rho_u_new[k] = rho_k
+            acc_s_u += a1; acc_r_u += a_rk
+    else:
+        # ASIS interweave rescales the path per factor, and z_u couples all factors
+        # through Q^{-1/2}, so the sweep is two-pass: (1) CP Family B + ASIS with z_u
+        # FROZEN (the separable leverage stance, subsec:asis-leverage); recompute z_u
+        # at the rescaled path; (2) Family C rho on the current path.
+        for k in range(r):
+            rho_k = float(rho_u[k]); rho2_k = rho_k * rho_k
+            zeta_k = rho_k * z_u[:, k]
+            ph_k = _draw_phi_lev(logh_u_new[:, k], zeta_k, has_u, s2_u[k], rho2_k, rng)
+            s2_k, a1 = _draw_sigma2_lev(logh_u_new[:, k], zeta_k, has_u, ph_k, rho2_k,
+                                        s2_u[k], prior_a, prior_b, prop_sigma2, rng,
+                                        sigma_prior=sigma_prior, half_normal_B=half_normal_B)
+            x_a, ph_k, s2_k = asis_scale_interweave(          # (2)-(4) NCP interweave
+                logh_u_new[:, k], y_star_u[:, k], has_u, s2_k, rho_k, z_u[:, k], rng,
+                half_normal_B=half_normal_B)
+            logh_u_new[:, k] = x_a
+            sv_u_new[k] = (0.0, ph_k, s2_k); acc_s_u += a1
+        a_u = np.exp(-0.5 * logh_u_new) * b_u                  # recompute z_u at rescaled path
+        z_u = a_u @ Qinv_half
+        for k in range(r):
+            ph_k = float(sv_u_new[k, 1]); s2_k = float(sv_u_new[k, 2])
+            eta_k = logh_u_new[1:, k] - ph_k * logh_u_new[:-1, k]
+            k_reg = np.sqrt(s2_k) * z_u[1:, k]
+            rho_k, a_rk = draw_rho_scalar(float(rho_u[k]), eta_k, k_reg, s2_k, prop_rho, rng)
+            rho_u_new[k] = rho_k; acc_r_u += a_rk
+    acc["sigma2"] = acc_s_u                                # accepts over the r factors
+    acc["rho_u"] = acc_r_u / max(1, r)
+    rho_u = rho_u_new
+
+    # ── Idiosyncratic series (omitted, h^eps frozen at 1, under D2-a) ─────────
     signal = F @ Lambda.T
     logh_eps_new = np.zeros((T, M))
-    sv_eps_new = np.zeros((M, 3))
-    rho_eps_new = np.zeros(M)
+    sv_eps_new = np.asarray(sv_eps, float).copy() if not sv_idio else np.zeros((M, 3))
+    rho_eps_new = np.asarray(rho_eps, float).copy() if not sv_idio else np.zeros(M)
     acc_pe = 0.0; acc_s = 0.0; acc_re = 0.0
-    for i in range(M):
+    M_lev = M if sv_idio else 0
+    for i in range(M_lev):
         obs_t = np.where(~np.isnan(Y[:, i]))[0]
         e_full = np.zeros(T)
         has_i = np.zeros(T, bool)
@@ -397,11 +550,18 @@ def sample_volatility_block_leverage(
                                         phi_i, s2_i, rho2_i, prop_path, rng)
         acc_pe += na_i / np_i
 
-        z_i = e_full * np.exp(-0.5 * lh_i)                    # z_t (T,)
+        z_i = e_full * np.exp(-0.5 * lh_i)                    # z_t (T,), frozen for CP+ASIS
         zeta_i = rho_i * z_i
         phi_i = _draw_phi_lev(lh_i, zeta_i, has_i, s2_i, rho2_i, rng)
         s2_i, a_si = _draw_sigma2_lev(lh_i, zeta_i, has_i, phi_i, rho2_i, s2_i,
-                                      prior_a, prior_b, prop_sigma2, rng)
+                                      prior_a, prior_b, prop_sigma2, rng,
+                                      sigma_prior=sigma_prior, half_normal_B=half_normal_B)
+        if use_asis:                                          # (2)-(4) NCP interweave
+            y_star_i = np.zeros(T); y_star_i[obs_t] = np.log(S_i[obs_t] + 1e-6)
+            x_a, phi_i, s2_i = asis_scale_interweave(
+                lh_i, y_star_i, has_i, s2_i, rho_i, z_i, rng, half_normal_B=half_normal_B)
+            lh_i = x_a
+            z_i = e_full * np.exp(-0.5 * lh_i)                # recompute for Family C
         # rho on leverage transitions (t>=1 and observed)
         lev_mask = has_i[1:]
         eta_i = (lh_i[1:] - phi_i * lh_i[:-1])[lev_mask]
@@ -413,10 +573,10 @@ def sample_volatility_block_leverage(
         sv_eps_new[i] = (0.0, phi_i, s2_i)
         rho_eps_new[i] = rho_i
 
-    if M > 0:
-        acc["path_eps"] = acc_pe / M
-        acc["sigma2"] = (acc["sigma2"] + acc_s) / (1 + M)
-        acc["rho_eps"] = acc_re / M
+    acc["sigma2"] = (acc["sigma2"] + acc_s) / (r + M_lev)   # r common + M idio draws
+    if M_lev > 0:
+        acc["path_eps"] = acc_pe / M_lev
+        acc["rho_eps"] = acc_re / M_lev
 
     return {
         "h_u": np.exp(logh_u_new), "h_eps": np.exp(logh_eps_new),
