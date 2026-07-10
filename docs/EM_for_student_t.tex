@@ -15659,14 +15659,14 @@ once $\mathbf H^u_t\neq c\,\mathbf I$, so the same volatilities would imply a
 and use this sandwich in every DGP cell below. It carries one cost --- because
 $\mQ$ is full, the $r$ common volatilities no longer separate in estimation
 and must be drawn \emph{jointly}, a coupled multivariate stochastic-volatility
-problem (\S\ref{subsec:vol-all-processes}) --- which we accept as the price of
+problem --- which we accept as the price of
 the honest per-factor reading. Note that the idiosyncratic side never faces
 this fork: with $\mR$ diagonal, $\mathbf H^\varepsilon_t\mR$ is already
 diagonal and I and II coincide there.
 
 \paragraph{An orthogonal choice, previewed.} This placement decision is
 \emph{independent} of a second one, taken up when the leverage effect is
-introduced (\S\ref{subsec:lev-attach-choice}): \emph{which} disturbance the
+introduced: \emph{which} disturbance the
 leverage correlates with. The two act on different objects --- I/II on
 $\mathrm{Var}(u_t)$, the leverage on the covariance between the base shocks and
 the log-volatility innovations, applied only \emph{after} $\mathbf H^u_t$ has
@@ -16212,8 +16212,7 @@ statistical, justification.
 \label{subsec:lev-attach-choice}
 
 \paragraph{A second, independent choice: to which shock the leverage attaches.}
-With the per-factor volatility placed as in Specification~II
-(\S\ref{subsec:vol-placement}), so that the factor innovation is
+With the per-factor volatility placed as in Specification~II, so that the factor innovation is
 $u_t=\sqrt{\mathbf H^u_t}\,\mQ^{1/2}z^u_t/\sqrt{w^u_t}$, introducing a leverage
 effect raises a \emph{second} specification question --- independent of the
 first, and again a consequence of $\mQ$ being full. On the idiosyncratic side
@@ -16311,6 +16310,75 @@ $\eta^u_{i,t}$ be correlated with the own raw innovation $z_{i,t}$, or
 with the structural disturbance $\zeta_{i,t}$ that ultimately moves the
 factor? This is precisely the modelling fork considered below.
 
+\paragraph{The three level shocks at play, and which one the leverage keys on.}
+Before the fork it pays to name, once and unambiguously, the objects in
+circulation, because the entire choice is about \emph{which} of them the
+volatility answers to --- and because they are easy to confuse. Fix a period
+$t$ and read them off the innovation \eqref{eq:lev-attach-innov}:
+\begin{itemize}
+\item the \emph{factor innovation}
+      $u_t=f_t-\mA f_{t-1}$ --- what the VAR(1) dynamics leave unexplained at
+      $t$, with full conditional covariance
+      $\mathrm{Var}(u_t\mid\cdot)=\mathbf D^u_t\mQ\mathbf D^u_t/w^u_t$. It is
+      \emph{correlated} across factors and is not itself a candidate for the
+      leverage; it is the object the next two \emph{decompose}.
+\item the \emph{raw} standardized shocks
+      $z_t=\sqrt{w^u_t}\,\mQ^{-1/2}\big(\mathbf D^u_t\big)^{-1}u_t\sim\mathcal N(0,\mathbf I_r)$
+      --- \emph{mutually independent by construction}, one per VAR equation:
+      ``factor $i$'s own shock this period,'' read \emph{before} the
+      contemporaneous mixing. \textbf{This is Option~A's target.}
+\item the \emph{structural} disturbances
+      $\zeta_t=\mQ^{1/2}z_t=\sqrt{w^u_t}\big(\mathbf D^u_t\big)^{-1}u_t\sim\mathcal N(0,\mQ)$
+      --- the shocks that enter $u_t$ \emph{after} the mixing, \emph{correlated}
+      with covariance $\mQ$. \textbf{This is Option~B's target.}
+\end{itemize}
+The leverage correlates one of these \emph{level} shocks with the
+\emph{log-volatility} innovation $\eta^u_{i,t}$ of \eqref{eq:sv-logvol-u} ---
+the disturbance that moves $\log h^u_{i,t}$. So the fork is exactly: pair
+$\eta^u_{i,t}$ with the \emph{orthogonal} $z_{i,t}$ (Option~A) or with the
+\emph{correlated} $\zeta_{i,t}$ (Option~B). The two coincide only when $\mQ$ is
+diagonal.
+
+\smallskip
+\noindent\emph{Orthogonal is not structural.} A word on the labels, lest
+``raw'' and ``structural'' be read as more than they are. That $z_t$ is
+\emph{orthogonal} ($\mathrm{Var}\,z_t=\mathbf I_r$) is a statement about second
+moments only; it does \emph{not} make $z_t$ a structurally identified shock.
+Orthogonality is invariant to rotation --- for any orthogonal $\mathbf O$ the
+rotated $\mathbf O'z_t$ is equally white --- and the likelihood sees only $\mQ$
+(through $\mathrm{Var}(u_t\mid\cdot)=\mathbf D^u_t\mQ\mathbf D^u_t/w^u_t$), never
+the rotation. Singling out one orthonormal basis as the economically primitive
+one \emph{is} structural identification, and we impose none: no Cholesky
+ordering, no sign or long-run restrictions. Concretely, $z_t$ is the whitening
+by the \emph{symmetric} root $\mQ^{-1/2}$ --- unique and order-invariant, chosen
+precisely so as \emph{not} to smuggle in the recursive ordering a Cholesky
+factor would impose. The labels ``raw'' ($z_t$) and ``structural''
+($\zeta_t=\mQ^{1/2}z_t$) thus denote two algebraic decompositions of the same
+innovation $u_t$, not identified structural shocks --- even $\zeta_t$ is
+``structural'' only in the loose sense that $\mQ^{1/2}$ plays the role of an
+impact map, not because it is an identified one. The consequence for the
+leverage is worth stating plainly: $\rho_i$ is well defined \emph{relative to
+this symmetric-root convention} --- a different root would give different
+$z_i$ and hence different $\rho_i$ --- and is a clean, identified statistical
+object, but it should not be over-read as ``the structural leverage of factor
+$i$'s economic shock.'' For the model's purpose --- generating the predictive
+skewness the tail forecast needs --- that is exactly enough: $\rho_i$ must be
+identified and correctly signed, not structurally interpretable.
+
+A caution that will matter once the sampler is built: a \emph{fourth} object,
+the measurement whitening $\tilde u_t=\sqrt{w^u_t}\,\mQ^{-1/2}u_t$, appears in
+the volatility block to linearise the log-square, and under
+Specification~II it too is \emph{correlated} --- its covariance
+$\mQ^{-1/2}\mathbf D^u_t\mQ\mathbf D^u_t\mQ^{-1/2}$ is not diagonal (the very
+non-diagonality flagged when the multivariate volatility block was set up). It
+is a device of the \emph{measurement} equation, \emph{not} a leverage target,
+and it is \emph{not} $z_t$: the two differ precisely by the per-factor
+deflation $(\mathbf D^u_t)^{-1}$ and the order in which it and $\mQ^{-1/2}$ are
+applied (they commute only under the scalar-volatility Specification~I). The
+leverage keys on the orthogonal $z_t$; the correlated $\tilde u_t$ is a
+separate, downstream computational device, and conflating the two is the
+easiest way to mislead oneself into thinking Option~A couples to mixed shocks.
+
 \paragraph{Option A --- leverage on the raw factor innovations.}
 Correlate $\eta^u_{i,t}$ with the \emph{own base shock} $z_{i,t}$, one
 factor at a time. Under the contemporaneous timing this is $r$
@@ -16372,25 +16440,59 @@ places the leverage upstream of $\mQ^{1/2}$, Option~B threads $\mQ^{1/2}$
 \emph{into} the leverage block itself.
 
 \paragraph{The case for Option~B, stated fairly.}
-Option~B is not a straw man; it has a genuine and even natural
-rationale. Its merit is that it binds each volatility to the
-\emph{structural} disturbance --- the shock that literally moves factor
-$i$ once the system's contemporaneous mechanics have acted --- rather than
-to a standardized coordinate $z_{i,t}$ that has no free-standing
-interpretation of its own. In a structural (SVAR) reading, where the
-orthogonalised shocks are taken as the primitive economic disturbances and
-$\mQ^{1/2}$ is the impact map that turns them into the observed
-innovations, it is precisely the structural shock whose sign one would want
-the volatility to answer to: the leverage effect is a statement about the
-\emph{true} disturbance hitting the factor, and $\zeta_{i,t}$ is that
-disturbance. Indeed, in a model whose \emph{only} cross-factor structure
-lived in $\mQ$ --- a static or near-static transition, with the factors'
-co-movement carried entirely by the contemporaneous covariance --- Option~B
-would be the principled choice, the only way to let the volatility respond
-to the genuine combined shock rather than to an artefact of the
-whitening basis. Under those premises B is the correct specification, and
-it is worth conceding this plainly before explaining why our premises are
-not those.
+Option~B is not a straw man; it has a genuine rationale --- though not the one
+the word ``structural'' first suggests. Its merit is that it binds each
+volatility to the \emph{combined} disturbance $\zeta_{i,t}$, the shock that
+actually moves factor $i$'s innovation once the contemporaneous mechanics have
+acted --- spillovers from the other factors included --- rather than to the
+orthogonalised coordinate $z_{i,t}$, which strips those spillovers out. If one
+holds that a factor's volatility should answer to the \emph{whole} shock hitting
+it that period, not merely to its own orthogonal part, then $\zeta_{i,t}$ is the
+object the leverage should track. This is a real position, and it is decisive
+under one architecture: a model whose \emph{only} cross-factor structure lived
+in $\mQ$ --- a static or near-static transition, the factors' co-movement
+carried entirely by the contemporaneous covariance --- where letting the
+volatility respond to the genuine combined shock, rather than to a single
+whitened coordinate, would be the principled choice. Under those premises B is
+the correct specification, and it is worth conceding this plainly before
+explaining why our premises are not those.
+
+What will \emph{not} serve as a case for B, despite being the first
+justification one reaches for, is the \emph{structural-VAR} reading: on
+inspection it favours A, not B. In an SVAR the \emph{orthogonalised} shocks are
+the primitive economic disturbances and $\mQ^{1/2}$ is the impact map that mixes
+them into the observed innovation --- so the ``structural shock'' is the
+\emph{orthogonal} $z_{i,t}$, while its correlated blend $\zeta_{i,t}$ is the
+reduced-form innovation, not the primitive. A genuine structural argument would
+therefore couple the leverage to $z_{i,t}$ --- which is Option~A. And in any
+event we identify no such structure (cf.\ ``orthogonal is not structural''
+above): $\mQ^{1/2}$ is here the symmetric whitening root, not an identified
+impact matrix. B's fair case is the \emph{combined-shock} intuition above; it is
+not a structural one.
+
+\paragraph{First, an optical illusion to clear: Option~A is \emph{not} the ``mixed'' coupling.}
+Read too quickly, the fork invites two opposite misreadings, and both must be
+cleared before the substantive argument. The first is to feel that Option~B,
+binding the volatility to the ``real'' structural shock $\zeta_{i,t}$ that hits
+the factor, is the concrete choice, while Option~A couples to a bare
+coordinate $z_{i,t}$ of no economic standing --- so that B simply sounds more
+sensible. The second, sharper worry pulls the same way: since $\mQ^{1/2}$
+reassembles the $z_t$ into the correlated innovation $u_t$ one line later in
+\eqref{eq:lev-attach-innov}, is Option~A not ``really'' coupling to mixed
+shocks after all? Both misplace \emph{where the correlation is struck}. In
+Option~A the pair $(z_{i,t},\eta^u_{i,t})$ is drawn jointly \emph{upstream} of
+the mixing, with a \emph{diagonal} cross-covariance \eqref{eq:lev-attach-A-cov};
+$\mQ^{1/2}$ acts only \emph{afterwards}, assembling $u_t$ from the
+already-leveraged $z_t$. The mixing thus happens \emph{to} the leveraged shocks,
+not \emph{inside} the leverage: the correlation itself never sees $\mQ$. Option~B
+does the reverse --- it threads $\mQ^{1/2}$ \emph{into} the correlation
+\eqref{eq:lev-attach-B-cov}, so that $\eta^u_{i,t}$ answers to a $\mQ$-weighted
+blend of \emph{all} the $z_{k,t}$. Correctly stated, then, the question is not
+``orthogonal coordinate vs.\ real shock'' but ``\emph{does $\mQ^{1/2}$ enter the
+leverage} --- only downstream, in assembling $u_t$ (A), or into the correlation
+itself (B)?'' Put that way, it reduces to a concrete question about the model:
+does the leverage \emph{need} to re-perform the contemporaneous mixing that
+$\mQ$ already carries? That is what the next paragraph settles.
 
 \paragraph{Why we adopt Option~A.}
 The decisive point is \emph{where the cross-factor structure of our model
@@ -16470,7 +16572,7 @@ volatility innovation from $\eta^u_{i,t}$ to $\eta^u_{i,t+1}$ and leaving
 
 \paragraph{The two choices are orthogonal: we adopt A $+$ II.}
 The two specification choices --- \emph{where} the volatility acts
-(Specification~I vs.\ II, \S\ref{subsec:vol-placement}) and \emph{which} shock
+(Specification I vs. II) and \emph{which} shock
 the leverage attaches to (Option~A vs.\ B, here) --- are \emph{independent}:
 the first fixes $\mathrm{Var}(u_t\mid\mathbf H^u_t,w^u_t)$, the second fixes
 $\mathrm{Cov}(z^u_t,\eta^u_t)$, and since $\mathbf H^u_t$ scales $u_t$ only
@@ -16633,15 +16735,22 @@ explicitly and argues for the lagged form as the discrete-time analogue
 of the continuous-time leverage diffusion.
 
 \smallskip
-\noindent\emph{Our choice.} We adopt the \textbf{contemporaneous} timing
-as the principal specification --- it is the standard correlated-error
-form, it keeps the level and volatility innovations within a single
-period (so that the joint law, and hence the sampler, factorises one
-period at a time), and it is already the law written in the equations
-above --- and we retain the \textbf{lagged} timing as an explicit
-variant. The substantive point is
-that this timing is a \emph{deliberate} choice, not an artefact of
-notation.
+\noindent\emph{Our choice.} We \emph{lean toward} the \textbf{lagged} timing,
+and derive \emph{both}. The lagged form is Yu's (2005) discrete-time leverage
+--- the volatility responds to the level shock with a one-period lag, the
+causally cleaner reading (today's adverse shock \emph{triggers} tomorrow's
+turbulence rather than being simultaneous with it) and the discrete-time
+analogue of the continuous-time leverage diffusion; it also, as the estimation
+sections will show, admits a blocked sign-augmented mixture draw that mixes
+better than the single-move Metropolis the contemporaneous form forces. We
+nonetheless carry the \textbf{contemporaneous} form through in full --- it is
+the standard correlated-error specification, it keeps the level and volatility
+innovations within a single period (so the joint law factorises one period at a
+time), and it is the law already written in the equations above --- so that
+both timings are in hand and the final selection can be made empirically. The
+substantive point is that this timing is a \emph{deliberate} modelling choice,
+not an artefact of notation, and that neither route is foreclosed: the
+estimator is built for both.
 
 \smallskip
 \noindent\emph{Which channels matter for Growth-at-Risk.} Although
@@ -16814,10 +16923,15 @@ u_t\mid \mathbf H^u_t\;\sim\; t_{\nu_u}\!\big(0,\,\sqrt{\mathbf H^u_t}\,\mQ\,\sq
 a multivariate $t$ in each case, because the one shared weight couples the
 components of the vector through their common mixing scale.
 
-\paragraph{Channel 3 --- leverage (contemporaneous timing, Option~A).}
-The base shock that moves the \emph{level} is correlated with the innovation
-that moves the \emph{(log-)volatility} of the same period. We attach it by
-\textbf{Option~A}: for each common factor $i$, the \emph{raw} base shock
+\paragraph{Channel 3 --- leverage (Option~A; contemporaneous timing shown, lagged in Channel~3$'$).}
+Two \emph{independent} decisions meet in this channel: \emph{which} shock the
+leverage attaches to, and \emph{when} it acts. The first is \textbf{Option~A}
+--- the raw base shock --- and it is the \emph{same} under either timing; the
+second we write in its contemporaneous form here and in its lagged form in
+Channel~3$'$, leaning toward the latter, with both derived in full. Under the
+contemporaneous timing the base shock that moves the \emph{level} is correlated
+with the innovation that moves the \emph{(log-)volatility} of the same period.
+We attach it by \textbf{Option~A}: for each common factor $i$, the \emph{raw} base shock
 $z^u_{i,t}$ (before the mixing by $\mQ^{1/2}$) is coupled with the
 log-volatility innovation $\eta^u_{i,t}$ of \eqref{eq:d1bd2b-logvol-u} for
 \emph{that same factor}, one independent channel per factor,
@@ -16857,10 +16971,12 @@ turbulent than upturns and the predictive density leans to the left. The
 tail weights $w^u_t,w^\varepsilon_t$ stay independent of the
 $(z,\eta)$ pairs and play no part in the coupling.
 
-\paragraph{Channel 3$'$ --- leverage (lagged timing, variant).}
-The lagged form is obtained by re-indexing a \emph{single} object: the
-level shock of period $t$ is coupled with the log-volatility innovation
-of period $t{+}1$ rather than $t$. The covariance structure of
+\paragraph{Channel 3$'$ --- leverage (Option~A, lagged timing --- the form we lean toward).}
+The lagged form keeps \textbf{Option~A} unchanged --- the same raw-shock
+attachment, the same diagonal cross-covariance --- and merely re-indexes a
+\emph{single} object: the level shock of period $t$ is coupled with the
+log-volatility innovation of period $t{+}1$ rather than $t$. The covariance
+structure of
 \eqref{eq:d1bd2b-lev-u}--\eqref{eq:d1bd2b-lev-eps} is unchanged; only the
 time index of the volatility innovation moves,
 \begin{equation}
@@ -16882,10 +16998,10 @@ time index of the volatility innovation moves,
 so that $\mathrm{Corr}(z^u_{i,t},\eta^u_{i,t+1})=\rho_i$ and
 $\mathrm{Corr}(z^\varepsilon_{i,t},\eta^\varepsilon_{i,t+1})=\rho_{\varepsilon,i}$:
 today's adverse shock anticipates tomorrow's turbulence. The timing is
-applied uniformly across all blocks; the contemporaneous form
-\eqref{eq:d1bd2b-lev-u}--\eqref{eq:d1bd2b-lev-eps} is our principal
-specification and the lagged form \eqref{eq:d1bd2b-lev-lagged} the
-retained variant.
+applied uniformly across all blocks; we lean toward the lagged form
+\eqref{eq:d1bd2b-lev-lagged} and derive both, carrying the contemporaneous
+form \eqref{eq:d1bd2b-lev-u}--\eqref{eq:d1bd2b-lev-eps} through in full as the
+retained alternative.
 
 \paragraph{The complete generative recipe.}
 Collecting \eqref{eq:d1bd2b-state}--\eqref{eq:d1bd2b-weights} with the
@@ -17107,8 +17223,9 @@ rest in closed form is removed by this coupling.
 One might ask why we do not keep EM and merely compute the awkward pieces
 by numerical optimisation or quadrature. The obstacle is dimensionality.
 The intractable E-step expectation is an integral over the \emph{entire}
-volatility path --- a space whose dimension grows with $T$ (one $\log h_t$
-per period for the common factor, and $M$ more per period under D2-b) ---
+volatility path --- a space whose dimension grows with $T$ (one
+$\log h^u_{i,t}$ per period for each of the $r$ common factors, and $M$
+more per period under D2-b) ---
 and numerical integration in thousands of dimensions is hopeless. A
 numerical inner maximisation in the M-step, nested inside an already
 iterative outer loop and re-run every sweep, would be both fragile and
@@ -17274,15 +17391,17 @@ product stays in the \emph{same family}: the posterior is again
 matrix-Normal, now centred at a precision-weighted blend of the prior centre
 $\mA_0$ and the data fit $\widehat{\mA}$,
 \[
-\mA_n \;=\; (\Lambda_0+\mathcal P^u_{00})^{-1}\big(\Lambda_0\mA_0
-+\mathcal P^u_{00}\,\widehat{\mA}\big),
+\mA_n \;=\; \big(\mA_0\Lambda_0+\mathcal P^u_{10}\big)\big(\Lambda_0+\mathcal P^u_{00}\big)^{-1},
+\qquad \mathcal P^u_{10}=\widehat{\mA}\,\mathcal P^u_{00},
 \]
-exactly the matrix analogue of the scalar $m_1$ above --- a
+exactly the matrix analogue of the scalar $m_1$ above (the
+regressor precision $\mathcal P^u_{00}$ now \emph{post}-multiplies, since it
+acts in the space of the lagged factors) --- a
 precision-weighted average in which the data pull the harder the larger
 $\mathcal P^u_{00}$ is. (This clean matrix-Normal form is the one the
 baseline and the equal-volatility case take; under the per-factor stochastic
 volatility of the full model the factor-side draw becomes an equivalent but
-\emph{vectorised} Gaussian, \S\ref{subsec:param-familyA}, with the same
+\emph{vectorised} Gaussian, derived in the parameter section below, with the same
 three-step logic intact.) And then the step that has no analogue in EM:
 \emph{we draw $\mA$ from this posterior}, never from the prior. The prior was only the
 starting belief; the posterior is the belief \emph{after} the data have been
@@ -17621,7 +17740,7 @@ reverse.
 \textbf{Symbol} & \textbf{Role} & \textbf{Prior (family)} & \textbf{Posterior (after data)} & \textbf{Conditional draw}\\
 \midrule
 \multicolumn{5}{@{}l}{\emph{Linear-Gaussian core --- Family~A (conjugate)}}\\[2pt]
-$\mA$ \ ($r\times r$)            & VAR(1) transition of the factors      & matrix-Normal            & matrix-Normal (updated)   & direct (Gibbs)\\
+$\mA$ \ ($r\times r$)            & VAR(1) transition of the factors      & matrix-Normal            & Gaussian on $\operatorname{vec}\mA$ (matrix-Normal only if per-factor vols equal) & direct (Gibbs)\\
 $\mQ$ \ ($r\times r$)            & factor-innovation covariance          & inverse-Wishart          & inverse-Wishart (updated) & direct (Gibbs)\\
 $\mL$ \ ($M\times r$)            & loadings (factors $\to$ series)       & matrix-Normal            & matrix-Normal (updated)   & direct (Gibbs)\\
 $\mR=(r_i)$ \ ($M$)              & idiosyncratic variances               & inverse-Gamma            & inverse-Gamma (updated)   & direct (Gibbs)\\[4pt]
@@ -17638,7 +17757,13 @@ Bayesian move \emph{prior $\to$ (data enter through the sufficient statistics)
 $\to$ posterior $\to$ draw}. The ``Posterior'' column makes conjugacy visible:
 the posterior sits in the \emph{same family} as the prior (matrix-Normal $\to$
 matrix-Normal, inverse-Wishart $\to$ inverse-Wishart, $\dots$), the data having
-only updated its hyperparameters, so the draw is \emph{direct}. The
+only updated its hyperparameters, so the draw is \emph{direct}. One
+qualification concerns $\mA$: under Specification~II the per-factor
+volatilities make the joint matrix-Normal--inverse-Wishart conjugacy of
+$(\mA,\mQ)$ hold \emph{only} when those volatilities coincide; in general
+$\mQ$ is still a clean inverse-Wishart but $\mA$ is drawn as a \emph{vectorised}
+Gaussian (a sum-of-Kronecker precision) in a two-step Gibbs move, still
+\emph{direct} but no longer a compact matrix-Normal. The
 \emph{non-conjugate} blocks (the leverage $\rho_i$ and the degrees of
 freedom $\nu$) are split off into Table~\ref{tab:theta-inventory-nonconj}; the
 latent paths --- states, not parameters --- into Table~\ref{tab:latent-paths}.
@@ -17681,7 +17806,7 @@ a prior); what differs is the \emph{algebra} of the resulting conditional.}
 \midrule
 $f_{1:T}$ & factor path & FFBS simulation smoother (forward filter, backward sample) & direct (Gibbs)\\
 $h^u_{1:T},\,h^\varepsilon_{1:T}$ \ (no leverage) & log-volatility paths ($M{+}r$ processes) & KSC mixture $+$ FFBS on the linearised state & direct (Gibbs, auxiliary)\\
-$h^u_{1:T},\,h^\varepsilon_{1:T}$ \ (leverage) & log-volatility paths ($M{+}r$ processes) & single-move \textbf{Metropolis} (Branch~A); Omori mixture $+$ FFBS (Branch~B) & MH / direct\\
+$h^u_{1:T},\,h^\varepsilon_{1:T}$ \ (leverage) & log-volatility paths ($M{+}r$ processes) & single-move \textbf{Metropolis} (Branch~A, contemporaneous); Omori mixture $+$ FFBS (Branch~B, lagged) & MH / direct\\
 $w^u_{1:T},\,w^\varepsilon_{1:T}$ & Student-$t$ tail weights & direct Gamma draw (Gaussian--Gamma conjugacy) & direct (Gibbs)\\
 \bottomrule
 \end{tabular}
@@ -17690,7 +17815,12 @@ $\btheta$ but \emph{not} parameters: each carries one value per period $t$ --- a
 whole trajectory --- so it is sampled jointly in time. They stand beside the
 parameter inventories of Tables~\ref{tab:theta-inventory}--\ref{tab:theta-inventory-nonconj};
 the consolidated who-draws-what list (paths and parameters together) is
-Table~\ref{tab:who-draws-what}. FFBS $=$ forward-filtering backward-sampling;
+Table~\ref{tab:who-draws-what}. Under leverage the KSC device does not
+disappear on its own terms: Branch~B's Omori mixture \emph{is} the
+sign-augmented refinement of KSC (ten components in place of seven), while
+Branch~A abandons the mixture altogether for a single-move Metropolis;
+without leverage the plain seven-component KSC is used unchanged (once per
+each of the $M{+}r$ processes). FFBS $=$ forward-filtering backward-sampling;
 KSC $=$ Kim--Shephard--Chib log-$\chi^2$ mixture; MH $=$ Metropolis--Hastings.}
 \label{tab:latent-paths}
 \end{table}
@@ -18207,6 +18337,8 @@ exactly what tells us, were the framework to be ported elsewhere, what would
 have to be rebuilt --- the wiring --- and what would simply carry over --- the
 core.
 
+\newpage
+
 \subsection{The journey of the data: from \texorpdfstring{$\mY$}{Y} to the draws}
 \label{subsec:data-journey}
 
@@ -18234,7 +18366,7 @@ single vector
 \text{factor paths } f_{1:T},\quad \text{weights } w,\quad
 \text{tail indices } \nu_u,\nu_\varepsilon \,\big\}.
 \]
-As the warm-start discussion of \S\ref{subsec:mcmc-bridge} established, this is
+As the warm-start discussion established, this is
 precisely the \emph{warm start} of the chain --- and precisely a \emph{partial}
 one. It says nothing about the channels the second stage adds: the log-volatility
 parameters $(\phi,\sigma_\eta^2)$, the volatility paths $h_{1:T}$ and the leverage
@@ -18399,7 +18531,11 @@ a \emph{direct} FFBS once more under lagged (Branch~B) timing, and a tuning-free
 \emph{griddy-Gibbs} grid inversion for the (log-concave) degrees of freedom.
 FFBS $=$ forward-filtering backward-sampling; KSC $=$ the
 Kim--Shephard--Chib log-$\chi^2$ mixture; MNIW $=$
-matrix-Normal--inverse-Wishart; MH $=$ Metropolis--Hastings.}
+matrix-Normal--inverse-Wishart; MH $=$ Metropolis--Hastings. The
+$\mA,\mQ$ label ``MNIW'' is shorthand for the joint draw, exact only when the
+per-factor volatilities coincide; under Specification~II in general $\mQ$ is
+drawn inverse-Wishart and $\operatorname{vec}\mA$ as a vectorised Gaussian in a
+two-step Gibbs move.}
 \label{tab:who-draws-what}
 \end{table}
 
@@ -18475,9 +18611,10 @@ sample length $T$ and are the reason the posterior is high-dimensional:
       path (in the mixed-frequency model, the augmented companion state
       $\tilde f_{1:T}$);
 \item the \textbf{volatility paths}
-      $h_{1:T}=\big(h^u_{1:T},\,\{h^\varepsilon_{i,1:T}\}_{i=1}^{M}\big)$
-      --- the common log-volatility path and, under scope D2-b, one
-      idiosyncratic path per series;
+      $h_{1:T}=\big(\{h^u_{i,1:T}\}_{i=1}^{r},\,\{h^\varepsilon_{i,1:T}\}_{i=1}^{M}\big)$
+      --- under Specification~II the $r$ per-factor common log-volatility
+      paths and, under scope D2-b, one idiosyncratic path per series
+      ($M{+}r$ processes in all);
 \item the \textbf{tail weights}
       $w=\big(w^u_{1:T},\,w^\varepsilon_{1:T}\big)$ --- the Student-$t$
       scale-mixture weights of switch D1-b, one common and one
@@ -18490,8 +18627,9 @@ in $\btheta$:
 \begin{itemize}
 \item the state-space matrices $\mA,\mQ,\mL,\mR$;
 \item the \textbf{log-volatility parameters} $(\mu,\phi,\sigma_\eta^2)$
-      for \emph{each} active AR(1) process --- $(\mu_u,\phi_u,\sigma_u^2)$
-      for the common volatility and
+      for \emph{each} of the $M{+}r$ active AR(1) processes ---
+      $(\mu_{u,i},\phi_{u,i},\sigma_{u,i}^2)$ for each of the $r$ common
+      per-factor volatilities and
       $(\mu_{\varepsilon,i},\phi_{\varepsilon,i},\sigma_{\varepsilon,i}^2)$
       for each idiosyncratic volatility;
 \item the \textbf{leverage correlations} --- the common vector
@@ -18542,8 +18680,9 @@ $T$ versus a fixed set of constants --- but in \emph{how their distributions
 arise}, and this is what the circularity of the sweep turns on. The
 \textbf{parameters} $\btheta=(\mA,\mQ,\mL,\mR,\phi,\sigma_\eta^2,
 \rho_i,\nu,\dots)$ carry \emph{explicit, subjective priors} --- laws we
-choose: a Matrix-Normal on $\mA$, inverse-Gamma (or inverse-Wishart) on the
-scales $\mR,\mQ$, a Normal--inverse-Gamma on the log-volatility coefficients,
+choose: a Matrix-Normal on $\mA$ and $\mL$, an inverse-Gamma on the
+idiosyncratic scales $\mR$ and an inverse-Wishart on the factor scale $\mQ$,
+a Normal--inverse-Gamma on the log-volatility coefficients,
 a prior supported on the admissible region for $\rho_i$, a proper prior
 on $(2,\infty)$ for $\nu$ (the choices catalogued with the parameter blocks
 below). Each parameter block is then drawn from prior $\times$ likelihood --- a
@@ -18557,7 +18696,7 @@ measurement (governed by $\mL,\mR$) ties them to the data. In this sense the
 states' prior \emph{is} the model, and it is determined \emph{by the
 parameters} --- a dynamic prior, not a subjective one. The one genuine
 exception is the \emph{initial} state $f_0\sim\mathcal N(0,\boldsymbol\Sigma_0)$
-of \eqref{eq:dgp-obs}: an explicit prior placed on a state to seed the
+introduced with the data-generating process: an explicit prior placed on a state to seed the
 recursion (held fixed here), the single bridge where a state is given a law
 from outside the transition. The asymmetry is exactly what makes the sweep
 circular and well posed: the states are drawn given the parameters (from the
@@ -18636,13 +18775,14 @@ Path-blocking solves the mixing of the latent \emph{paths}; the
 \emph{parameters} of the log-volatility processes can still mix slowly,
 the persistence $\phi$ and the innovation variance $\sigma_\eta^2$ in
 particular, because each is strongly coupled to the very path it governs.
-A known remedy --- left to future work and not used here --- is
-\emph{interweaving} (the ancillarity--sufficiency interweaving strategy,
-ASIS, of Yu and Meng 2011), which alternates the volatility update between
-its centred and non-centred parametrisations; it would improve the mixing
-of $(\phi,\sigma_\eta^2)$ and, by breaking the same path/scale coupling
-that produces the fixed point above, could further sharpen the estimate of
-the volatility of volatility.
+The remedy is \emph{interweaving} (the ancillarity--sufficiency interweaving
+strategy, ASIS, of Yu and Meng 2011), which plays the volatility update off
+between its centred and non-centred parametrisations; it improves the mixing
+of $(\phi,\sigma_\eta^2)$ and, by breaking the same path/scale coupling that
+produces the fixed point above, sharpens the estimate of the volatility of
+volatility --- and, through the coupling, of the leverage $\rho$. We develop it
+in full below, including the leverage case that is our actual specification, in
+its own dedicated section.
 
 \subsection{Practical ingredients}
 \label{subsec:gibbs-practical}
@@ -18910,6 +19050,23 @@ backward sampling and no storage of the full covariance sequence --- which
 makes it the preferred route for higher-dimensional states. Either
 sampler may be used interchangeably for this block.
 
+One caveat makes the equivalence exact. The forward simulation of
+$(\tilde f^+_{1:T},y^+_{1:T})$ must be driven by the \emph{same}
+time-varying covariances $\tilde{\mQ}_t,\tilde{\mR}_t$ of
+\eqref{eq:states-tv-cov}--\eqref{eq:states-aug-Q} --- that is, conditional
+on the \emph{current} volatility and weight paths $h_{1:T},w$ --- for
+otherwise the artificial data are drawn from the wrong model and the
+mean-correction no longer targets $p(\tilde f_{1:T}\mid\mY,\cdot)$. Under
+that conditioning ``simulating forward from the model'' is exactly the
+weighted state-space of step~(a), and the two routes coincide.
+
+\smallskip
+\noindent\emph{We adopt FFBS.} At the present state dimension ($5r$, with
+$r$ small) the storage and per-period draw that DK spares are negligible,
+while FFBS reuses the RTS gain $J_t$ \eqref{eq:ffbs-gain} of the E-step
+verbatim; we therefore use FFBS as the default for this block, with the
+Durbin--Koopman route held in reserve should $r$ grow.
+
 \subsection{What is reused}
 \label{subsec:states-reuse}
 
@@ -19144,19 +19301,29 @@ block; the common block, because $\mQ$ is full, is instead drawn as a single
       way the idiosyncratic block does. Writing the innovation in structural
       form, $u_t=\sqrt{\mathbf H^u_t}\,\zeta_t/\sqrt{w^u_t}$ with
       $\zeta_t=\mQ^{1/2}z^u_t\sim\mathcal N(0,\mQ)$, its $k$-th component is
-      $\sqrt{w^u_t}\,u_{k,t}=\sqrt{h^u_{k,t}}\,\zeta_{k,t}$, so the
-      componentwise log-square gives
+      $\sqrt{w^u_t}\,u_{k,t}=\sqrt{h^u_{k,t}}\,\zeta_{k,t}$. Because
+      $\mu_{u,i}=0$ fixes the level of each $\log h^u_{k,t}$
+      \eqref{eq:sv-mu-identification}, the base scale of factor $k$ is carried
+      by $q_{kk}=(\mQ)_{kk}$ (the notation of the leverage-attachment
+      section), so $\zeta_{k,t}$ is \emph{not} unit-variance; we
+      standardise it, $\bar\zeta_{k,t}=\zeta_{k,t}/\sqrt{q_{kk}}\sim\mathcal N(0,1)$
+      marginally, before the log-square, which then gives
       \[
       y^\ast_{k,t}\;\equiv\;\log\!\big(w^u_t\,u_{k,t}^2+c\big)
-      \;=\;\log h^u_{k,t}+\log\zeta_{k,t}^2,\qquad k=1,\dots,r,
+      \;=\;\log h^u_{k,t}+\log q_{kk}+\log\bar\zeta_{k,t}^2,\qquad k=1,\dots,r,
       \]
-      one measurement per factor, keyed to \emph{its own} volatility. But the
+      one measurement per factor, keyed to \emph{its own} volatility, with a
+      \emph{known} offset $\log q_{kk}$ (fixed by the current $\mQ$ from the
+      parameter block) and a residual $\log\bar\zeta_{k,t}^2\sim\log\chi^2_1$ of
+      the standard KSC form. Omitting the offset would let the filter absorb
+      $\log q_{kk}$ into the state and bias the sampled level against the
+      $\mu_{u,i}=0$ identification. But the
       whitening $\tilde u_t=\sqrt{w^u_t}\,\mQ^{-1/2}u_t$ that separated the
       scalar-volatility case no longer diagonalises here ---
       $\mQ^{-1/2}\sqrt{\mathbf H^u_t}\,\mQ^{1/2}$ is not diagonal --- so the
-      $r$ measurement errors $\log\zeta_{k,t}^2$ are \emph{mutually
-      correlated}, their joint law fixed by the correlations of $\mQ$ (the
-      $\zeta_{k,t}$ share the covariance $\mQ$). The common block is
+      $r$ residuals $\log\bar\zeta_{k,t}^2$ are \emph{mutually
+      correlated}, their joint law fixed by the \emph{correlation matrix} of
+      $\mQ$ (the $\bar\zeta_{k,t}$ share that correlation matrix). The common block is
       therefore a genuine \emph{multivariate} stochastic-volatility problem.
       Stacking the log-squares $y^\ast_t=(y^\ast_{1,t},\dots,y^\ast_{r,t})'$
       and the log-volatility state
@@ -19167,11 +19334,13 @@ block; the common block, because $\mQ$ is full, is instead drawn as a single
       $\mathrm{Var}(\boldsymbol\eta^u_t)=\mathrm{diag}(\sigma_{u,i}^2)$, the
       measurement equation is the $r$-vector
       \[
-      y^\ast_t=\log\mathbf h^u_t+\boldsymbol\xi_t,\qquad
-      \boldsymbol\xi_t=(\log\zeta_{1,t}^2,\dots,\log\zeta_{r,t}^2)',
+      y^\ast_t=\log\mathbf h^u_t+\boldsymbol\ell_{\mQ}+\bar{\boldsymbol\xi}_t,\qquad
+      \boldsymbol\ell_{\mQ}=(\log q_{kk})_{k=1}^{r},\quad
+      \bar{\boldsymbol\xi}_t=(\log\bar\zeta_{k,t}^2)_{k=1}^{r},
       \]
-      whose noise $\boldsymbol\xi_t$ carries a \emph{full} covariance
-      inherited from $\mQ$. Approximating $\boldsymbol\xi_t$ by the
+      with $\boldsymbol\ell_{\mQ}$ a \emph{known} offset vector and the noise
+      $\bar{\boldsymbol\xi}_t$ carrying a \emph{full} cross-covariance inherited
+      from the correlation matrix of $\mQ$. Approximating $\bar{\boldsymbol\xi}_t$ by the
       Kim--Shephard--Chib offset mixture componentwise --- now retaining the
       cross-component covariance, as in the multivariate treatment of Harvey,
       Ruiz and Shephard (1994) --- restores conditional Gaussianity, and the
@@ -19187,6 +19356,40 @@ one $r$-dimensional pass for the common block --- $M+1$ simulation-smoother
 passes per Gibbs iteration, the common one carrying an $r$-dimensional state
 rather than a scalar. This is the principal computational burden the
 stochastic-volatility extension adds.
+
+\paragraph{A caveat on the cross-covariance, and the default we adopt.} The
+$r$-dimensional pass above is the \emph{correct} conditional model, but two
+findings from implementing it temper how it should be used, and both point the
+same way. \emph{First, what the coupling buys.} The off-diagonal noise
+covariance makes the $r$ log-square measurements \emph{redundant} --- positively
+correlated readings carry less joint information than $r$ independent ones ---
+so, relative to a \emph{decoupled} sampler that (incorrectly) treats them as
+independent, the coupled pass does not sharpen the \emph{point} estimate of the
+volatility path; it \emph{widens} it to its honest width. Its benefit is
+therefore \emph{calibration}, not point accuracy. For our purpose this is the
+\emph{right} trade: the deliverable is a predictive \emph{density} and its
+Growth-at-Risk tail, for which an honestly wide volatility posterior matters more
+than a sharp path, and the decoupled sampler's over-confidence would compress the
+density and understate tail risk. \emph{Second, how to realise it.} The literal
+``mixture componentwise \emph{and} retained cross-covariance'' --- pairing the
+mixture's \emph{conditional} per-component variances $v^2_{s_k}$ with the
+\emph{unconditional} log-square correlation on the off-diagonal --- is internally
+inconsistent and numerically fragile: at strong factor-innovation correlation it
+destabilises the least persistent factor. The consistent alternative keeps the
+\emph{exact} constant covariance of $\bar{\boldsymbol\xi}_t$ (diagonal $\pi^2/2$,
+off-diagonal the exact log-square covariance $g(\rho_{jk})$) --- the
+quasi-maximum-likelihood covariance of Harvey, Ruiz and Shephard (1994), without
+the componentwise mixture --- which is stable but drops the mixture's marginal
+refinement. \emph{The default we adopt is therefore the decoupled sampler}
+($R_\xi=\mathbf I$): it is exact when $\mQ$ is diagonal, the sanctioned
+near-diagonal approximation otherwise, and free of the instability. The coupled
+pass, in its stable QML form, is held as an \emph{option} to be switched on
+\emph{only if} the estimated factor-innovation correlations prove materially
+non-diagonal \emph{and} the calibration of the predictive tail is seen to suffer
+--- a data-driven choice, not a default. It bears repeating that, in this model,
+the tail of the Growth-at-Risk density is carried chiefly by the second-stage
+quantile map rather than by the forward-simulated volatility, which buffers the
+whole question.
 
 \subsection{What is reused, what is new}
 \label{subsec:vol-reuse}
@@ -19237,6 +19440,21 @@ $\eta_t$ --- and hence of the next log-volatility --- \emph{depends on the
 observed level shock}: a draw of the volatility path can no longer treat
 the level residual as uninformative about $\eta_t$. The sampler must
 condition the volatility innovation on the level residual.
+
+\smallskip
+\noindent\emph{The same shock, read with its sign.} It is worth pinning down
+what this shock \emph{is}, since it is the same object the base sampler already
+used --- only read differently. The standardized level shock is
+$z_t=e_t/\sqrt{h_t}$, and its \emph{log-square} $\log z_t^2=\xi_t$ was precisely
+the $\log\chi^2_1$ measurement noise of the base case \eqref{eq:vol-logsquare}.
+The base sampler kept only $z_t^2$ --- its \emph{magnitude} (a large residual
+signals a high $h_t$), the square discarding the sign; leverage instead keys on
+the \emph{signed} $z_t$, because the correlation $\rho$ is with the signed shock.
+Nothing new is observed: the \emph{same} residual is merely re-read with its
+sign restored. This is why, once the population conditional is turned into a
+sampler, the sign $d_t=\operatorname{sign}(e_t)$ resurfaces as the extra
+ingredient the base log-square had thrown away (the ``discarded sign''
+discussed below).
 
 \subsection{The conditional law of the volatility innovation}
 \label{subsec:lev-conditional}
@@ -19307,8 +19525,8 @@ the correction; the \emph{timing} convention of the asymmetry section
 fixes \emph{which} log-volatility transition it modifies, since it
 determines which $\eta$ is coupled to $z_t$.
 \begin{itemize}
-\item \textbf{Contemporaneous timing} (our principal specification):
-      $z_t$ is correlated with $\eta_t$, the innovation that drives
+\item \textbf{Contemporaneous timing} (the retained alternative, derived in
+      full): $z_t$ is correlated with $\eta_t$, the innovation that drives
       $\log h_t$ in \eqref{eq:vol-state-ar1}. The leverage drift then
       enters the \emph{same-period} transition,
       \begin{equation}
@@ -19317,7 +19535,7 @@ determines which $\eta$ is coupled to $z_t$.
       + \rho\,\sigma_\eta\,z_t,\;\; \sigma_\eta^2\big(1-\rho^2\big)\Big).
       \label{eq:lev-transition-contemp}
       \end{equation}
-\item \textbf{Lagged timing} (the retained variant): $z_t$ is correlated
+\item \textbf{Lagged timing} (the form we lean toward): $z_t$ is correlated
       with $\eta_{t+1}$, which drives $\log h_{t+1}$, so the very same
       drift $\rho\sigma_\eta z_t$ corrects the \emph{next-period}
       transition $\log h_{t}\!\to\!\log h_{t+1}$ instead,
@@ -19346,11 +19564,16 @@ determines which $\eta$ is coupled to $z_t$.
 In both cases the modification is identical in form --- the transition
 mean of the log-volatility AR(1) is shifted by $\rho\sigma_\eta z_t$ and
 its innovation variance shrunk to $\sigma_\eta^2(1-\rho^2)$ --- and only
-the index of the corrected transition differs. We adopt the
-contemporaneous form \eqref{eq:lev-transition-contemp} to remain
-coherent with the principal specification declared in the asymmetry
-section, flagging the timing as a choice with consequences for the
-sampler, to which we return below.
+the index of the corrected transition differs. Both indices are derived in
+full in the estimation sections below; consistent with the asymmetry section
+we lean toward the lagged form \eqref{eq:lev-transition-lagged-reindexed}, on
+Yu's (2005) grounds and for the better-mixing blocked draw it admits. For
+concreteness the immediate exposition of the modified sampler is written for
+the contemporaneous form \eqref{eq:lev-transition-contemp} --- the two differ
+only in the index of the corrected transition --- with the lagged route
+developed alongside it in the ``Two Routes'' section, so that the timing
+remains a deliberate choice with consequences for the sampler rather than a
+foreclosed one.
 
 \subsection{The modified sampler}
 \label{subsec:lev-sampler}
@@ -19370,7 +19593,11 @@ Kim--Shephard--Chib observation density \eqref{eq:vol-ksc-obs}, the
 indicators, and the backward-sampling recursion \eqref{eq:ffbs-backward}
 itself --- is identical to the base case. In one line: \emph{leverage
 re-drifts the state equation of the volatility filter and leaves the
-measurement equation alone.}
+measurement equation alone.} This ``measurement left alone'' is the
+\emph{contemporaneous} reading, for which the present exposition is written;
+under the lagged Branch~B the discarded sign re-enters through the measurement
+itself, via the sign-augmented Omori mixture, as the ``Two Routes'' section
+makes precise.
 
 \subsection{Idiosyncratic leverage: the same coupling on all \texorpdfstring{$M$}{M} series}
 \label{subsec:lev-idiosyncratic}
@@ -19690,17 +19917,16 @@ distinct ways. Rather than pick one and suppress the other, we derive
 \emph{both} estimation routes here, as two branches growing from one
 common trunk. This keeps the exposition free of repetition --- the shared
 structure is established once --- and it leaves the final choice a genuine
-methodological decision, to be settled empirically and with the
-supervisor, with both instruments already in hand.
+methodological decision.
 
-\subsection{The common trunk: one coupling, three manifestations}
+\subsection{The common trunk: one coupling, two manifestations}
 \label{subsec:lev-trunk}
 
 Everything specific to leverage in the sampler descends from one fact:
 the leverage couples the \emph{level} innovation and the
 \emph{log-volatility} innovation through a single off-diagonal
-correlation $\rho$. From that one coupling, three manifestations have
-appeared.
+correlation $\rho$. From that one coupling, two manifestations have
+appeared, sharing a single root.
 \begin{enumerate}
 \item[(i)] \textbf{Volatility transition (block~b).} The log-volatility
       transition ceases to be linear-Gaussian, for two reasons: the
@@ -19713,11 +19939,10 @@ appeared.
       propagate into the weight's conditional, conditioning on the sampled
       volatility re-centres the underlying Gaussian base shock, and the
       $w$-kernel is no longer exactly Gamma.
-\item[(iii)] \textbf{Common root.} Both are the same phenomenon: a
-      correlation between level and volatility that the conditionally
-      independent blocks of the base sampler did not have to face.
 \end{enumerate}
-The object common to every route is the conditional law of the
+Both are the same phenomenon --- a correlation between level and volatility
+that the conditionally independent blocks of the base sampler did not have to
+face. The object common to every route is the conditional law of the
 volatility innovation given the level shock, derived earlier,
 \begin{equation}
 \eta_t \mid z_t \;\sim\;
@@ -19801,46 +20026,17 @@ $\sum_i \rho_{\varepsilon,i}\eta_{i}c_{i,t}/[\sigma_{\varepsilon,i}(1-\rho_{\var
 This is still a \emph{single} $\sqrt{w}$ term: the obstruction is
 one-dimensional, whatever the number of series.
 
-\paragraph{Two responses, available to either branch.} The non-conjugate
-kernel \eqref{eq:lev-weight-kernel} admits two treatments, and they are a
-\emph{separate axis} from the choice of timing.
-\begin{itemize}
-\item \textbf{Separable specification (retain conjugacy).} Adopt the
-      principal specification of the asymmetry section, in which the tail
-      weight is held \emph{independent} of the level--volatility leverage
-      channel: the leverage is borne by the Gaussian base shock and
-      propagates only into the volatility transition of step (b), while the
-      weight's conditional continues to see only the deflated residual.
-      Operationally this severs the $\sqrt{w_t}$ cross-term from
-      \eqref{eq:lev-weight-kernel}, and the exact deflated-Gamma draw of
-      step (c) survives verbatim. The cost is conceptual and mild --- the
-      weight does not itself register the asymmetry, which is in any case
-      carried by the volatility --- and this is the default we adopt.%
-      \footnote{A preliminary check on simulated data supports the choice.
-      Under moderate leverage the weight draw of the exact coupling is
-      essentially indistinguishable from the separable Gamma draw --- the
-      Metropolis correction is almost always accepted, the two conditionals
-      practically coincide --- and the weight carries no skewness of its own:
-      the asymmetry travels entirely through the volatility channel, which is
-      identical under both specifications. What the separable treatment gives
-      up is therefore not the \emph{object} (the predictive skewness is
-      unaffected) but a small amount of \emph{efficiency} in identifying
-      $\rho$, which the exact coupling extracts through the extra weight--drift
-      link; this efficiency cost is negligible under moderate leverage and
-      grows with its strength. The separable specification thus stands as the
-      default, and the ``mild'' cost noted above is now sharpened: it is one of
-      efficiency, not merely of concept. Quantitative evidence is deferred to
-      the empirical section, on the real data.}
-\item \textbf{Exact coupling (a small Metropolis correction).} Keep the full
-      kernel \eqref{eq:lev-weight-kernel} and replace the Gamma draw with an
-      independence Metropolis or accept--reject step. The target is
-      univariate and dominated by a Gamma proposal (after a mild rate
-      adjustment when the cross-term coefficient is positive), so the
-      correction is exact and cheap --- one such step per weight per period,
-      $2T$ in all.
-\end{itemize}
-With the general obstruction and its two responses in hand, we can now say,
-for each branch, exactly what happens in step (b) and in step (c).
+\paragraph{A separate axis, settled once.} How to \emph{respond} to the
+non-conjugate kernel \eqref{eq:lev-weight-kernel} --- a \emph{separable}
+default that severs the $\sqrt{w_t}$ cross-term and keeps step~(c)'s exact
+Gamma draw, or an \emph{exact coupling} that retains the cross-term through a
+small independence-Metropolis correction --- is a decision \emph{orthogonal}
+to the timing: it is one and the same in either branch. We therefore do not
+settle it inside Branch~A or Branch~B but once, in the dedicated subsection
+``The weight axis is separate'' below, whose conclusion --- the separable
+default --- is the one we carry. With the general obstruction identified, we
+can now give, for each branch, what happens in \emph{step (b)}; the weight,
+step (c), follows that single resolution.
 
 \subsection{Branch A: contemporaneous timing with a Metropolis update}
 \label{subsec:lev-branch-A}
@@ -19880,41 +20076,23 @@ accepted with the usual probability
      {\pi(\log h_t)\,q(\log h_t^\star\mid\log h_t)}\right\}.
 \label{eq:lev-mh-accept}
 \end{equation}
-\emph{Pro:} the route is faithful to the contemporaneous timing adopted in
-the initial presentation of the asymmetry, so no part of the model
-specification has to be revised. \emph{Con:} it discards the
-mixture-and-FFBS scaffolding of the base volatility block; a single-move
-Metropolis sampler mixes more slowly than a blocked draw and requires
-proposal tuning to achieve a workable acceptance rate.
+\emph{Pro:} the route matches the contemporaneous timing of the initial,
+provisional presentation of the asymmetry and is self-contained ---
+implementable at once from first principles, with no tabulated constants.
+\emph{Con:} it departs from the lagged timing we ultimately adopt, and it
+discards the mixture-and-FFBS scaffolding of the base volatility block; a
+single-move Metropolis sampler mixes more slowly than a blocked draw and
+requires proposal tuning to achieve a workable acceptance rate.
 
 \paragraph{Step (c) --- the tail weight.}
-Under the contemporaneous timing the weight $w_t$ couples, through
-$z_t\propto\sqrt{w_t}$, to $\eta_t$ --- the \emph{same-period} innovation
-that Step (b) is already updating by single-move Metropolis. The two
-state-dependent objects of period $t$, $\log h_t$ and $w_t$, therefore live
-in one and the same conditional, and the leverage kernel
-\eqref{eq:lev-weight-kernel} of the weight is just the level-likelihood and
-transition-into-$t$ factors of the Metropolis target
-\eqref{eq:lev-mh-target}, now read as a function of $w_t$ rather than of
-$\log h_t$. This makes the natural course transparent: since Branch~A has
-\emph{already} abandoned conjugacy and works by evaluating an unnormalised
-density, the cheapest treatment folds the weight into the same per-period
-move --- either updating the pair $(\log h_t,w_t)$ jointly, or drawing
-$w_t$ in an inner Metropolis step conditional on the freshly proposed
-$\log h_t$, in both cases evaluating \eqref{eq:lev-weight-kernel} directly.
-The $\sqrt{w_t}$ cross-term that obstructs the Gamma draw is no obstacle
-here: it is one more term in a target the sampler already evaluates, and no
-conjugacy is being claimed to lose. This is the ``exact-coupling'' response
-to the weight kernel~\eqref{eq:lev-weight-kernel} set out above, and in
-Branch~A it would graft on \emph{without friction} --- the leverage on the
-weight could be taken exactly, folded into the Metropolis machinery the
-contemporaneous timing forces on Step (b) anyway. We nonetheless retain the
-\emph{separable} specification here too, in line with the default adopted
-above: the weight keeps its clean deflated-Gamma draw and does not itself
-register the asymmetry, which is in any case carried by the volatility.
-Exact coupling on the weight therefore remains an \emph{available option} in
-Branch~A --- and a cheap one, the Metropolis machinery being already paid
-for --- rather than the course we take.
+The weight follows the separable default settled below on the weight axis, so
+step (c) is the clean deflated-Gamma draw \eqref{eq:w-post-eps} exactly as in
+the base case. Worth noting only is that Branch~A makes the alternative --- the
+exact coupling --- essentially free: since $z_t\propto\sqrt{w_t}$ couples $w_t$
+to the \emph{same-period} $\eta_t$ that step (b) already updates by Metropolis,
+the weight's $\sqrt{w_t}$ cross-term \eqref{eq:lev-weight-kernel} could be
+folded into that per-period move at no extra machinery. It thus remains an
+available, nearly-free option in Branch~A, rather than the course we take.
 
 \subsection{Branch B: lagged timing with the sign-augmented mixture}
 \label{subsec:lev-branch-B}
@@ -19968,9 +20146,9 @@ $\log h_t$, and the sign is supplied by conditioning on $d_t$. The path
 $\log h_{1:T}$ is then drawn by exactly the forward-filtering
 backward-sampling pass of the base block. \emph{Pro:} the entire
 Kim--Shephard--Chib-plus-FFBS scaffolding is retained, and the route rests
-on Yu's (2005) theoretical case for the lagged form. \emph{Con:} it
-requires adopting the lagged timing, a change from the contemporaneous
-convention used when the asymmetry was first presented.
+on Yu's (2005) theoretical case for the lagged form --- the timing we adopt.
+\emph{Con:} it is gated on the ten-component Omori table, so it cannot be
+coded until those constants have been retrieved and validated.
 
 The ten constants per component are reported in
 Table~\ref{tab:omori-mixture}.
@@ -20022,33 +20200,21 @@ pass ($\sum_j q_j=1$, $\sum_j q_j m_j\approx-1.2704$, $b_j=a_j/2$).}
 \end{table}
 
 \paragraph{Step (c) --- the tail weight.}
-The lagged timing changes \emph{where} the weight's leverage coupling falls,
-not \emph{whether} it falls. The weight $w_t$ still enters through
-$z_t\propto\sqrt{w_t}$, but now $z_t$ is correlated with $\eta_{t+1}$, the
-innovation of the \emph{next-period} transition $t\!\to\!t+1$, so the
-non-conjugate kernel \eqref{eq:lev-weight-kernel} holds verbatim with
-$\eta=\eta_{t+1}$: the $\sqrt{w_t}$ obstruction is exactly the one carried
-by that kernel~\eqref{eq:lev-weight-kernel}, neither lighter nor heavier
-than in Branch~A. What the lagging \emph{does} buy is a cleaner separation. Because
-$z_t$ is now independent of the \emph{same-period} innovation $\eta_t$, the
-period-$t$ residual and the period-$t$ volatility update no longer pull on
-each other; the level--volatility entanglement is displaced one step ahead,
-into the $t\!\to\!t+1$ transition that the sign-augmented mixture and the
-FFBS pass of Step (b) already treat jointly and linearly. That is precisely
-why Branch~B pairs naturally with the \emph{separable} response introduced
-above with the weight kernel~\eqref{eq:lev-weight-kernel}: the whole appeal
-of this route is that it
-preserves the blocked, tuning-free conjugate structure of the base sampler,
-and that structure is kept most cleanly by letting the leverage live
-entirely in the (now linear-Gaussian) volatility block while the weight
-retains its exact deflated-Gamma draw \eqref{eq:w-post-eps}. The
-exact-coupling alternative --- an independence-Metropolis correction on
-\eqref{eq:lev-weight-kernel} --- remains available and is no harder than in
-Branch~A, but it would reinsert a non-conjugate accept--reject step into the
-one route whose purpose is to avoid such steps; the conjugate/separable
-default is therefore the coherent choice for Branch~B. In one line:
-\emph{lagged timing does not restore conjugacy by itself --- it makes the
-separable specification, which does, the natural and lossless default.}
+Here too the weight follows the separable default settled below, so step (c)
+stays the exact deflated-Gamma draw \eqref{eq:w-post-eps}. The lagged timing
+changes only \emph{where} the coupling falls, not \emph{whether}: the kernel
+\eqref{eq:lev-weight-kernel} holds verbatim with $\eta=\eta_{t+1}$. What it
+buys is a cleaner separation --- $z_t$ is now independent of the same-period
+$\eta_t$, so the period-$t$ residual and volatility update no longer pull on
+each other, the entanglement displaced one step ahead into the
+$t\!\to\!t+1$ transition the sign-augmented mixture already treats linearly.
+This is why the separable default is not merely convenient but \emph{coherent}
+for Branch~B: the whole appeal of the route is to preserve the blocked,
+tuning-free conjugate structure, and an exact-coupling Metropolis on the
+weight would reinsert exactly the non-conjugate step the branch exists to
+avoid. In one line: \emph{lagged timing does not restore conjugacy by itself
+--- it makes the separable specification, which does, the natural and lossless
+default.}
 
 \subsection{Both branches across all \texorpdfstring{$M+r$}{M+r} leverage channels}
 \label{subsec:lev-branches-allproc}
@@ -20066,17 +20232,54 @@ sign-and-mixture construction likewise, each on the relevant scalar residual.
 The cost is the one already noted --- the leverage treatment is repeated
 $M+r$ times per sweep.
 
+\smallskip
+\noindent\emph{Two boundary details specific to the common block under
+Option~A.} They do not arise for the idiosyncratic series and are easily
+missed when the per-factor construction is read off the generic scalar
+template, so we make them explicit.
+
+\emph{(i) The augmenting sign is that of the whitened shock.} Branch~B
+reinstates the sign $d_t$ of the disturbance the leverage couples to. Under
+Option~A that disturbance is the \emph{raw} shock of factor $i$,
+$z^u_{i,t}=\big[\sqrt{w^u_t}\,\mQ^{-1/2}\big(\sqrt{\mathbf H^u_t}\big)^{-1}u_t\big]_i$,
+so the augmenting sign is $d^u_{i,t}=\operatorname{sign}(z^u_{i,t})$ --- the
+sign of that \emph{whitened} coordinate. Because $\mQ$ is full, this is
+\emph{not} in general $\operatorname{sign}(u_{i,t})$, the sign of the raw
+factor innovation: the whitening $\mQ^{-1/2}$ re-combines the components, so
+the two signs can disagree. The idiosyncratic block has no such subtlety ---
+$\mR$ is diagonal, the whitening is a per-series rescaling that preserves
+sign, and $d^\varepsilon_{i,t}=\operatorname{sign}(e_{i,t})$ without
+qualification. The distinction is immaterial only when $\mQ$ is diagonal.
+
+\emph{(ii) The common block's leverage transitions start one step late.} The
+factor innovation $u_t=f_t-\mA f_{t-1}$ exists only for $t\ge1$, so $z^u_0$ is
+undefined and the earliest volatility transition it could correct is absent.
+Under the lagged timing, where $z^u_{i,t}$ corrects the transition into
+$\log h^u_{i,t+1}$, the first leverage-bearing transition is therefore the one
+into $\log h^u_{i,2}$ (driven by $z^u_{i,1}$), since $\log h^u_{i,1}$ is not
+produced by a transition but drawn from its stationary law and so carries no
+leverage. Under the contemporaneous timing, where $z^u_{i,t}$ instead corrects
+the transition into $\log h^u_{i,t}$, that first leveraged transition is again
+the one into $\log h^u_{i,2}$ --- now driven by the same-period $z^u_{i,2}$, the
+earliest shock $z^u_{i,1}$ having no earlier transition to attach to. The
+idiosyncratic residuals, by
+contrast, exist from $t=0$ at every observed period, so $\eta^\varepsilon_{i,1}$
+pairs with $z^\varepsilon_{i,0}$ under the lagged timing with no such shift.
+This asymmetry is specific to the common block and to the lagged variant, and
+must be honoured per factor once the single common process is split into the
+$r$ per-factor volatilities.
+
 \subsection{The weight axis is separate: one draw under the default, and which response to prefer}
 \label{subsec:lev-weight-axis}
 
-The per-branch reading just given keeps two decisions entwined that are in
-fact \emph{orthogonal}, and it is worth disentangling them before the
-timing trade-off, because the confusion is natural. The first decision is
+The branches above deferred the weight to this single point, and here is why
+that is the right place for it: the weight response and the timing are
+\emph{orthogonal} decisions, easily entwined. The first decision is
 the \emph{timing} --- Branch~A (contemporaneous) versus Branch~B (lagged)
 --- and it genuinely forces two different \emph{volatility} samplers, as
 Step (b) of each branch showed. The second decision is the \emph{weight
-response} introduced above with the weight kernel~\eqref{eq:lev-weight-kernel}
---- separable default versus exact coupling --- and it does \emph{not}
+response} --- separable default versus exact coupling, from the weight
+kernel~\eqref{eq:lev-weight-kernel} --- and it does \emph{not}
 depend on the timing at all. The
 design space is therefore a $2\times1$ grid, not a $2\times2$ one:
 
@@ -20184,9 +20387,9 @@ Volatility sampler & single-move Metropolis--Hastings & sign-augmented $10$-comp
 Reuse of base block & abandons KSC mixture and FFBS & retains KSC mixture (refined) and FFBS\\
 State-dependent drift & handled by direct density evaluation & linearised into the component constants\\
 Lost sign & no issue (signed residual used) & restored via the sign indicator $d_t$\\
-Weight conjugacy, step (c) & broken by leverage (as in both timings); taken exactly, folded into the per-period MH & broken by leverage (as in both timings); kept exact via the separable default, else MH\\
+Weight conjugacy, step (c) & broken by leverage (both timings); \emph{separable default} adopted $\to$ clean Gamma draw; exact coupling optional, folds into the MH for free & broken by leverage (both timings); \emph{same} separable Gamma draw; exact coupling would need an extra MH\\
 Theoretical basis & Jacquier, Polson \& Rossi (2004) & Yu (2005); Omori et al.\ (2007)\\
-Match to initial presentation & yes (contemporaneous adopted) & requires switching the timing\\
+Timing vs.\ adopted choice & the provisional initial timing, \emph{not} the one adopted & the lagged timing we adopt\\
 Mixing / tuning & slower, needs proposal tuning & fast, blocked, no tuning\\
 Immediate implementability & yes: self-contained, no external table & no: needs the $10$-component table (Table~\ref{tab:omori-mixture}) first\\
 \bottomrule
@@ -20195,26 +20398,30 @@ Immediate implementability & yes: self-contained, no external table & no: needs 
 common trunk established above. The two rows on the volatility sampler
 (step b) are where the branches genuinely differ; on the weights (step c)
 the leverage breaks the exact Gamma conjugacy in \emph{both} timings
-(the weight kernel~\eqref{eq:lev-weight-kernel}), and the entries record only the
-\emph{natural} response of each branch --- folded into Branch~A's
-Metropolis, kept conjugate by Branch~B's separable default.}
+(the weight kernel~\eqref{eq:lev-weight-kernel}), but under the
+\emph{separable default} we adopt the step-(c) draw is the \emph{same} clean
+Gamma in either branch --- the entries note only where the \emph{optional}
+exact coupling would be housed: free inside Branch~A's Metropolis, an extra
+step in Branch~B.}
 \label{tab:leverage-routes}
 \end{table}
 
-\noindent The trade-off is clean and there is no dominant choice. Branch~A
-preserves the timing of the model as first presented at the cost of the
-efficient blocked sampler; Branch~B preserves the efficient sampler and a
-stronger theoretical pedigree at the cost of switching the timing
-convention. Which to prefer depends on considerations the derivation alone
-cannot settle --- the empirical sensitivity of the Growth-at-Risk results
-to the timing, the mixing actually achieved on our data, and the
-supervisor's reading of the modelling priorities. We therefore leave the
-final choice open as a deliberate methodological decision. What matters
-for the derivation is that \emph{both} routes are now complete: whichever
-timing is ultimately adopted, the corresponding sampler is already in
-hand. Carrying both to completion, rather than committing prematurely,
-demonstrates command of the full estimation problem and keeps every door
-open.
+\noindent The trade-off is clean. Branch~A preserves the timing of the model
+as first presented but at the cost of the efficient blocked sampler and its
+proposal tuning; Branch~B preserves the efficient, tuning-free sampler and
+rests on the stronger theoretical pedigree of Yu (2005), at the cost of the
+lagged timing and the tabulated Omori constants. On balance we \emph{adopt
+Branch~B (lagged) as the working default}: the blocked FFBS draw mixes far
+better than a tuned single-move Metropolis, and Yu's (2005) case makes the
+lagged form the more defensible convention. Branch~A is nonetheless carried to
+completion as the fully-derived alternative --- both because it is
+implementable immediately, needing no external table, and because it furnishes
+the cheap sensitivity check on the weight coupling noted above. The final
+confirmation --- that the Growth-at-Risk results are insensitive to the timing
+on our data --- is deferred to the empirical section; short of a surprise
+there, Branch~B is the route we take. Carrying both to completion, rather than
+committing blindly, keeps that verification available and demonstrates command
+of the full estimation problem.
 
 \paragraph{A practical note on the work sequence.} The two routes differ in
 one respect that is invisible in the mathematics but decisive for the order
@@ -20247,6 +20454,22 @@ the cross-moments that the M-step formed as posterior expectations
 $\mathbb E[f_tf_t'\mid\mY]$ become \emph{realised} outer products
 $f_tf_t'$ of the drawn path --- the same algebra, with the expectation
 dropped.
+
+\paragraph{A convention on the time index.} Throughout this block $T$ denotes
+the \emph{effective} number of terms entering each sum, and this count is not
+the same on the two sides. The observation equation supplies one residual per
+observed period, so the idiosyncratic sums --- the $r_i$ and $\nu_\varepsilon$
+updates --- run over all $t=1,\dots,T$. The factor transition, by contrast,
+consumes one lag: the VAR(1) innovation $u_t=f_t-\mA f_{t-1}$ and its tail
+weight $w^u_t$ exist only for $t=2,\dots,T$, so the factor-side sums --- the
+$\mQ$ and $\nu_u$ updates --- carry $T-1$ terms. This is exactly the
+$T_{\mathrm{eff}}=T-1$ convention of the EM sections, which condition on $f_1$
+rather than modelling $f_1\mid f_0$. For readability we keep the single symbol
+$T$ in the displayed conditionals below (in the inverse-Wishart degrees of
+freedom $\nu_0+T$ of \eqref{eq:param-Q-post} and the product $\prod_{t=1}^{T}$
+of \eqref{eq:param-nu-lik}), with the understanding that \emph{on the factor
+side it stands for this effective count} $T-1$; Family~B, whose regression
+starts explicitly at $t=2$, writes the $T-1$ out in full for the same reason.
 
 \paragraph{What the volatility terms multiply.} Before proceeding it is
 worth fixing the \emph{dimensions} of the stochastic-volatility terms, since
@@ -20290,6 +20513,55 @@ This block is also where the \emph{priors}, deferred until now, must be
 specified, since it is they that combine with the likelihood to give the
 conditionals below.
 
+\bigskip
+\noindent
+\begin{center}
+\fcolorbox{black!35}{black!4}{%
+\begin{minipage}{0.95\linewidth}
+\small
+\vspace{2pt}
+\textbf{Reading guide --- what these prior families are, and why each
+parameter takes its own.} Conditional on the sampled states the model is a
+linear-Gaussian regression, so for each parameter we pick the prior that is
+(i) supported on the parameter's \emph{own domain} and (ii) \emph{conjugate}
+to the Gaussian likelihood --- prior in, posterior in the \emph{same} family,
+hence a direct draw. There are only two kinds of parameter, and so two kinds
+of prior.
+
+\begin{itemize}[leftmargin=1.4em,itemsep=3pt,topsep=4pt]
+\item \textbf{Coefficients} (a mean / regression object: real-valued, sign
+unrestricted). The conjugate prior is a \emph{Gaussian}. For a \emph{matrix}
+of coefficients this is the \emph{matrix-Normal}
+$\mathcal{MN}(\mathbf A_0,\mathbf U,\mathbf V)$, i.e.\
+$\operatorname{vec}(\mathbf A)\sim\mathcal N\big(\operatorname{vec}(\mathbf A_0),\,\mathbf V\otimes\mathbf U\big)$
+--- a Gaussian on the entries of the matrix with a Kronecker-factored
+covariance ($\mathbf U$ across rows, $\mathbf V$ across columns), density
+$\propto\exp\!\big[-\tfrac12\operatorname{tr}\{\mathbf V^{-1}(\mathbf A-\mathbf A_0)'\mathbf U^{-1}(\mathbf A-\mathbf A_0)\}\big]$.
+This is why the transition $\mA$ ($r\times r$) and the loadings $\mL$
+($M\times r$) --- both regression-coefficient matrices --- are matrix-Normal.
+\item \textbf{Scales} (a variance: must be positive). For a \emph{single}
+positive number the conjugate prior is the \emph{inverse-Gamma}
+$\mathcal{IG}(a,b)$, density $\propto(\sigma^2)^{-(a+1)}e^{-b/\sigma^2}$ on
+$(0,\infty)$; for a \emph{covariance matrix}, which must be symmetric
+positive-definite (SPD), its matrix generalisation the \emph{inverse-Wishart}
+$\mathcal{IW}(\Psi,\nu)$, density
+$\propto|\Sigma|^{-(\nu+p+1)/2}e^{-\frac12\operatorname{tr}(\Psi\Sigma^{-1})}$
+on the SPD cone. The inverse-Gamma is exactly the one-dimensional
+inverse-Wishart. This is why the idiosyncratic variances $r_i$ (scalars,
+$\mR$ diagonal) are inverse-Gamma, while the factor-innovation covariance
+$\mQ$ (a full $r\times r$ SPD matrix, with cross-factor correlations) is
+inverse-Wishart.
+\end{itemize}
+
+\noindent In one line: \emph{coefficients} $\to$ (matrix-)Normal; a
+\emph{scalar variance} $\to$ inverse-Gamma; an \emph{SPD covariance} $\to$
+inverse-Wishart. One reads off the parameter's domain and takes the conjugate
+family; the resulting closed-form conditionals are derived below.
+\vspace{2pt}
+\end{minipage}}
+\end{center}
+\bigskip
+
 \subsection{Priors}
 \label{subsec:param-priors}
 
@@ -20316,6 +20588,111 @@ We use proper, weakly informative, conjugate-where-possible priors:
       uniform on a bounded range.
 \end{itemize}
 
+\paragraph{A caveat on the inverse-Wishart prior for $\mQ$, and two
+refinements that preserve the Gibbs draw.} The inverse-Wishart is the
+\emph{conjugate} choice for an SPD covariance and buys the one-line draw
+\eqref{eq:param-Q-post}, but it is not an innocent default, and it is worth
+recording the standard objection together with two fixes that keep the sampler
+conjugate. The difficulty --- documented by Barnard, McCulloch and Meng (2000),
+Tokuda, Goodrich, Van Mechelen, Gelman and Tuerlinckx (2011) and Alvarez, Niemi
+and Simpson (2014), and popularised in the ``an inverse-Wishart prior may not be
+such a good idea'' note --- is twofold. First, a \emph{single} degrees-of-freedom
+scalar $\nu_0$ governs the concentration of \emph{both} the variances and the
+correlations at once: there is no separate dial for ``vague on the scales,
+opinionated on the correlations'' or the reverse. Second, and more insidiously,
+the two become \emph{entangled}: under $\mathcal{IW}$ the implied prior on a
+correlation depends on the diagonal scales, and a small true variance is held
+away from zero, dragging the associated correlation toward it. The prior is thus
+most informative exactly where the data are thinnest --- the opposite of what
+``weakly informative'' is meant to deliver.
+
+Two observations temper the concern \emph{in our setting}. The pathology bites
+hardest in small-sample hierarchical problems --- a random-effects covariance
+read off a handful of groups --- whereas here $\mQ$ is $r\times r$ with $r$
+small and is informed by $T$ of order hundreds, so the likelihood swamps the
+prior; and the identification convention $\mu=0$ \eqref{eq:sv-mu-identification}
+loads the base scale \emph{directly} into $\mQ$, keeping its diagonal well away
+from the near-zero regime where the bias is sharp. (For $r=1$ the matter
+evaporates outright: $\mathcal{IW}$ collapses to the $\mathcal{IG}$ we already
+use for each $r_i$, and neither a correlation nor a coupling exists --- which is
+why the idiosyncratic block is untouched by any of this.) The inverse-Wishart is
+therefore defensible here; still, two refinements cost almost nothing and are
+worth having in the code.
+
+\emph{(i) A principled degrees-of-freedom.} Barnard, McCulloch and Meng (2000)
+show that under $\mQ\sim\mathcal{IW}(\Psi_0,\nu_0)$ with an isotropic scale
+$\Psi_0\propto\mathbf I_r$ each individual correlation has marginal density
+$\propto(1-\rho^2)^{(\nu_0-r-1)/2}$, so the single choice
+\begin{equation}
+\nu_0=r+1
+\label{eq:param-Q-uniform-nu}
+\end{equation}
+flattens that exponent to zero and makes \emph{every} marginal correlation
+\textbf{uniform} on $(-1,1)$ --- the least-committal correlation prior available
+inside the IW family. The variances are then centred through the scale: since
+the IW \emph{mode} is $\Psi_0/(\nu_0+r+1)$ (the mean $\Psi_0/(\nu_0-r-1)$ being
+undefined precisely at $\nu_0=r+1$, immaterial with $T$ large), taking
+$\Psi_0=(\nu_0+r+1)\,\widehat{\mQ}_{\text{EM}}=(2r+2)\,\widehat{\mQ}_{\text{EM}}$
+places the prior mode at the first-stage EM estimate. This is a one-line change
+and leaves \eqref{eq:param-Q-post} exactly conjugate --- our recommended default.
+
+\emph{(ii) An optional hierarchical inverse-Wishart with half-$t$ margins (Huang
+and Wand, 2013).} This second refinement is \emph{not} our default --- in the
+present regime ($T$ in the hundreds, $r$ small, $\mQ$ identified by $\mu=0$) the
+plain inverse-Wishart of (i) is dominated by the likelihood and suffices --- but
+it is worth having in reserve, both as a structural fix should it ever be needed
+and as a robustness benchmark against which to check that fix~(i) was enough. To
+sever the variance--correlation link \emph{outright} while \emph{keeping} the
+closed-form draw, augment the IW with $r$ auxiliary scale variables
+$a_1,\dots,a_r$ and place
+\begin{equation}
+\mQ\mid a_{1:r}\;\sim\;\mathcal{IW}\!\Big(\,2\nu^\ast\,\mathrm{diag}(a_1^{-1},\dots,a_r^{-1}),\ \ \nu^\ast+r-1\Big),
+\qquad
+a_j\;\sim\;\mathcal{IG}\!\big(\tfrac12,\ 1/A_j^2\big),
+\label{eq:param-Q-hw-prior}
+\end{equation}
+(scale first, degrees of freedom second, as in \eqref{eq:param-Q-post}).
+Marginalising over the $a_j$, this construction yields a \emph{half-$t_{\nu^\ast}$}
+prior on each innovation standard deviation $\sqrt{\mQ_{jj}}$ with scale $A_j$,
+and --- because correlations are scale-invariant and so do not see the diagonal
+$\mathrm{diag}(a^{-1})$ --- a marginal correlation law $\propto(1-\rho^2)^{(\nu^\ast-2)/2}$,
+i.e.\ \textbf{uniform} at $\nu^\ast=2$. The tails of the variances and the shape
+of the correlations are now controlled \emph{separately}, by $\nu^\ast$ and by
+the $A_j$; taking each $A_j$ large recovers, at the matrix level, the
+half-Cauchy philosophy Gelman (2006) argued for scalar variances. Crucially the
+move stays a \emph{two-block Gibbs} step, because conditional on the $a_j$ the
+prior \eqref{eq:param-Q-hw-prior} is again an ordinary inverse-Wishart: the draw
+\eqref{eq:param-Q-post} runs unchanged with
+$\Psi_0\rightsquigarrow2\nu^\ast\mathrm{diag}(a^{-1})$ and
+$\nu_0\rightsquigarrow\nu^\ast+r-1$,
+\begin{equation}
+\mQ\mid a_{1:r},\cdot\;\sim\;\mathcal{IW}\!\Big(2\nu^\ast\mathrm{diag}(a^{-1})+\textstyle\sum_t\check u_t\check u_t',\ \ \nu^\ast+r-1+T\Big),
+\label{eq:param-Q-hw-post}
+\end{equation}
+and each auxiliary has a closed inverse-gamma full conditional (derived by
+collecting the $|\Psi|^{\nu/2}$ and $\mathrm{tr}(\Psi\mQ^{-1})$ factors of the IW
+density in $a_j$ against its $\mathcal{IG}$ prior),
+\begin{equation}
+a_j\mid\mQ,\cdot\;\sim\;\mathcal{IG}\!\Big(\tfrac{\nu^\ast+r}{2},\ \ \nu^\ast\,(\mQ^{-1})_{jj}+1/A_j^2\Big),
+\qquad j=1,\dots,r,
+\label{eq:param-Q-hw-aux}
+\end{equation}
+i.e.\ $r$ scalar draws appended to Family~A. \emph{How we will use it.} The
+plan is deliberately conservative: the plain inverse-Wishart with $\nu_0=r+1$ of
+(i) is the \emph{default}, and this hierarchical form is implemented behind a
+switch, not activated by default. Its role is a one-off \emph{robustness check}
+--- re-estimate under \eqref{eq:param-Q-hw-prior} (and, cheaply, under a couple
+of alternative $\nu_0$) and confirm the posterior correlations among the factor
+innovations do not move; we would \emph{adopt} it as the working prior only in the
+unlikely event that they do. The cost of keeping it on the shelf is negligible ---
+$r$ extra inverse-gamma scalars and a swap of the IW scale --- and the payoff is
+that the inverse-Wishart critique is answered by evidence rather than by
+assertion. The \emph{scaled} inverse-Wishart of Gelman and Hill (2007), following
+O'Malley and Zaslavsky (2008), is its slightly cruder precursor, and the LKJ
+prior (Lewandowski, Kurowicka and Joe, 2009) --- correlation matrix and scales
+factored apart --- is the non-conjugate alternative one would adopt under a
+Hamiltonian sampler but which would forfeit the Gibbs draw we rely on here.
+
 \subsection{Family A --- the linear-Gaussian parameters \texorpdfstring{$\mA,\mQ,\mL,\mR$}{A, Q, Lambda, R}}
 \label{subsec:param-familyA}
 
@@ -20328,7 +20705,7 @@ $r_i$. The data reach them through the weighted
 cross-moments of the \emph{sampled} factor path (the volatility-whitened
 factor moments and the $\mathcal F_i$ sums below), the sufficient statistics
 of the conditional Gaussian regression. Within the family the entry is not quite
-uniform, and it mirrors the flow of \S\ref{subsec:data-journey}: the loadings
+uniform, and it mirrors the flow described earlier: the loadings
 and scales $\mL,\mR$ regress the \emph{observed} $y_t$ on the sampled factors
 --- $y$ the regressand, the one pair here that meets the data directly ---
 whereas $\mA,\mQ$ regress the sampled factors on their own lag and reach $\mY$
@@ -20419,6 +20796,10 @@ with $\mathbf C=\sqrt{w^u_t}\,\mathbf H_t^{u\,-1/2}$ and $\mathbf d=f_{t-1}$:
 \end{equation}
 With a Gaussian prior
 $\operatorname{vec}(\mA)\sim\mathcal N(\operatorname{vec}(\mA_0),\mathbf V_0)$
+--- of which the matrix-Normal $\mathcal{MN}(\mA_0,\mathbf U,\mathbf V)$ of the
+reading guide is the special case $\mathbf V_0=\mathbf V\otimes\mathbf U$,
+though we need not impose the Kronecker structure, since the posterior below is
+not matrix-Normal in any case ---
 the conditional is Gaussian,
 \begin{equation}
 \boxed{\;
@@ -20527,8 +20908,7 @@ The loading draw \eqref{eq:param-LR} was written, for transparency, as
 though every series loaded on the contemporaneous monthly factor $f_t$.
 That is exact for the monthly series, but the panel also contains the
 quarterly target (real GDP), and a quarterly series does not load on $f_t$
-alone: through the Mariano--Murasawa aggregation of
-Section~\ref{sec:mixed-frequency} it loads on a fixed triangular
+alone: through the Mariano--Murasawa aggregation it loads on a fixed triangular
 combination of the current and four lagged monthly factors. We record here
 how that single fact threads through the parameter sweep. The conclusion is
 the reassuring one: the loading family acquires \emph{one} new regressor and
@@ -20764,7 +21144,15 @@ residual sum of squares, which sets $\sigma_\eta^2$: a joint fixed point in
 $(\sigma_\eta^2,\log h_{1:T})$. An over-tight prior is then self-reinforcing ---
 a small $\sigma_\eta^2$ over-smooths the path, the smooth path returns a small
 SSR, and the small SSR confirms the small $\sigma_\eta^2$ --- which is why a
-weakly informative choice matters here in particular.
+weakly informative choice matters here in particular. A final note on
+\emph{which} weakly-informative prior: the master sampler does not in fact use
+the inverse-Gamma derived here but a \emph{half-Normal} prior on the standard
+deviation $\sigma_\eta$ itself --- the choice Gelman (2006) recommends for a
+weakly-identified variance, and the one the interweaving strategy of the mixing
+section needs for its non-centred update. The inverse-Gamma conditional above is
+retained as the exact \emph{conjugate baseline}, used when that strategy is
+switched off; the two coincide in every respect except the shape of the prior
+near the origin.
 
 \paragraph{Constraints and repetition.} The draw of $(\alpha,\phi)$ is
 restricted to $|\phi|<1$ (reject, or use the truncated normal), and the
@@ -20794,7 +21182,7 @@ $\phi\mid\sigma_\eta^2,\cdot\sim\mathcal N$ truncated to $|\phi|<1$, with
 the stationary start $x_1\sim\mathcal N(0,\sigma_\eta^2/(1-\phi^2))$. The
 parameter $\mu$ is not sampled; only $(\phi,\sigma_\eta^2)$ are, for each
 of the $M+r$ processes. (Leaving $\mu$ free instead would let it wander
-along the level/scale ridge of Section~\ref{sec:sv-variants}, with $\mQ$ or
+along the level/scale ridge, with $\mQ$ or
 $r_i$ drifting in compensation --- the redundancy the convention removes.)
 
 \subsection{Family C --- the leverage correlations \texorpdfstring{$\rho_i,\rho_{\varepsilon,i}$}{rho}}
@@ -20853,7 +21241,10 @@ concrete and verifiable. Let
 \end{equation}
 denote the realised AR(1) innovation of the sampled log-volatility path,
 and let $k_t$ be the period-$t$ leverage regressor --- the quantity that
-$\rho$ multiplies in the conditional mean of $\eta_t$. The $T-1$
+$\rho$ multiplies in the conditional mean of $\eta_t$. Here $\sigma_\eta$ is
+the \emph{channel's own} log-volatility innovation standard deviation ---
+$\sigma_{u,i}$ for common factor $i$, $\sigma_{\varepsilon,i}$ for series $i$
+--- carried generically to keep the scalar template uncluttered. The $T-1$
 leverage-bearing transitions are each Gaussian with mean $\rho\,k_t$ and
 variance $\sigma_\eta^2(1-\rho^2)$, so their joint density is the product
 \[
@@ -21013,6 +21404,169 @@ a maximisation: the M-step solved $\partial_\nu\log p=0$ at the
 \emph{expected} $\mathbb E[\log w_t]$, whereas the sampler explores
 \eqref{eq:param-nu} around that mode at the \emph{realised} $\sum_t\log w_t$.
 
+\subsection{Tuning the priors: hyperparameters and their defaults}
+\label{subsec:param-prior-tuning}
+
+The conditionals of the four families were written for \emph{generic} prior
+hyperparameters. This closing subsection collects, family by family, the
+concrete choices we will set in code --- what each hyperparameter means, the
+weakly-informative default we recommend, and the single quantity that governs
+them all: the prior's weight, measured in \emph{pseudo-observations}, set against
+the $T$ data points. The guiding rule is uniform. Pick each prior
+\emph{proper} (so the posterior and the sampler are well defined --- an improper
+prior can leave a Gibbs conditional non-integrable) but contributing \emph{far
+fewer} pseudo-observations than the sample, so the data dominate wherever they
+are informative and the prior only regularises where they are not. Two entries
+call for a deliberate choice rather than a merely small one --- $\sigma_\eta^2$,
+weakly identified, and $\mQ$, where the inverse-Wishart's single $\nu_0$ silently
+shapes the correlations --- and are treated separately below; the degrees of
+freedom $\nu$ are a mild third, needing only a \emph{proper} prior on
+$(2,\infty)$.
+
+\paragraph{The reference table.} Throughout, $\widehat{(\cdot)}_{\text{EM}}$
+denotes the first-stage EM estimate of the corresponding object, used to centre
+the weakly-informative priors at a sensible location (the \emph{bridge} from the
+first stage); $T$ is the effective count of the family's sums (the
+$T-1$/$T$ distinction of the opening note).
+
+\begin{table}[H]
+\centering\footnotesize
+\renewcommand{\arraystretch}{1.3}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.17\linewidth}
+                  >{\raggedright\arraybackslash}p{0.47\linewidth}
+                  >{\raggedright\arraybackslash}p{0.27\linewidth}@{}}
+\toprule
+\textbf{Parameter} & \textbf{Prior (with recommended default)} & \textbf{Weight / note}\\
+\midrule
+$\mA$ (transition)
+  & matrix-Normal $\mathcal N(\operatorname{vec}\mA_0,\mathbf V_0)$,
+    $\mA_0=\widehat{\mA}_{\text{EM}}$ (or $\mathbf 0$),
+    $\mathbf V_0^{-1}=\kappa\mathbf I$, $\kappa\!\approx\!10^{-2}$
+  & $\ll T$; shrinks weakly toward EM\\
+$\mQ$ (factor scale)
+  & inverse-Wishart $\mathcal{IW}(\Psi_0,\nu_0)$,
+    $\nu_0=r+1$, $\Psi_0=(2r+2)\widehat{\mQ}_{\text{EM}}$
+  & $r{+}1$ pseudo-obs; uniform marginal
+    correlations \eqref{eq:param-Q-uniform-nu}; optional Huang--Wand
+    \eqref{eq:param-Q-hw-prior} ($\nu^\ast\!=\!2$, $A\!\approx\!10^2$)\\
+$r_i$ (idio.\ scale)
+  & inverse-Gamma $\mathcal{IG}(a_0,b_0)$,
+    $a_0=2$, $b_0=(a_0{-}1)\widehat r_{i,\text{EM}}$
+  & $2a_0{=}4$ pseudo-obs; mean $=\widehat r_{i,\text{EM}}$\\
+$\phi$ (AR(1) persistence)
+  & Normal, trunc.\ $|\phi|<1$; $\phi_0=0.9$,
+    $\mathrm{sd}(\phi)\!\approx\!0.5$; intercept dropped under $\mu{=}0$
+  & mildly favours persistence; broad\\
+$\sigma_\eta$ (vol-of-vol)
+  & half-Normal on the signed $\sigma_\eta\sim\mathcal N(0,B)$, $B\!\approx\!1$
+    (Gelman 2006; ASIS-conjugate); $\mathcal{IG}(2,0.05)$ on $\sigma_\eta^2$ the
+    conjugate fallback
+  & \textbf{delicate}: weakly identified; half-Normal well-behaved near $0$,
+    aids mixing\\
+$\rho$ (leverage)
+  & Uniform$(-1,1)$ [or Fisher-$z$:
+    $\operatorname{atanh}\rho\sim\mathcal N(0,s^2)$, $s\!\approx\!1$]
+  & symmetric; no leverage a priori\\
+$\nu_u,\nu_\varepsilon$ (d.o.f.)
+  & proper on $(2,\infty)$: Exp.\ mean $\approx\!20$, or Unif$(2,50)$;
+    drawn by griddy-Gibbs / Metropolis
+  & finite variance; heavy but not extreme tails\\
+\bottomrule
+\end{tabular}
+\caption{Recommended weakly-informative prior hyperparameters for the four
+families, and the pseudo-observation weight each contributes. All are proper and
+--- save $\sigma_\eta^2$ and $\mQ$ --- dominated by the likelihood at the sample
+sizes of this application. Values in brackets are alternatives.}
+\label{tab:param-prior-tuning}
+\end{table}
+
+\paragraph{The two delicate cases.} Most of Table~\ref{tab:param-prior-tuning}
+is a formality --- with $T$ in the hundreds, a prior worth a handful of
+pseudo-observations is invisible. Two entries are not.
+
+\emph{(a) $\sigma_\eta^2$.} This is the parameter analysed at length under
+Family~B: the log-volatility is read only through the $\log\chi^2_1$ channel of
+variance $\pi^2/2\approx4.93$, so its innovation variance is weakly identified
+and the likelihood is nearly flat over a wide range. Here an over-tight prior is
+\emph{not} innocuous --- it dominates and compresses the estimated
+volatility-of-volatility, and does so self-reinforcingly through the Gibbs
+feedback (a small $\sigma_\eta^2$ over-smooths the path drawn in step~(b), the
+smooth path returns a small residual sum of squares, which confirms the small
+$\sigma_\eta^2$). The remedy has two coincident faces. Gelman (2006) argues that
+for a weakly-identified variance the inverse-Gamma is itself a poor
+weakly-informative choice --- sharply shaped near the origin rather than flat ---
+and that a half-$t$ or half-Normal prior on the \emph{standard deviation} is
+preferable; independently, the interweaving strategy of the mixing section wants
+a Gaussian prior on the signed $\sigma_\eta$, that being what is conjugate in its
+non-centred update. The two arguments point the same way, so the master sampler
+adopts a \emph{half-Normal} prior on $\sigma_\eta$ --- $\sigma_\eta\sim\mathcal
+N(0,B)$ with $B\!\approx\!1$, weakly informative over the plausible range and
+well-behaved at the origin --- as the default, keeping the conjugate
+$\mathcal{IG}(a_\eta,b_\eta)$ on $\sigma_\eta^2$ (shape $a_\eta\!\approx\!2$, mean
+$b_\eta/(a_\eta-1)\!\approx\!0.05$ off zero) of Family~B as the baseline for runs
+where the interweaving is switched off. The same prior is used for all $M+r$
+processes, its scale exposed as a tunable.
+
+\emph{(b) $\mQ$.} The inverse-Wishart carries the pathologies recorded in the
+caveat above. The default $\nu_0=r+1$ is chosen there
+precisely to make the marginal correlations uniform; $\Psi_0=(2r+2)\widehat{\mQ}_{\text{EM}}$
+places the mode at the EM scale. If posterior correlations among the factor
+innovations turn out to depend on $\nu_0$, the drop-in replacement is the
+Huang--Wand hierarchical prior \eqref{eq:param-Q-hw-prior}, which decouples the
+scale tails ($\nu^\ast$, $A_j$) from the correlation shape and \emph{keeps the
+Gibbs draw} via the auxiliary conditionals \eqref{eq:param-Q-hw-aux}. Its two
+dials --- the ones the single $\nu_0$ of the plain IW could not separate --- take
+the standard weakly-informative values: $\nu^\ast=2$, which gives half-$t_2$
+(heavy, near-half-Cauchy) marginals on each innovation standard deviation
+$\sqrt{\mQ_{jj}}$ \emph{and} uniform marginal correlations at once; and a common
+half-$t$ scale $A_j\equiv A$ set \emph{large} relative to the plausible
+innovation scale of the standardised panel --- $A\!\approx\!10$ is already only
+mildly informative for standard deviations of order one, and the Huang--Wand
+near-flat choice is $A\!\approx\!10^5$. Both $(\nu^\ast,A)$ are exposed as
+tunables alongside the plain-IW $(\Psi_0,\nu_0)$, so switching prior is a matter
+of flags, not of re-derivation.
+
+\paragraph{The gentler knobs.} The remaining choices are safe to leave broad.
+The transition $\mA$ takes a diffuse matrix-Normal centred at the EM fit (or at
+zero) with a tiny prior precision $\kappa\mathbf I$; because $\mA$ is genuinely
+identified by the factor autocovariance, this barely moves the posterior and
+serves only to keep the draw proper. The idiosyncratic $r_i$ take an
+$\mathcal{IG}(2,\cdot)$ with mean at the EM variance --- weak, and needed only at
+series observed rarely (a quarterly target informs its own $r_i$ only at
+quarter-ends). For $(\alpha,\phi)$ we centre $\phi$ at a persistent $0.9$ with a
+standard deviation wide enough ($\approx0.5$) to let the data speak, truncated to
+$|\phi|<1$; the persistence is well identified by the path's autocorrelation, so
+this too is light. Under the identification convention $\mu=0$
+\eqref{eq:sv-mu-identification} the intercept is dropped and only $\phi$ carries a
+prior. The leverage $\rho$ defaults to the flat Uniform$(-1,1)$ --- symmetric,
+committing to no sign of the leverage effect; a mild shrinkage toward zero, if
+desired, is cleanest as a zero-mean normal on the Fisher-$z$ transform
+$\operatorname{atanh}\rho$, which respects the $(-1,1)$ support automatically.
+Finally the degrees of freedom $\nu$ take a proper prior on $(2,\infty)$ --- an
+exponential with mean around $20$, say, or a bounded uniform --- expressing that
+the tails are genuinely heavy but not pathologically so; a heavy-tailed choice
+here matters little, since $\nu$ is informed by the whole weight path through
+$\sum_t\log w_t$ and $\sum_t w_t$. One implementation subtlety blurs the line
+between prior and sampler and is worth stating: the one-dimensional log-concave
+conditional of Family~D is drawn either by a \emph{griddy-Gibbs} pass on a bounded
+grid or by a \emph{Metropolis} step, and because the griddy grid is bounded that
+bracket \emph{is itself} a bounded-uniform prior --- so a flat target evaluated
+over it is already proper, not improper. An exponential (or any other) prior then
+enters through the same one-dimensional log-density, truncated to the grid;
+the unbounded Metropolis route, by contrast, can honour an unbounded prior
+directly.
+
+\paragraph{From table to code.} Every hyperparameter of
+Table~\ref{tab:param-prior-tuning} is exposed as a tunable and reaches the
+sampler by the same route --- threaded through the conjugate \texttt{draw\_*}
+kernels of Family~A, the AR(1) regression of Family~B, and the one-dimensional
+$\nu$-conditional of Family~D --- so a change of prior is a change of arguments,
+never of derivation. The flat-prior limits ($\mathbf V_0^{-1}\!\to\!0$,
+$\nu_0,a_0,b_0\!\to\!0$) are recovered as the special case in which each kernel's
+posterior mean coincides with the corresponding EM point estimate, the sampler
+then adding only the conjugate dispersion.
+
 \subsection{What is reused, what is new}
 \label{subsec:param-reuse}
 
@@ -21028,12 +21582,367 @@ have each been given their full conditional, and iterating the four steps
 delivers the joint posterior from which the predictive density and its
 Growth-at-Risk quantiles are read off.
 
+\newpage
+
+\section{Boosting the Mixing: The Ancillarity--Sufficiency Interweaving Strategy (ASIS)}
+\label{sec:asis}
+
+The sweep of the previous sections is \emph{correct} --- iterating it targets
+the exact joint posterior --- but correctness is not the whole story for a
+Markov chain. A sampler can be valid yet \emph{slow}: it can leave the target
+invariant while exploring it so sluggishly that, for any feasible run length,
+the retained draws are too autocorrelated to estimate the posterior with useful
+precision. This section addresses one such bottleneck, the worst in the whole
+sweep, and the standard device that removes it. The bottleneck is the mixing of
+the log-volatility parameters $(\phi,\sigma_\eta^2)$ of Family~B; the device is
+the \emph{ancillarity--sufficiency interweaving strategy} (ASIS) of Yu and Meng
+(2011), specialised to stochastic volatility by Kastner and
+Fr\"uhwirth-Schnatter (2014). We first diagnose \emph{why} the block mixes
+badly, then build the two parametrisations the strategy plays against each
+other, then state the interweaving move and why it works, and --- since the
+model we actually estimate is D1b--D2b \emph{with leverage} --- we carry the
+whole construction through the leverage coupling, where, as we will see, ASIS is
+not a refinement but close to a necessity.
+
+\subsection{Why \texorpdfstring{$(\phi,\sigma_\eta^2)$}{(phi, sigma)} mix badly: the path/scale ridge}
+\label{subsec:asis-diagnosis}
+
+Recall the two conditionals that, alternated, sample the volatility of a single
+process. Step~(b) draws the whole log-volatility path $x_{1:T}=\log h_{1:T}$
+\emph{given} $(\phi,\sigma_\eta^2)$; Family~B \eqref{eq:param-logvol} then draws
+$(\phi,\sigma_\eta^2)$ \emph{given} that path. The difficulty is that these two
+blocks are \emph{strongly dependent}, and in a way the coordinates make
+unavoidable. The innovation variance $\sigma_\eta^2$ is inferred from the
+increments of the path: a \emph{smoother} sampled path forces a \emph{smaller}
+$\sigma_\eta^2$, and a smaller $\sigma_\eta^2$, fed back into step~(b), draws a
+still smoother path. Path and scale therefore sit on a narrow diagonal
+\emph{ridge} in the joint posterior --- $(\sigma_\eta^2,\,\text{path
+roughness})$ move together --- and each full conditional is a thin slice
+\emph{across} that ridge. A Gibbs sampler that updates one block at a time can
+only take tiny steps \emph{along} the ridge, so it crawls: the draws of
+$\sigma_\eta^2$, and of the persistence $\phi$ tied to them, are heavily
+autocorrelated, their effective sample size is a small fraction of the chain
+length, and the chain can take an impractically long run to traverse the ridge
+even once.
+
+\paragraph{It biases, not merely slows.} The pathology is not only a matter of
+speed. Because the chain barely moves along the ridge, within any finite run it
+under-samples its ends, and the reported summaries inherit a systematic tilt:
+the persistence is pulled \emph{up} toward the unit root ($\phi\to1$) and the
+volatility of volatility \emph{down} (an over-smoothed path returns a small
+residual sum of squares, which confirms a small $\sigma_\eta^2$, which
+over-smooths the path --- the self-reinforcing fixed point already flagged with
+the Family~B prior). Poor mixing here therefore contaminates precisely the two
+quantities the volatility block exists to estimate.
+
+\paragraph{The key realisation: it is the \emph{coordinates}, not the model.}
+Nothing about the posterior itself is pathological; the ridge is an artefact of
+the \emph{parametrisation} in which we chose to sample --- the one that carries
+$\sigma_\eta$ inside the state equation. The same posterior can be sampled
+through a different change of variables in which the coupling is loosened or
+even reversed. This is the opening ASIS exploits: not a better step \emph{along}
+fixed coordinates, but a second \emph{set} of coordinates in which the same
+move is easy, and a way to use both at once.
+
+\subsection{Two coordinate systems: centred and non-centred}
+\label{subsec:asis-cp-ncp}
+
+Write the log-volatility AR(1) of one process, at the identification convention
+$\mu=0$ \eqref{eq:sv-mu-identification}, and its Kim--Shephard--Chib measurement
+\eqref{eq:vol-ksc-obs}. Conditional on the mixture indicator $s_t$, the latter
+is the linear-Gaussian observation $y^\ast_t-m_{s_t}\sim\mathcal N(x_t,\,
+v^2_{s_t})$, where $y^\ast_t$ is the log-square of \eqref{eq:vol-logsquare} and
+$(m_{s_t},v^2_{s_t})$ the selected mixture component. There are two equivalent
+ways to write this state-space.
+
+\paragraph{Centred parametrisation (CP).} The state is the log-volatility
+itself, $x_t=\log h_t$, and the parameters live in the \emph{state} equation:
+\begin{equation}
+\text{(CP)}\qquad
+x_t=\phi\,x_{t-1}+\eta_t,\quad \eta_t\sim\mathcal N(0,\sigma_\eta^2),
+\qquad
+y^\ast_t-m_{s_t}=x_t+v_{s_t}\varsigma_t,\quad \varsigma_t\sim\mathcal N(0,1).
+\label{eq:asis-cp}
+\end{equation}
+This is exactly the sampler built so far: step~(b) draws $x_{1:T}$ by FFBS on
+\eqref{eq:asis-cp}, and Family~B draws $(\phi,\sigma_\eta^2)$ from the
+regression of $x_t$ on $x_{t-1}$. Here $\sigma_\eta$ is a \emph{scale} of the
+state innovation.
+
+\paragraph{Non-centred parametrisation (NCP).} Standardise the state by its own
+innovation scale, $\tilde x_t=x_t/\sigma_\eta$, so that $x_t=\sigma_\eta\tilde
+x_t$. The identical model becomes
+\begin{equation}
+\text{(NCP)}\qquad
+\tilde x_t=\phi\,\tilde x_{t-1}+\epsilon_t,\quad \epsilon_t\sim\mathcal N(0,1),
+\qquad
+y^\ast_t-m_{s_t}=\sigma_\eta\,\tilde x_t+v_{s_t}\varsigma_t.
+\label{eq:asis-ncp}
+\end{equation}
+The transformation is a deterministic, invertible change of variables, so
+\eqref{eq:asis-cp} and \eqref{eq:asis-ncp} describe the \emph{same} model and
+carry the \emph{same} posterior; only the geometry differs. And the geometry
+differs decisively. In NCP the state $\tilde x$ is \emph{parameter-light} --- a
+unit-variance AR(1) carrying only $\phi$ --- while $\sigma_\eta$ has migrated
+into the \emph{measurement} equation, where it is no longer a scale but a
+\emph{regression coefficient} of the response $(y^\ast_t-m_{s_t})$ on the
+standardised path $\tilde x_t$. Drawing $\sigma_\eta$ in NCP is therefore a
+Gaussian regression, of a completely different shape from the inverse-Gamma
+scale draw of CP.
+
+\paragraph{Only the scale is interwoven: the level $\mu$ is fixed.} The full
+ASIS of Kastner and Fr\"uhwirth-Schnatter (2014) non-centres a stochastic
+volatility on \emph{both} its level and its scale --- the general
+standardisation is $\tilde x_t=(x_t-\mu)/\sigma_\eta$, and the interweaving is
+run over the pair $(\mu,\sigma_\eta)$, the level being the parameter that most
+often mixes worst. Under our identification convention $\mu=0$
+\eqref{eq:sv-mu-identification} the location simply drops out: the
+standardisation reduces to the pure rescaling $\tilde x_t=x_t/\sigma_\eta$ used
+above, and there is no $\mu$ to interweave. The strategy therefore acts on the
+\emph{scale} $\sigma_\eta$ alone (with $\phi$ carried along in both coordinate
+systems) --- one parameter fewer than the textbook construction, and precisely
+the one whose path/scale ridge is our bottleneck. Removing $\mu$ by convention
+thus does not weaken ASIS; it excises a coordinate that would otherwise have
+needed interweaving of its own.
+
+\subsection{Ancillarity vs sufficiency: why neither parametrisation wins}
+\label{subsec:asis-ancill-suff}
+
+Why keep both? Because each is good in a regime where the other is bad, and the
+regime is not known in advance. Yu and Meng (2011) name the two poles. In CP the
+latent path $x$ is a \emph{sufficient} augmentation: conditional on it, the data
+carry no further information about $\sigma_\eta$ (the measurement of
+\eqref{eq:asis-cp} does not involve $\sigma_\eta$ at all), so $\sigma_\eta$ is
+read off the path alone. In NCP the latent path $\tilde x$ is an \emph{ancillary}
+augmentation: its \emph{prior} law does not involve $\sigma_\eta$ (a unit-variance
+AR(1)), which now speaks only through the likelihood. These are the two extreme,
+complementary ways to attach the latent variable to the parameter.
+
+\paragraph{The complementary failure modes.} Their mixing is mirror-imaged, and
+governed by the signal strength --- essentially by the true $\sigma_\eta$
+relative to the KSC measurement noise ($\pi^2/2\approx4.93$ per period).
+\begin{itemize}
+\item When the \textbf{signal is strong} (large $\sigma_\eta$: the volatility
+      genuinely moves, and the data pin the path tightly), \emph{CP mixes
+      badly} --- this is the ridge above, path and scale locked together --- but
+      \emph{NCP mixes well}, because the well-determined path leaves
+      $\sigma_\eta$ a sharp regression coefficient nearly free of the path draw.
+\item When the \textbf{signal is weak} (small $\sigma_\eta$: the path is barely
+      identified), the roles reverse: NCP crawls (the ancillary path drifts and
+      drags $\sigma_\eta$ with it) while CP mixes well.
+\end{itemize}
+Neither dominates. Worse, the ``regime'' is not a single fact about the model
+but varies \emph{across} the $M+r$ processes --- some volatilities move a lot,
+others barely --- and can even shift \emph{along} the chain. A fixed choice of
+parametrisation is thus a gamble on a regime one does not know, made once for
+all processes at once. (The empirical symptom in our own runs is unambiguous
+and places the common volatility squarely in the \emph{strong-signal} corner
+where CP is worst: the persistence $\phi$ of the common log-volatility shows an
+effective sample size of order a \emph{percent} of the retained draws, with a
+split-$\hat R$ above the $1.1$ convergence threshold, while conjugate blocks on
+the same run sit comfortably above $20\%$. It is exactly the block CP handles
+worst that dominates the tail risk we care about.)
+
+\subsection{The interweaving move}
+\label{subsec:asis-move}
+
+Yu and Meng's resolution is not to \emph{choose} between the two but to
+\emph{interweave} them: use a \emph{single} draw of the path, and update the
+parameters \emph{twice} --- once in each coordinate system, linked by the
+deterministic rescaling. For one process, one sweep, the augmented Family~B step
+reads:
+\begin{enumerate}
+\item[(0)] \textbf{Path (already drawn).} From step~(b), a path $x_{1:T}$ and
+      its mixture indicators $s_{1:T}$, drawn given the current
+      $(\phi,\sigma_\eta^2)$ on the CP state-space \eqref{eq:asis-cp}.
+\item[(1)] \textbf{CP update (the ``sufficient'' draw).} Draw
+      $(\phi,\sigma_\eta^2)$ from the CP conditional given the path --- the
+      Family~B regression \eqref{eq:param-logvol} of $x_t$ on $x_{t-1}$.
+\item[(2)] \textbf{Rescale to NCP.} Using the \emph{just-drawn} $\sigma_\eta$,
+      form the standardised path $\tilde x_t=x_t/\sigma_\eta$.
+\item[(3)] \textbf{NCP update (the ``ancillary'' draw).} Redraw
+      $\sigma_\eta$ --- and $\phi$ --- from the NCP conditional
+      \eqref{eq:asis-ncp} given $\tilde x_{1:T}$ \emph{and the data}
+      $\{y^\ast_t,s_t\}$: $\sigma_\eta$ is the coefficient in the weighted
+      regression of $(y^\ast_t-m_{s_t})$ on $\tilde x_t$ with known variances
+      $v^2_{s_t}$, and $\phi$ the AR(1) coefficient of the standardised path.
+\item[(4)] \textbf{Rescale back to CP.} With the \emph{new} $\sigma_\eta$, set
+      $x_t=\sigma_\eta\tilde x_t$, restoring the log-volatility path in its
+      original coordinates for the next sweep.
+\end{enumerate}
+The decisive feature is step~(3): it \emph{re-reads the data} $y^\ast$, because
+in NCP the parameter $\sigma_\eta$ sits in the measurement equation. This is what
+makes the two updates genuinely \emph{interwoven} rather than a redundant re-run
+of the same draw --- the same path information is confronted with the data in
+two different coordinate systems, and the second confrontation refreshes
+$\sigma_\eta$ along the direction the first one could not move.
+
+\paragraph{Why it works.} The two updates are near-independent in their bad
+directions: whatever autocorrelation CP leaves in $\sigma_\eta$ (the along-ridge
+direction), NCP breaks, and vice versa. Yu and Meng (2011) make this precise ---
+the geometric convergence rate of the interwoven kernel is bounded by the
+\emph{product} of the rates of the two parent samplers, so the composite
+converges faster than \emph{either} parent, and in particular is fast whenever
+\emph{at least one} of the two parametrisations mixes well. This is the property
+we need: it is \emph{worst-case robust}. In the strong-signal corner where CP
+crawls, NCP is excellent, and the interwoven chain inherits NCP's speed; in the
+weak-signal corner the reverse holds; and because the interweaving is applied
+independently to each process, each of the $M+r$ volatilities is handled at
+whichever pole suits it, with no need to know its regime in advance.
+
+\paragraph{The sign of $\sigma_\eta$, and the prior it wants.} Two technical
+points make the NCP draw exact. \emph{First}, in NCP $\sigma_\eta$ is identified
+only up to sign from $\tilde x$ alone --- flipping the signs of both
+$\sigma_\eta$ and $\tilde x_t$ leaves $x_t=\sigma_\eta\tilde x_t$ unchanged --- so
+$\sigma_\eta$ is drawn as a \emph{signed} regression coefficient on the whole
+line, the sign carried into the back-map \eqref{eq:asis-ncp}. Far from a
+nuisance, this \emph{helps}: it lets the chain flip a sign that would otherwise
+be sticky. \emph{Second}, for the interweaving to target the exact joint the two
+updates must express the \emph{same} prior on $\sigma_\eta$. The clean choice,
+and the one ASIS adopts, is a \emph{Gaussian} prior on the signed $\sigma_\eta$:
+it is conjugate in NCP (a Gaussian regression coefficient), giving a direct
+draw there, and it enters the CP scale draw of step~(1) --- where it is
+non-conjugate --- through the same light Metropolis correction the Family~B
+update already tolerates under leverage. This Gaussian --- equivalently a
+half-Normal on $|\sigma_\eta|$ --- is not merely an ASIS convenience: it is also
+the prior Gelman (2006) recommends for a weakly-identified variance, in
+preference to the inverse-Gamma, which is sharply shaped near the origin. We
+therefore adopt it as the \emph{default} prior of the master sampler for every
+$\sigma_\eta$, keeping the inverse-Gamma of Family~B as the conjugate baseline
+for the interweaving-off variants --- exactly the choice recorded in the tuning
+table.
+
+\subsection{ASIS under leverage --- the specification we actually estimate}
+\label{subsec:asis-leverage}
+
+The model is not the base case but D1b--D2b \emph{with leverage}, and it is
+exactly there that ASIS earns its place, for a concrete reason: \emph{leverage
+tightens the very ridge ASIS is built to loosen.} Recall the leverage transition
+\eqref{eq:lev-transition-contemp}: the log-volatility innovation acquires a
+\emph{drift} $\rho\sigma_\eta z_t$ and a \emph{reduced variance}
+$\sigma_\eta^2(1-\rho^2)$. So $\sigma_\eta$ is now bound to the path in
+\emph{two} places at once --- through the AR(1) increments \emph{and} through
+the leverage drift --- and the path/scale coupling
+diagnosed above is correspondingly \emph{stronger}. The block that
+mixed worst in the base case mixes worse still under leverage; ASIS is the
+natural, and close to necessary, remedy.
+
+\paragraph{Non-centring in the presence of the coupling.} Write the leverage
+transition in its innovation-decomposed form, splitting
+$\eta_t=\rho\sigma_\eta z_t+\sigma_\eta\sqrt{1-\rho^2}\,\epsilon_t$ with
+$\epsilon_t\sim\mathcal N(0,1)$ independent (this is just the conditional
+\eqref{eq:lev-cond-scalar} written as a location--scale map):
+\begin{equation}
+\text{(CP, leverage)}\qquad
+x_t=\phi\,x_{t-1}+\rho\,\sigma_\eta\,z_t+\sigma_\eta\sqrt{1-\rho^2}\,\epsilon_t.
+\label{eq:asis-cp-lev}
+\end{equation}
+Apply the \emph{same} standardisation $\tilde x_t=x_t/\sigma_\eta$. The factor
+$\sigma_\eta$ divides through the drift and the innovation alike, giving
+\begin{equation}
+\text{(NCP, leverage)}\qquad
+\tilde x_t=\phi\,\tilde x_{t-1}+\rho\,z_t+\sqrt{1-\rho^2}\,\epsilon_t,
+\qquad
+y^\ast_t-m_{s_t}=\sigma_\eta\,\tilde x_t+v_{s_t}\varsigma_t.
+\label{eq:asis-ncp-lev}
+\end{equation}
+Read off what happened, because it is the crux of the leverage case.
+\begin{itemize}
+\item $\sigma_\eta$ \textbf{still migrates entirely into the measurement}
+      equation --- \emph{exactly} as in the base case \eqref{eq:asis-ncp}. The
+      leverage does not obstruct the non-centring: the whole point of ASIS
+      survives the coupling untouched.
+\item The leverage enters the \emph{standardised state} through a drift
+      $\rho\,z_t$ that \emph{no longer carries $\sigma_\eta$}, and a reduced
+      innovation variance $(1-\rho^2)$. The parameters $\phi$ and $\rho$ remain
+      in the state; $\sigma_\eta$ has been cleanly separated out of it.
+\end{itemize}
+A subtlety inherited from the leverage sampler: the standardised shock
+$z_t=e_t/\sqrt{h_t}$ depends on $x_t=\sigma_\eta\tilde x_t$, so the drift
+$\rho z_t$ is itself state-dependent --- the ``honest caveat'' of the leverage
+sampler. This is \emph{not} a new problem for ASIS. It is
+handled exactly as before --- by the Branch~A Metropolis path draw or the
+Branch~B sign-augmented mixture --- and ASIS sits \emph{on top} of whichever
+branch draws the path: ASIS re-parametrises the $(\phi,\sigma_\eta)$
+\emph{parameter} draw, an operation orthogonal to \emph{how} the path is
+sampled. One consequence does touch the \emph{parameter} draw and must be stated
+precisely. Because $z_t=e_t\,e^{-\sigma_\eta\tilde x_t/2}$ still carries
+$\sigma_\eta$ through $x_t=\sigma_\eta\tilde x_t$, the non-centring removes
+$\sigma_\eta$ from the innovation \emph{scale} but not from the leverage
+\emph{drift} $\rho z_t$: strictly, the NCP conditional of $\sigma_\eta$ is not the
+pure measurement regression but that regression times a non-Gaussian state factor
+in $z_t$. We resolve it as the volatility block already resolves the same
+coupling --- by \emph{holding $z_t$ at its current value}, the separable stance of
+the leverage sampler --- so that $\sigma_\eta$ redraws as a clean measurement
+regression \emph{conditional on the frozen} $z_t$, the small residual coupling
+absorbed into the light Metropolis correction the block already carries. The
+interweaving is therefore exact in the base case and conditionally exact (given
+$z_t$) under leverage, with no extra machinery.
+
+\paragraph{What is interwoven, and what benefits.} The interwoven step is the
+one built above, now with leverage-aware conditionals:
+\begin{itemize}
+\item the \textbf{CP update} draws $(\phi,\sigma_\eta^2)$ from the
+      leverage-aware Family~B --- recall that under leverage the $(1-\rho^2)$
+      factor and the drift already make the $\sigma_\eta^2$ draw non-conjugate,
+      so it already carries its light Metropolis correction;
+\item the \textbf{NCP update} draws the signed $\sigma_\eta$ as the
+      measurement-regression coefficient in \eqref{eq:asis-ncp-lev} (conditional
+      on the current $z_t$, as noted above), and $\phi$
+      from the standardised state with drift $\rho z_t$ and variance
+      $(1-\rho^2)$.
+\end{itemize}
+Both updates condition on the \emph{current} leverage $\rho$, which is drawn in
+its own Family~C Metropolis block \eqref{eq:param-rho-cond} and is \emph{not}
+itself interwoven. But $\rho$ benefits nonetheless, and substantially: it is
+strongly posterior-correlated with $\sigma_\eta$ --- together they set the
+amplitude and the asymmetry of the volatility innovations --- so a
+better-mixing $\sigma_\eta$ unlocks a better-mixing $\rho$. The ASIS boost to
+the scale propagates through the coupling to the whole leverage block, which is
+why the strategy matters for the leverage estimate and not only for
+$\sigma_\eta$ in isolation.
+
+\paragraph{Both timing branches, all $M+r$ processes.} The non-centring is
+indifferent to the timing convention. Under contemporaneous timing (Branch~A)
+the drift $\rho z_t$ corrects the transition \emph{into} $x_t$; under lagged
+timing (Branch~B) the same drift, with regressor $z_{t-1}$, corrects it as in
+\eqref{eq:lev-transition-lagged-reindexed}. In both, the standardisation
+$\tilde x_t=x_t/\sigma_\eta$ moves $\sigma_\eta$ into the measurement regardless
+of \emph{which} transition carries the drift, so ASIS applies \emph{verbatim} to
+either branch; only the index of the drift term differs, exactly as it already
+does in the base leverage sampler. And the whole construction is run
+\emph{independently} for each of the $r$ common and $M$ idiosyncratic
+volatilities, each with its own $(\phi_i,\sigma_{\eta,i}^2,\rho_i)$ and its own
+standardised path --- the same ``repeat the scalar template $M+r$ times''
+pattern as everywhere in the volatility block.
+
+\subsection{Cost and reuse}
+\label{subsec:asis-cost}
+
+ASIS is a \emph{wrapper} around the Family~B draw, not a new sampler, and its
+price is negligible. Per process per sweep it adds one deterministic rescaling
+$\tilde x_t=x_t/\sigma_\eta$ and its inverse (two $O(T)$ passes) and one extra
+scalar parameter draw (the NCP regression, itself $O(T)$) --- trivial beside the
+$O(T)$ FFBS path draw that dominates step~(b) regardless. It introduces no new
+tuning: the NCP $\sigma_\eta$ draw is a Gaussian regression --- exact in the base
+case, and conditional on the frozen $z_t$ under leverage --- and the only
+Metropolis in the block is the one the leverage already required. Everything
+else is reused unchanged --- the FFBS, the Kim--Shephard--Chib mixture, the two
+leverage branches, and the $\rho$ and $\nu$ draws are all untouched. In return
+for this near-free addition the two parameters the volatility block exists to
+estimate, $\phi$ and $\sigma_\eta^2$ --- and, through the coupling, the leverage
+$\rho$ --- go from among the worst-mixing quantities in the sweep to among the
+routine ones. That is the trade the interweaving buys, and the reason it belongs
+in the master sampler.
+
+\newpage
+
 \section{Variants by Switch: Every Grid Cell as a Restriction of the Master Sampler}
 \label{sec:gibbs-variants}
 
 This closes the estimation derivation, and it introduces \emph{no} new
 mathematics. It is the bookkeeping that shows how every cell of the
-$\text{D1}\times\text{D2}$ grid of Section~\ref{sec:sv-variants} --- and the
+$\text{D1}\times\text{D2}$ grid --- and the
 symmetric, no-leverage cases --- is obtained from the single sampler already
 derived, by switching blocks of the sweep on or off. It is the
 estimation-side mirror of the mother-form DGP: there one data-generating
@@ -21045,14 +21954,17 @@ specialises to each cell by omitting or modifying the corresponding blocks.
 
 We derived the sampler for the \emph{master} cell --- D1-b $\times$ D2-b
 with leverage, the most general specification --- in
-Sections~\ref{sec:gibbs-states}--\ref{sec:gibbs-params}, summarised in
+the preceding sections, summarised in
 Algorithm~\ref{alg:gibbs-sv}. Every other cell is a \emph{restriction} of
 it. The skeleton of the Gibbs sweep never changes --- states (a),
 volatilities (b), tails (c), parameters (d), each drawn from its full
 conditional; what changes from cell to cell is only \emph{which} steps are
 executed and, in one case, \emph{what} a step samples. The generality of the
 master therefore costs no extra derivation: one derivation covers the entire
-grid.
+grid. The one addition of the previous section --- the ASIS interweaving --- is
+itself a wrapper on the Family~B draw, so it rides along unchanged in every cell
+where a volatility is actually sampled and disappears with step~(b) in the
+no-SV limit; it toggles no block on or off, and adds no row to the grid.
 
 \subsection{The restrictions, one per variant}
 \label{subsec:variants-restrictions}
@@ -21060,14 +21972,16 @@ grid.
 \paragraph{D2-a (common volatility only).} Drop the idiosyncratic
 volatility. In step~(b) the idiosyncratic part of the volatility sampler is
 omitted and the $h^\varepsilon_{i,t}$ are frozen at $1$; the sampler runs
-only for the $r$ common paths $h^u_i$ (the joint $r$-dimensional block).
+only for the $r$ common paths $h^u_i$ --- under Option~A these are $r$
+\emph{independent} per-factor scalar sub-sweeps, not a joint $r$-dimensional
+block.
 Correspondingly, Family~B of step~(d) is drawn only for the $r$ common
 processes rather than for all $M+r$. Everything else --- states, tails,
 Families~A,~C,~D --- is unchanged.
 
 \paragraph{D1-a (Gaussian, pure stochastic volatility).} Switch the tail
-multiplier off, $w\equiv1$. The whole weights block, step~(c) of
-Section~\ref{sec:gibbs-weights}, is omitted, and with it the
+multiplier off, $w\equiv1$. The whole weights block, step~(c),
+is omitted, and with it the
 degrees-of-freedom draw, Family~D of step~(d): there is no $\nu$ to sample.
 The shocks are Gaussian conditional on their volatility, so the combined
 precision weight of Family~A collapses to $g_t=1/h_t$. Steps~(a),~(b) and
@@ -21084,9 +21998,9 @@ replaced by the draw of the outlier parameters; the rest of the sweep is
 untouched.
 
 \paragraph{No leverage ($\rho=0$).} Set every leverage correlation to zero.
-In step~(b) the leverage correction of
-Section~\ref{sec:gibbs-vol-leverage} drops out and the volatility sampler
-reverts to the symmetric base case of Section~\ref{sec:gibbs-vol-base} ---
+In step~(b) the leverage correction
+drops out and the volatility sampler
+reverts to the symmetric base case ---
 the plain Kim--Shephard--Chib sub-sweep \eqref{eq:vol-ksc-mixture}; in
 step~(d) the leverage draw, Family~C, is omitted. Being symmetric, this case
 does not even need the ten-component Omori constants of
@@ -21128,8 +22042,8 @@ the \emph{timing} of the leverage --- contemporaneous or lagged. This is
 \emph{not} a restriction; it switches nothing off. It is an \emph{internal
 bifurcation} of the full case: the master ``D1-b $\times$ D2-b $+$
 leverage'' exists in \emph{two} versions, equal in modelling richness but
-differing in timing and therefore in sampler, as derived in the Two Routes
-for the Leverage section:
+differing in timing and therefore in sampler, as derived earlier for the two
+leverage routes:
 \begin{itemize}
 \item contemporaneous timing $\rightarrow$ Branch~A, the Metropolis update;
 \item lagged timing $\rightarrow$ Branch~B, the sign-augmented Omori
@@ -21141,6 +22055,8 @@ decision --- to be settled empirically, and with the advisor --- with both
 samplers already derived and ready. Consequently every leveraged cell of the
 grid splits further into a contemporaneous (Branch~A) and a lagged
 (Branch~B) variant.
+
+\newpage
 
 \subsection{The map at a glance}
 \label{subsec:variants-table}
@@ -21175,11 +22091,10 @@ $r$ common processes only / for all $M+r$ processes; ``outlier ind./par.''
 ${}={}$ the weights and $\nu$ blocks replaced by the outlier indicators and
 their parameters. $\dagger$: Family~C and the step-(b) leverage correction
 are active \emph{only} if $\rho\neq0$; when they are, the cell splits
-further into Branch~A (contemporaneous) or Branch~B (lagged) of
-Section~\ref{sec:leverage-routes}. ${}^{\ast}$: the master cell, the fully
+further into Branch~A (contemporaneous) or Branch~B (lagged).
+${}^{\ast}$: the master cell, the fully
 general one from which every other row is obtained by restriction. The last
-row, ``current model'', is the no-SV limiting case of
-Section~\ref{subsec:variants-currentmodel}.}
+row, ``current model'', is the no-SV limiting case described above.}
 \label{tab:gibbs-variants}
 \end{table}
 
