@@ -52,11 +52,11 @@ def console(verdicts: list[Verdict], mode: str) -> int:
              Outcome.UNTESTED: 3, Outcome.RECOVERED: 4}
     rows = sorted(verdicts, key=lambda v: (v.block != "fattori", order[v.outcome], v.param))
 
-    w = 118
+    w = 132
     print("\n" + "=" * w)
     print(f"  TABELLA DEI VERDETTI — modalita': {mode}")
     print("=" * w)
-    print(f"  {'parametro':<18}{'blocco':<14}{'br':<5}{'verdetto':<26}"
+    print(f"  {'parametro':<30}{'blocco':<14}{'br':<4}{'verdetto':<28}"
           f"{'vero':>8}{'stima':>9}{'ESS':>7}{'R-hat':>7}{'cov':>7}")
     print("  " + "-" * (w - 4))
     cur = None
@@ -65,8 +65,9 @@ def console(verdicts: list[Verdict], mode: str) -> int:
             cur = v.block
             print()
         cov = "—" if v.coverage is None else f"{v.coverage:.0%}"
-        print(f"  {v.param:<18}{v.block:<14}{v.branch:<5}"
-              f"{v.outcome.mark + ' ' + v.outcome.value:<26}"
+        name = v.param if len(v.param) <= 29 else v.param[:28] + "…"
+        print(f"  {name:<30}{v.block:<14}{v.branch:<4}"
+              f"{v.outcome.mark + ' ' + v.outcome.value:<28}"
               f"{_fmt(v.truth, '{:+.3f}'):>8}{_fmt(v.estimate, '{:+.3f}'):>9}"
               f"{_fmt(v.ess, '{:.0f}'):>7}{_fmt(v.r_hat, '{:.3f}'):>7}{cov:>7}")
 

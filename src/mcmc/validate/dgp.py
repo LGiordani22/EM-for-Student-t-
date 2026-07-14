@@ -129,6 +129,7 @@ def fit(dgp: dict, *, seed: int = 700, **kw) -> list[dict]:
     kw.setdefault("sv_sigma_prior", "half_normal")
     kw.setdefault("rho_sampler", "griddy")
     kw.setdefault("store_states", True)      # servono i draw di f_t per validarli
+    kw.setdefault("store_vol", True)         # e i path h^u / h^eps
     out = []
     for c in range(mode.chains):
         out.append(fit_dfm_mcmc(

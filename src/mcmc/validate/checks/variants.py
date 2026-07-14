@@ -151,12 +151,32 @@ def _asis_cells(mode: D.Mode, branch: str) -> list[Verdict]:
     hn = cells[(False, "half_normal")]
     gain_prior = hn["rho"]["ess"] / max(ig["rho"]["ess"], 1e-9)
     gain_asis = on["rho"]["ess"] / max(off["rho"]["ess"], 1e-9)
+
+    # Un guadagno di ESS non e' misurabile da catene corte: l'ESS stesso ha un errore
+    # standard enorme quando e' dell'ordine di 20.  In --quick questo confronto NON PUO'
+    # pronunciarsi, e lo dice invece di fingere un verdetto.  (Tentazione da evitare:
+    # allargare la soglia finche' il numero di --quick "conferma" cio' che sappiamo da
+    # --full.  Sarebbe esattamente il vizio che questo validatore esiste per estirpare.)
+    if not mode.is_probative:
+        V.append(Verdict(
+            "leva su rho: prior o ASIS?", "fattori", branch, Outcome.NOT_IDENTIFIED,
+            (f"--{mode.name} NON PUO' decidere: un guadagno di ESS non e' misurabile da "
+             f"catene corte (qui ESS ~ 20, con un errore standard dello stesso ordine). "
+             f"I numeri grezzi — prior x{gain_prior:.2f}, ASIS x{gain_asis:.2f} — sono "
+             f"rumore. Serve --full."),
+            estimate=gain_prior, mode=mode.name,
+            detail={"spec_key": "_asis_vs_prior", "gain_prior": gain_prior,
+                    "gain_asis": gain_asis, "inconclusive": True}))
+        return V
+
     V.append(Verdict(
-        "leva su rho: prior, non ASIS", "fattori", branch, Outcome.RECOVERED,
+        "leva su rho: prior, non ASIS", "fattori", branch,
+        Outcome.RECOVERED if gain_prior > gain_asis else Outcome.RECOVERED_BIASED,
         (f"a ASIS FISSATO (off), cambiare il prior IG -> half-Normal moltiplica ESS(rho) per "
-         f"x{gain_prior:.1f}. A prior FISSATO, accendere ASIS lo moltiplica per "
+         f"x{gain_prior:.1f}. A prior FISSATO (half-Normal), accendere ASIS lo moltiplica per "
          f"x{gain_asis:.1f}. **La leva e' il prior, non l'interweaving** — la catena causale "
-         f"'meglio sigma => meglio rho' del .tex e' falsificata."),
+         f"'meglio sigma => meglio rho' del .tex e' falsificata. Ogni confronto qui e' fatto "
+         f"A PRIOR FISSATO o A ASIS FISSATO, mai variando entrambi (il guard lo impone)."),
         estimate=gain_prior, mode=mode.name, detail={"spec_key": "_asis_vs_prior",
                                                      "gain_prior": gain_prior,
                                                      "gain_asis": gain_asis}))
