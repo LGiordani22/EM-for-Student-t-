@@ -99,6 +99,46 @@ OMORI10: dict = {
 }
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# QML-10's single-Gaussian counterpart — the constants of the *coupled* leverage
+# pass (``common_vol_coupling="qml"`` under ``leverage=True``, Branch B).
+#
+# The QML route (Harvey-Ruiz-Shephard 1994) replaces the mixture by ONE Gaussian
+# matching the exact first two moments of xi = log z^2, z ~ N(0,1):
+#
+#     E[xi]   = psi(1/2) + log 2 = -gamma - log 2 = LOG_CHI2_MEAN
+#     Var[xi] = pi^2 / 2                                    (LOG_CHI2_VAR)
+#
+# That buys a *constant* measurement covariance (pi^2/2) R_xi, which is what makes
+# a FULL cross-factor R_xi tractable (the mixture cannot: a full R_xi does not
+# factorise over the per-factor indicators — the 'literal' instability).  But the
+# leverage drift needs exp(xi/2) = |z| to be LINEAR in xi (that is what Omori's
+# per-component (a_j, b_j) deliver).  Its single-Gaussian counterpart is the best
+# linear predictor of |z| given xi under the EXACT law — the same object Omori
+# builds inside each component, built once, globally:
+#
+#     |z| ~= QML_A + QML_B * (xi - LOG_CHI2_MEAN)
+#
+#     QML_A = E|z|                = sqrt(2/pi)
+#     QML_B = Cov(|z|, xi)/Var(xi)
+#
+# Both are closed-form (no table, no fitting).  With z ~ N(0,1):
+#     E[|z| log z^2] = 2 E[|z| log|z|] = sqrt(2/pi) (log 2 - gamma)
+#     E[|z|] E[xi]   = sqrt(2/pi) (-gamma - log 2)
+#  => Cov(|z|, xi)   = sqrt(2/pi) * 2 log 2
+#  => QML_B          = sqrt(2/pi) * 4 log 2 / pi^2 ~= 0.2241
+# (``test_qml_leverage`` re-derives both by Monte Carlo.)
+#
+# Same role as (a_j, b_j), same algebra downstream — only the conditioning is
+# coarser: one global line instead of ten local ones.  That is the *price* of the
+# coupled pass, and the reason it is an option, not the default.
+# ─────────────────────────────────────────────────────────────────────────────
+LOG_CHI2_VAR: float = float(np.pi ** 2 / 2.0)          # pi^2/2 = Var(log chi^2_1)
+
+QML_A: float = float(np.sqrt(2.0 / np.pi))             # E|z|            ~= 0.797885
+QML_B: float = float(np.sqrt(2.0 / np.pi) * 4.0 * np.log(2.0) / np.pi ** 2)   # ~= 0.224149
+
+
 def validate_mixture(mix: dict, *, has_linearization: bool = False) -> dict:
     """
     Run the three consistency checks of the TODO above **with tolerance**

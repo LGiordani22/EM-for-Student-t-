@@ -312,11 +312,19 @@ def test_p1_coupled_unreachable(theta, fl, bm, oc, Y):
         ok = True
     _check("sample_common_vol_mv(R_xi=...) raises without allow_experimental", ok)
 
-    # (c) Branch B never calls the multivariate common block at all: its common
-    #     volatility is r independent Omori/FFBS channels, so there is no r-dim
-    #     FFBS in which a measurement cross-covariance could even be inserted.
-    _check("sample_leverage_lagged never references sample_common_vol_mv",
-           "sample_common_vol_mv" not in inspect.getsource(lagged_mod))
+    # (c) Branch B never calls the multivariate common block: BY DEFAULT its common
+    #     volatility is r independent Omori/FFBS channels.
+    #     NB (gate QML-leverage): an r-dim coupled FFBS under leverage *does* now
+    #     exist in this module (`_branch_b_common_qml`) — the old rationale "there is
+    #     no r-dim FFBS in which a cross-covariance could even be inserted" is no
+    #     longer true, it was tried.  It is gated behind allow_experimental=True
+    #     because it is UNSTABLE exactly where it would be used (at corr(Q)=0.8 the
+    #     least identified factor's phi collapses and its rho pins to the boundary),
+    #     so what must stay frozen is that the DEFAULT path never reaches it.
+    _check("sample_leverage_lagged never references the no-leverage common block",
+           "sample_common_vol" not in inspect.getsource(lagged_mod))
+    _check("the coupled leverage pass needs an explicit opt-in",
+           "allow_experimental" in inspect.getsource(gibbs_mod))
 
     called = []
     real = sv_mod.sample_common_vol_mv

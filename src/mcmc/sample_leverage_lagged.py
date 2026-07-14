@@ -86,8 +86,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from mcmc.constants import OMORI10
-from mcmc.sample_vol import _inv_sqrt_spd
+from mcmc.constants import LOG_CHI2_MEAN, LOG_CHI2_VAR, OMORI10, QML_A, QML_B
+from mcmc.sample_vol import _inv_sqrt_spd, _psd_chol, logsq_corr_matrix
 from mcmc.sample_leverage import (
     _draw_phi_lev,
     _draw_sigma2_lev,
@@ -150,6 +150,182 @@ def _ffbs_tv(
         V = P[t] * (1.0 - J * G[t])
         x[t] = m + np.sqrt(max(V, 0.0)) * rng.standard_normal()
     return x
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Multivariate generalisation of _ffbs_tv: r-dim state, DIAGONAL time-varying
+# transition, FULL measurement covariance — the kernel of the coupled QML pass
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _mv_ffbs_tv(
+    y_eff: np.ndarray,
+    R_eff: np.ndarray,
+    mask: np.ndarray,
+    G: np.ndarray,
+    c: np.ndarray,
+    W: np.ndarray,
+    stat_var: np.ndarray,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    r"""
+    Forward-filter / backward-sample the ``r``-vector state ``x_t = log h^u_t`` with
+
+        x_0      ~ N(0, diag(stat_var)),
+        x_{t+1}  = G_t x_t + c_t + N(0, diag(W_t)),
+        y_eff_t  = x_t + N(0, R_eff_t)      (only where ``mask_t``),
+
+    i.e. :func:`_ffbs_tv` at state dimension ``r``.  ``G`` is ``(T, r, r)`` — a
+    **full**, time-varying transition — ``c`` and ``W`` are ``(T, r)``; index ``t``
+    is the transition ``t -> t+1``.
+
+    Why ``G_t`` must be allowed to be full: under a non-diagonal ``Q`` the leverage
+    drift of factor ``k`` keys on the fully whitened shock ``z_k``, which is a linear
+    combination of **every** factor's standardised shock (``z = M eps``,
+    ``M = Q^{-1/2} diag(sqrt(q_kk))``).  Once ``eps_j = d_j exp(xi_j/2)`` is
+    linearised in ``xi_j = y*_j - x_j``, that drift is linear in the whole vector
+    ``x_t``, not just in ``x_{k,t}``.  A diagonal ``G`` would silently drop the
+    off-diagonal mixing — which is exactly the error that made the first coupled
+    attempt unstable.  At diagonal ``Q``, ``M = I`` and ``G_t`` is diagonal again.
+    """
+    T = mask.shape[0]
+    r = stat_var.shape[0]
+
+    a = np.zeros((T, r))
+    P = np.zeros((T, r, r))
+    for t in range(T):
+        if t == 0:
+            a_pred, P_pred = np.zeros(r), np.diag(stat_var)
+        else:
+            Gm = G[t - 1]
+            a_pred = Gm @ a[t - 1] + c[t - 1]
+            P_pred = Gm @ P[t - 1] @ Gm.T + np.diag(W[t - 1])
+        if mask[t]:
+            S = P_pred + R_eff[t]
+            K = P_pred @ np.linalg.inv(0.5 * (S + S.T))
+            a[t] = a_pred + K @ (y_eff[t] - a_pred)
+            P[t] = P_pred - K @ P_pred
+        else:
+            a[t], P[t] = a_pred, P_pred
+        P[t] = 0.5 * (P[t] + P[t].T)
+
+    x = np.zeros((T, r))
+    x[T - 1] = a[T - 1] + _psd_chol(P[T - 1]) @ rng.standard_normal(r)
+    for t in range(T - 2, -1, -1):
+        Gm = G[t]
+        P_pred_next = Gm @ P[t] @ Gm.T + np.diag(W[t])
+        J = P[t] @ Gm.T @ np.linalg.inv(P_pred_next)
+        m = a[t] + J @ (x[t + 1] - (Gm @ a[t] + c[t]))
+        V = P[t] - J @ (Gm @ P[t])
+        x[t] = m + _psd_chol(0.5 * (V + V.T)) @ rng.standard_normal(r)
+    return x
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The COUPLED common block under leverage: QML measurement + linearised drift
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _branch_b_common_qml(
+    ystar: np.ndarray,
+    signs: np.ndarray,
+    has: np.ndarray,
+    phi: np.ndarray,
+    sigma2: np.ndarray,
+    rho: np.ndarray,
+    Sigma_xi: np.ndarray,
+    M: np.ndarray,
+    rng: np.random.Generator,
+) -> dict:
+    r"""
+    Draw the ``r`` per-factor common log-vol paths **jointly** under lagged leverage,
+    with a **non-diagonal ``Q`` handled exactly on both sides** — measurement *and*
+    leverage drift.  This is the coupled pass the ``.tex`` leaves open ("would demand
+    a joint r-dimensional sign-augmented mixture that we do not derive"): QML supplies
+    it, because dropping the mixture is what lets a full covariance through.
+
+    **The two objects, and why they differ.**  The measurement reads the
+    per-component standardised shock ``eps_k = e_k/sqrt(h_k)``, whose log-square is
+    linear in ``log h_k``.  The leverage keys on the **fully whitened** shock
+    ``z = Q^{-1/2} H^{-1/2} sqrt(w) u`` (Option A, ``eq:lev-cond-common``).  The two
+    are linearly related, *exactly*:
+
+        z = M eps,      M = Q^{-1/2} diag(sqrt(q_kk)),
+
+    and ``eps_j = d_j exp(xi_j/2)`` with ``xi_j = y*_j - x_j`` and
+    ``d_j = sign(e_j) = sign(u_j)`` — a sign that is **observable and independent of
+    the path** (unlike ``sign(z_k)``, which mixes the ``h``'s).  Hence
+
+        z_{k,t} = sum_j M_kj d_{j,t} exp(xi_{j,t}/2).
+
+    **The linearisation.**  QML replaces ``exp(xi/2) = |eps|`` by its best linear
+    predictor under the exact log-chi^2 law, ``QML_A + QML_B (xi - LOG_CHI2_MEAN)``
+    (closed form, ``constants``) — the single-Gaussian counterpart of Omori's
+    per-component ``(a_j, b_j)``.  The drift is then linear in the **whole vector**
+    ``x_t``:
+
+        x_{t+1,k} = phi_k x_{t,k}
+                  - rho_k sigma_k QML_B sum_j M_kj d_{j,t} x_{j,t}
+                  + rho_k sigma_k sum_j M_kj d_{j,t}(QML_A + QML_B(y*_{j,t} - m))
+                  + N(0, sigma_k^2 (1 - rho_k^2)),
+
+    i.e. a **full** time-varying transition ``G_t``, while the measurement
+    ``y*_t = x_t + N(m, Sigma_xi)`` carries the full ``Sigma_xi = (pi^2/2) R_xi``.
+    One :func:`_mv_ffbs_tv` pass draws all ``r`` paths at once.
+
+    **What this fixes.**  The first attempt at this block kept ``G_t`` *diagonal* —
+    that is, it used ``z_k ~= d_k exp(xi_k/2)``, the ``M = I`` approximation — and
+    took the sign from the full whitening to compensate.  Sign and magnitude then sat
+    on *different* objects, and the coupled measurement let the FFBS indulge the
+    mismatch: at ``corr(Q) = 0.8`` the least identified factor's ``phi`` collapsed and
+    its ``rho`` pinned to the boundary.  The error was the **truncated drift**, not
+    the coupling.  With the mixing restored, both sides key on ``eps`` and are
+    consistent by construction.
+
+    Two consequences worth naming.  **(i)** At diagonal ``Q``, ``M = I`` and this
+    reduces exactly to the per-factor formula of :func:`_branch_b_one_process` (up to
+    the QML-vs-mixture measurement, which remains the price of the coupled route).
+    **(ii)** The whitening attenuation of audit **P5** disappears: the decoupled block
+    uses ``|e_k|`` as a proxy for ``|z_k|`` and pays ``lambda(c_k)``; here ``z_k`` is
+    assembled exactly from the linear map, so there is nothing to attenuate.
+
+    Returns ``{"logh": (T, r), "g": (T, r)}`` with ``g_{t,k} = z_{k,t}`` the leverage
+    regressor evaluated at the NEW path, so Family B/C read ``k_t = sigma_k g_{t-1,k}``
+    exactly as in the Omori block.
+    """
+    T, r = ystar.shape
+    sig = np.sqrt(sigma2)                                   # (r,)
+
+    lev_out = has.copy()
+    lev_out[T - 1] = False                                  # no transition out of T-1
+
+    # ── the whitening map applied to the SIGNED, path-independent component signs ──
+    # md[t] = M * diag(d_t): row k, column j = M_kj d_{j,t}
+    md = M[None, :, :] * signs[:, None, :]                  # (T, r, r)
+    rs = (rho * sig)[None, :, None]                         # (1, r, 1)
+
+    # ── transition: FULL, time-varying, leverage linearised by (QML_A, QML_B) ─────
+    G = np.tile(np.diag(phi), (T, 1, 1))                    # (T, r, r)
+    c = np.zeros((T, r))
+    W = np.tile(sigma2, (T, 1))                             # (T, r)
+
+    lin = QML_A + QML_B * (ystar - LOG_CHI2_MEAN)           # (T, r), the level part
+    G[lev_out] = (np.diag(phi)[None, :, :] - QML_B * rs * md)[lev_out]
+    c[lev_out] = np.einsum("tkj,tj->tk", rs * md, lin)[lev_out]
+    W[lev_out] = np.tile(sigma2 * (1.0 - rho * rho), (T, 1))[lev_out]
+
+    # ── measurement: ONE Gaussian, constant FULL covariance (the coupling) ──────
+    y_eff = np.zeros((T, r))
+    y_eff[has] = (ystar - LOG_CHI2_MEAN)[has]
+    R_eff = np.zeros((T, r, r))
+    R_eff[has] = Sigma_xi
+
+    stat_var = sigma2 / (1.0 - phi * phi)
+    x_new = _mv_ffbs_tv(y_eff, R_eff, has, G, c, W, stat_var, rng)
+
+    # ── Family B/C regressor: z_k at the NEW path, assembled through M (no proxy) ──
+    xi_new = ystar - x_new                                  # (T, r)
+    eps_lin = signs * (QML_A + QML_B * (xi_new - LOG_CHI2_MEAN))     # (T, r) ~ eps
+    z_new = eps_lin @ M.T                                   # (T, r): z_k = sum_j M_kj eps_j
+    return {"logh": x_new, "g": z_new}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -311,6 +487,7 @@ def sample_volatility_block_leverage_lagged(
     rho_sampler: str = "griddy",
     rho_grid_size: int = 401,
     rho_log_prior=None,
+    common_vol_coupling: str = "decoupled",
     omori: dict = OMORI10,
     inv_sqrt_spd=None,
     **_ignored,
@@ -341,10 +518,24 @@ def sample_volatility_block_leverage_lagged(
     if not fix_mu0:
         raise ValueError("sample_volatility_block_leverage_lagged supports mu=0 only "
                          "(fix_mu0=True); the leverage AR(1) has no intercept.")
+    if common_vol_coupling not in ("decoupled", "qml"):
+        raise ValueError(
+            f"common_vol_coupling={common_vol_coupling!r} under leverage: 'decoupled' "
+            f"(Omori mixture, r independent channels) or 'qml' (coupled, one r-dim "
+            f"FFBS).  'literal' is not available under leverage: a full R_xi does not "
+            f"factorise over the Omori indicators — that is what the QML form fixes."
+        )
     if use_asis:
         if sigma_prior != "half_normal":
             raise ValueError("use_asis=True requires sigma_prior='half_normal' "
                              "(CP and NCP must share the Gaussian prior on sigma_eta).")
+        if common_vol_coupling == "qml":
+            # The interweave re-derives the measurement from the KSC mixture; under
+            # QML the measurement is a single Gaussian, so the two would target
+            # different models.  Same guard as the no-leverage common block.
+            raise ValueError("use_asis=True is not supported with "
+                             "common_vol_coupling='qml' (the ASIS interweave assumes "
+                             "the mixture measurement).")
         from mcmc.sample_asis import asis_scale_interweave      # lazy: avoid import cycle
     if inv_sqrt_spd is None:
         inv_sqrt_spd = _inv_sqrt_spd
@@ -389,13 +580,40 @@ def sample_volatility_block_leverage_lagged(
     sv_u_new = np.zeros((r, 3))
     rho_u_new = np.zeros(r)
     acc_s_u = 0.0; acc_r_u = 0.0
+
+    # Coupled QML pass: the r paths are drawn TOGETHER (one r-dim FFBS with the full
+    # log-square covariance), before the per-factor Family B/C loop.  Decoupled: each
+    # factor is its own Omori channel, drawn inside the loop.
+    qml = (common_vol_coupling == "qml")
+    if qml:
+        Sigma_xi = LOG_CHI2_VAR * logsq_corr_matrix(Q)          # (pi^2/2) R_xi
+        # The coupled pass keys EVERYTHING on the per-component shock eps: the
+        # measurement reads its log-square (linear in log h), and the leverage drift
+        # reconstructs the fully whitened z EXACTLY through the linear map
+        #     z = M eps,   M = Q^{-1/2} diag(sqrt(q_kk)).
+        # The augmenting sign is therefore sign(e_k) = sign(u_k) — OBSERVABLE and
+        # path-independent — not sign(z_k), which mixes the h's.  (The first version
+        # of this block used sign(z) with a *diagonal* drift, i.e. z_k ~= d_k
+        # exp(xi_k/2): sign and magnitude on different objects.  That truncated drift,
+        # not the coupling, is what made it unstable at strong corr(Q).)
+        M_mix = Qinv_half * np.sqrt(qdiag)[None, :]             # Q^{-1/2} diag(sqrt q)
+        sg = np.sign(E)
+        sg = np.where(sg == 0.0, 1.0, sg)
+        out_q = _branch_b_common_qml(ystar_all, sg, has_u,
+                                     sv_u[:, 1].copy(), sv_u[:, 2].copy(),
+                                     rho_u.copy(), Sigma_xi, M_mix, rng)
+        logh_qml, g_qml = out_q["logh"], out_q["g"]             # (T, r), (T, r)
+
     for k in range(r):
         phi_k, s2_k = float(sv_u[k, 1]), float(sv_u[k, 2])
         rho_k = float(rho_u[k]); rho2_k = rho_k * rho_k
-        out_k = _branch_b_one_process(ystar_all[:, k:k + 1], signs_all[:, k:k + 1],
-                                      has_u, logh_u[:, k], phi_k, s2_k,
-                                      np.array([rho_k]), rng, omori)
-        lh_k = out_k["logh"]; g_k = out_k["g"][:, 0]     # (T,)
+        if qml:
+            lh_k = logh_qml[:, k]; g_k = g_qml[:, k]     # (T,)
+        else:
+            out_k = _branch_b_one_process(ystar_all[:, k:k + 1], signs_all[:, k:k + 1],
+                                          has_u, logh_u[:, k], phi_k, s2_k,
+                                          np.array([rho_k]), rng, omori)
+            lh_k = out_k["logh"]; g_k = out_k["g"][:, 0]     # (T,)
         # Family B: phi, sigma2 on the lagged drift zeta_t = rho_k g_{t-1}
         zeta_k = np.zeros(T); zeta_k[1:] = rho_k * g_k[:-1]
         phi_k = _draw_phi_lev(lh_k, zeta_k, has_tr_u, s2_k, rho2_k, rng)

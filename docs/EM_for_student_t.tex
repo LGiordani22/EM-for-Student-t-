@@ -19406,10 +19406,13 @@ the exact conditional and never forms a measurement covariance at all, so the
 question does not arise for it; Branch~B, whose direct draw requires a measurement
 linear in the state, is exact at diagonal $\mQ$ and otherwise inherits the same
 near-diagonal approximation, and coupling it would demand a joint $r$-dimensional
-sign-augmented mixture that we do not derive. It bears repeating that, in this
-model, the tail of the Growth-at-Risk density is carried chiefly by the second-stage
-quantile map rather than by the forward-simulated volatility, which buffers the
-whole question.
+sign-augmented mixture that we do not derive. It bears repeating what is at stake in
+that omission. The tail of the Growth-at-Risk density is carried by the
+forward-simulated volatility itself --- there is no downstream step to absorb an
+approximation made here --- so the near-diagonal assumption is load-bearing rather
+than cosmetic, and it is retained only because the estimated
+$\operatorname{corr}(\mQ)$ is, in the event, close to diagonal, and because the
+diagnostic that quantifies its cost reports that cost to be small.
 
 \subsection{What is reused, what is new}
 \label{subsec:vol-reuse}
@@ -21977,13 +21980,27 @@ one built above, now with leverage-aware conditionals:
 \end{itemize}
 Both updates condition on the \emph{current} leverage $\rho$, which is drawn in
 its own Family~C Metropolis block \eqref{eq:param-rho-cond} and is \emph{not}
-itself interwoven. But $\rho$ benefits nonetheless, and substantially: it is
-strongly posterior-correlated with $\sigma_\eta$ --- together they set the
-amplitude and the asymmetry of the volatility innovations --- so a
-better-mixing $\sigma_\eta$ unlocks a better-mixing $\rho$. The ASIS boost to
-the scale propagates through the coupling to the whole leverage block, which is
-why the strategy matters for the leverage estimate and not only for
-$\sigma_\eta$ in isolation.
+itself interwoven. Does the leverage benefit at all, then? In our experience it
+does, and the credit appears to belong to the \emph{prior} rather than to the
+interweaving as such: runs that place the half-Normal prior on $\sigma_\eta$ ---
+the prior the interweaving \emph{requires}, since the centred and the
+non-centred update must express the same law on the signed scale --- tend to mix
+the leverage correlation better as well. This is one further reason to prefer it
+to the inverse-Gamma baseline, and it is worth stating because $\rho$ is the
+parameter the predictive tail is most sensitive to.
+
+The modest form of that statement is deliberate. It is tempting to explain the
+effect by the posterior correlation between $\rho$ and $\sigma_\eta$ --- together
+they set the amplitude and the asymmetry of the volatility innovations --- and
+so to conclude that a better-mixing scale \emph{mechanically} unlocks a
+better-mixing leverage. We resist that step. The prior and the interweaving are
+two distinct interventions, and they must be varied separately before either can
+be credited; when they are, it is the prior that is clearly implicated, while the
+postulated transmission through the mixing of $\sigma_\eta$ is not what we
+observe. We therefore claim for ASIS exactly what ASIS is built to deliver --- the
+$(\phi,\sigma_\eta^2)$ ridge diagnosed above --- and we record the improvement in
+the leverage block as an empirical regularity of the prior that ASIS brings with
+it, whose channel we do not pin down here.
 
 \paragraph{Both timing branches, all $M+r$ processes.} The non-centring is
 indifferent to the timing convention. Under contemporaneous timing (Branch~A)

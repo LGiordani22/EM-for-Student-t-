@@ -278,6 +278,7 @@ def fit_dfm_mcmc(
     sv: bool = False,
     sv_idio: bool = True,
     common_vol_coupling: str = "decoupled",
+    allow_experimental: bool = False,
     sv_offset: float = 1e-6,
     sv_init: tuple[float, float, float] = (0.0, 0.95, 0.05),
     sv_fix_mu0: bool = True,
@@ -291,6 +292,7 @@ def fit_dfm_mcmc(
     lev_prop_path: float = 0.25,
     lev_prop_sigma2: float = 0.20,
     lev_prop_rho: float = 0.06,
+    lev_path_sampler: str = "single",
     rho_sampler: str = "griddy",
     rho_grid_size: int = 401,
     rho_log_prior=None,
@@ -418,15 +420,47 @@ def fit_dfm_mcmc(
         raise ValueError(f"common_vol_coupling={common_vol_coupling!r}: "
                          f"'decoupled', 'qml' or 'literal'.")
     if common_vol_coupling != "decoupled" and leverage:
-        # Under leverage the common block is r independent Omori/FFBS channels, not
-        # sample_common_vol_mv, so the coupling would be a silent no-op (audit P1,
-        # .tex subsec:lev-branches-allproc (iii)).  Fail loudly instead.
-        raise ValueError(
-            f"common_vol_coupling={common_vol_coupling!r} is only reachable on the "
-            f"no-leverage Spec II path: under leverage the common block is r "
-            f"independent Omori/FFBS channels, with no joint measurement covariance "
-            f"to couple. Use leverage=False, or common_vol_coupling='decoupled'."
-        )
+        # The coupled pass IS available under leverage — but only the QML form, and
+        # only on Branch B.  Branch A needs no coupling at all: it has no mixture and
+        # no linearisation, so it already carries a full Q *exactly* (the MH target
+        # whitens with Q^{-1/2}); a "coupling" there would approximate what is exact.
+        if timing == "contemporaneous":
+            raise ValueError(
+                f"common_vol_coupling={common_vol_coupling!r} is meaningless on Branch A "
+                f"(timing='contemporaneous'): its Metropolis target uses the exact "
+                f"likelihood and the full Q^{{-1/2}} whitening — there is no mixture to "
+                f"couple and nothing to approximate.  Use common_vol_coupling='decoupled'."
+            )
+        if common_vol_coupling == "literal":
+            raise ValueError(
+                "common_vol_coupling='literal' is not available under leverage: a full "
+                "log-square cross-covariance does not factorise over the Omori "
+                "indicators.  The QML form does not need indicators — but see below: "
+                "under leverage it is EXPERIMENTAL and unstable."
+            )
+        if not allow_experimental:
+            # MEASURED (docs/audit_P1-P5.md, gate QML-leverage): the coupled pass is
+            # unusable under leverage, in the very regime it exists for.  At
+            # corr(Q)=0.8 the least identified factor collapses — phi 0.95 -> 0.42
+            # (or negative), rho pinned at the +0.9 boundary — for BOTH sign
+            # conventions, while the decoupled block is fine (phi 0.88).  The reason
+            # is the one the .tex gives for the coupling in general: positively
+            # correlated log-squares are REDUNDANT, so coupling them *widens* each
+            # factor's volatility posterior.  Without leverage that widening is the
+            # point (honest calibration).  With leverage it starves the path of
+            # information and the leverage DRIFT fills the vacuum — the same failure
+            # mode as the 'literal' form.  Kept, behind an opt-in, only to exhibit it.
+            raise ValueError(
+                "common_vol_coupling='qml' under leverage=True is EXPERIMENTAL and "
+                "UNSTABLE: at strong corr(Q) — the only regime that would justify a "
+                "coupled pass — the least identified factor's phi collapses and its "
+                "rho pins to the boundary (the 'literal' failure mode), because "
+                "coupling redundant log-squares widens the volatility posterior and "
+                "the leverage drift absorbs the slack.  Use "
+                "common_vol_coupling='decoupled' (the sanctioned near-diagonal "
+                "approximation), or pass allow_experimental=True for a deliberate "
+                "study of the instability."
+            )
     if leverage and not sv:
         raise ValueError(
             "leverage=True requires sv=True: with the volatility frozen "
@@ -582,10 +616,16 @@ def fit_dfm_mcmc(
                            else sample_volatility_block_leverage_lagged)
             # The Family C griddy (fix P6) is wired on Branch B only — Branch A keeps
             # its RW-Metropolis untouched, by explicit scope decision.
-            lev_kw = {} if timing == "contemporaneous" else {
-                "rho_sampler": rho_sampler, "rho_grid_size": rho_grid_size,
-                "rho_log_prior": rho_log_prior,
-            }
+            # The Family C kernel (griddy / RW, fix P6) is now wired on BOTH branches:
+            # comparing A against B on the leverage estimate requires the same rho
+            # kernel on both sides, or a difference in rho_hat could not be attributed
+            # to the target (exact vs Omori-linearised) rather than to the sampler.
+            lev_kw = {"rho_sampler": rho_sampler, "rho_grid_size": rho_grid_size,
+                      "rho_log_prior": rho_log_prior}
+            if timing == "contemporaneous":
+                lev_kw["lev_path_sampler"] = lev_path_sampler
+            else:
+                lev_kw["common_vol_coupling"] = common_vol_coupling
             vb = lev_sampler(
                 Y, f_aug, theta_cur, w_u, w_eps, logh_u, logh_eps,
                 sv_u, sv_eps, rho_u, rho_eps, rng,

@@ -246,6 +246,285 @@ def _lev_path_mh_mv_common(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# (b') BLOCK path draw for Branch A: Laplace proposal + exact Metropolis
+#
+# The single-move sweep above is Branch A's one real defect (audit P3 + P2):
+#   * from the flat warm start (log h == 0) it needs a KSC seed not to sit in the
+#     h~1 trap — a patch on the *initialisation*, not on the kernel;
+#   * it moves one coordinate per sweep with a fixed step, so doubling T doubles
+#     the degrees of freedom at constant effort: Branch A *degrades* with T
+#     (rho collapses at T=1200; audit P2).
+#
+# Both die if the path is drawn as ONE block.  The obstacle is that A's target is
+# genuinely non-linear-Gaussian: the drift rho*sigma*z_t keys on the CURRENT shock
+# z_t = Q^{-1/2}(exp(-x_t/2) b_t), so exp(-x_t/2) sits inside the transition mean.
+# (This is why Omori's mixture — built for the *lagged* coupling, Branch B — does
+# not apply here.)
+#
+# The fix keeps A exact and buys the block move from a proposal:
+#   1. build a LINEAR-GAUSSIAN approximation of A's conditional, per factor, by
+#      Taylor-expanding the two non-linear pieces (the log-chi^2 level term and
+#      the exp(-x/2) drift) — a standard Laplace/Durbin-Koopman construction;
+#   2. iterate it to its MODE from a *fixed* start, so the approximation depends on
+#      the data and the parameters but NOT on the current draw — an independence
+#      proposal;
+#   3. draw the whole path from it by FFBS and accept it against the EXACT,
+#      fully coupled Branch-A target.
+#
+# The approximation therefore touches only the *efficiency*: whatever it gets wrong
+# the Metropolis ratio corrects.  Branch A stays what it is — the branch with no
+# linearisation — which is the whole reason to keep it (it is the gold standard
+# against which Branch B's Omori linearisation can be measured).
+# ─────────────────────────────────────────────────────────────────────────────
+
+_A_MIN = 0.1          # guard on the linearised transition coefficient (proposal only)
+
+
+def _logpost_A_common(
+    x: np.ndarray,               # (T, r) path
+    b: np.ndarray,               # (T, r) sqrt(w_t) u_t   (0 at t=0)
+    S: np.ndarray,               # (T, r) per-component level SS e_{k,t}^2
+    has_obs: np.ndarray,         # (T,) bool
+    Qinv_half: np.ndarray,       # (r, r)
+    phi: np.ndarray,
+    sigma2: np.ndarray,
+    rho: np.ndarray,
+) -> float:
+    r"""
+    Branch A's **exact** log full conditional of the common log-vol paths, up to an
+    additive constant in ``x`` — the same three groups of terms the single-move
+    Metropolis differences one coordinate at a time (:func:`_lev_path_mh_mv_common`),
+    here evaluated on the whole ``(T, r)`` path:
+
+      * level:        ``-x/2 - S e^{-x}/2``               (where ``has_obs``)
+      * transition:   ``N(x_t; phi x_{t-1} + rho sigma z_t, sigma^2(1-rho^2))``
+                      with the **exact** raw shock ``z_t = Q^{-1/2}(e^{-x_t/2} b_t)``
+                      — the full symmetric root, so every factor's volatility enters
+                      every factor's drift;
+      * stationary prior at ``t = 0``.
+
+    Variances are constants of the path move, so their log-determinants are dropped.
+    """
+    T, r = x.shape
+    sig = np.sqrt(sigma2)
+    cdrift = rho * sig                                   # rho_k sigma_k
+    var_lev = sigma2 * (1.0 - rho * rho)
+    stat_var = sigma2 / (1.0 - phi * phi)
+
+    lp = float(np.sum(-0.5 * x[has_obs] - 0.5 * S[has_obs] * np.exp(-x[has_obs])))
+    lp += float(np.sum(-0.5 * x[0] ** 2 / stat_var))
+
+    Z = (np.exp(-0.5 * x) * b) @ Qinv_half               # (T, r): row t = Q^{-1/2} a_t
+    drift = cdrift[None, :] * Z[1:] * has_obs[1:, None]  # no drift where no shock
+    resid = x[1:] - (phi[None, :] * x[:-1] + drift)
+    v_in = np.where(has_obs[1:, None], var_lev[None, :], sigma2[None, :])
+    lp += float(np.sum(-0.5 * resid * resid / v_in))
+    return lp
+
+
+def _lin_gauss_approx(x_hat, S_k, e_k, has_obs, phi, sigma2, rho):
+    r"""
+    Linear-Gaussian approximation of Branch A's scalar conditional for one factor,
+    expanded at ``x_hat``.  Returns ``(y_eff, V_eff, mask, G, c, W, stat_var)`` in
+    the convention of :func:`mcmc.sample_leverage_lagged._ffbs_tv` (index ``t`` is
+    the transition ``t -> t+1``).
+
+    **Level.**  ``g(x) = -x/2 - S e^{-x}/2`` is concave; its second-order expansion
+    is a Gaussian pseudo-observation with precision ``-g'' = S e^{-x_hat}/2`` and
+    pseudo-datum ``x_hat + g'/(-g'')`` — the textbook Gaussian approximation to the
+    log-chi^2 measurement.
+
+    **Drift.**  ``rho sigma e_t e^{-x_t/2}`` is linearised in ``x_t``:
+    with ``D_t = rho sigma e_t e^{-x_hat_t/2}``,
+
+        drift(x_t) ~= D_t (1 + x_hat_t/2) - (D_t/2) x_t,
+
+    so the transition ``x_t = phi x_{t-1} + drift(x_t) + N(0, v)`` becomes
+
+        A_t x_t = phi x_{t-1} + C_t + N(0, v),   A_t = 1 + D_t/2,
+                                                 C_t = D_t (1 + x_hat_t/2)
+
+    i.e. an AR(1) with time-varying coefficient ``phi/A_t``, intercept ``C_t/A_t``
+    and variance ``v/A_t^2``.  The proposal only needs ``A_t`` to stay away from 0;
+    where it does not (a violent shock against a near-1 ``|rho|``) we fall back to
+    the no-leverage transition — a *worse proposal*, never a wrong target.
+
+    The cross-factor coupling of ``Q^{-1/2}`` is deliberately **left out** here: it
+    would make the proposal a ``(T x r)`` Gaussian for a gain the Metropolis ratio
+    already guarantees.  Exact at diagonal ``Q``, a good proposal near it — which is
+    where the real panel lives (``corr(Q)`` max off-diagonal 0.099).
+    """
+    T = x_hat.shape[0]
+    sig = float(np.sqrt(sigma2))
+    v_lev = float(sigma2 * (1.0 - rho * rho))
+    stat_var = float(sigma2 / (1.0 - phi * phi))
+
+    # ── level: Gaussian pseudo-observation ───────────────────────────────────
+    mask = has_obs & (S_k > 0.0)
+    prec = np.zeros(T)
+    prec[mask] = 0.5 * S_k[mask] * np.exp(-x_hat[mask])
+    V_eff = np.full(T, np.inf)
+    y_eff = np.zeros(T)
+    ok = mask & (prec > 1e-12)
+    V_eff[ok] = 1.0 / prec[ok]
+    gprime = -0.5 + 0.5 * S_k[ok] * np.exp(-x_hat[ok])
+    y_eff[ok] = x_hat[ok] + gprime / prec[ok]
+    mask = ok
+
+    # ── transition: linearised leverage drift ────────────────────────────────
+    D = rho * sig * e_k * np.exp(-0.5 * x_hat)            # (T,)
+    A = 1.0 + 0.5 * D
+    C = D * (1.0 + 0.5 * x_hat)
+    v_t = np.where(has_obs, v_lev, sigma2)                # variance of the transition INTO t
+
+    G = np.full(T, float(phi))
+    c = np.zeros(T)
+    W = np.full(T, float(sigma2))
+    for t in range(T - 1):                                # transition t -> t+1
+        tn = t + 1
+        if has_obs[tn] and abs(A[tn]) > _A_MIN:
+            G[t] = phi / A[tn]
+            c[t] = C[tn] / A[tn]
+            W[t] = v_t[tn] / (A[tn] * A[tn])
+        else:
+            G[t] = phi
+            c[t] = 0.0
+            W[t] = v_t[tn]
+    return y_eff, V_eff, mask, G, c, W, stat_var
+
+
+def _tv_filter(y_eff, V_eff, mask, G, c, W, stat_var):
+    """Forward Kalman filter of the scalar linear-Gaussian approximation."""
+    T = mask.shape[0]
+    a = np.zeros(T)
+    P = np.zeros(T)
+    for t in range(T):
+        if t == 0:
+            a_pred, P_pred = 0.0, stat_var
+        else:
+            a_pred = G[t - 1] * a[t - 1] + c[t - 1]
+            P_pred = G[t - 1] * G[t - 1] * P[t - 1] + W[t - 1]
+        if mask[t]:
+            Sv = P_pred + V_eff[t]
+            K = P_pred / Sv
+            a[t] = a_pred + K * (y_eff[t] - a_pred)
+            P[t] = (1.0 - K) * P_pred
+        else:
+            a[t], P[t] = a_pred, P_pred
+    return a, P
+
+
+def _tv_backward(a, P, G, c, W, rng=None):
+    """Backward pass: RTS smoothed **mean** (``rng=None``) or one FFBS **draw**."""
+    T = a.shape[0]
+    x = np.zeros(T)
+    x[T - 1] = a[T - 1]
+    if rng is not None:
+        x[T - 1] += np.sqrt(max(P[T - 1], 0.0)) * rng.standard_normal()
+    for t in range(T - 2, -1, -1):
+        P_pred_next = G[t] * G[t] * P[t] + W[t]
+        J = G[t] * P[t] / P_pred_next
+        m = a[t] + J * (x[t + 1] - (G[t] * a[t] + c[t]))
+        x[t] = m
+        if rng is not None:
+            V = P[t] * (1.0 - J * G[t])
+            x[t] += np.sqrt(max(V, 0.0)) * rng.standard_normal()
+    return x
+
+
+def _lin_gauss_logdens(x, y_eff, V_eff, mask, G, c, W, stat_var):
+    r"""``log q(x)`` of the linear-Gaussian approximation, up to the constant
+    ``-log p(y_eff)`` — which is the SAME for both paths in the Metropolis ratio
+    (the proposal is an independence proposal: one approximation, two evaluations),
+    so it cancels and is not computed."""
+    lp = -0.5 * (np.log(stat_var) + x[0] * x[0] / stat_var)
+    m = G[:-1] * x[:-1] + c[:-1]
+    d = x[1:] - m
+    lp += float(np.sum(-0.5 * (np.log(W[:-1]) + d * d / W[:-1])))
+    if np.any(mask):
+        dm = y_eff[mask] - x[mask]
+        lp += float(np.sum(-0.5 * (np.log(V_eff[mask]) + dm * dm / V_eff[mask])))
+    return float(lp)
+
+
+def _lev_path_laplace_mh_common(
+    logh_u: np.ndarray,          # (T, r) current paths
+    b: np.ndarray,               # (T, r) sqrt(w) u
+    S: np.ndarray,               # (T, r) e^2
+    E: np.ndarray,               # (T, r) signed e_{k,t} = sqrt(w/q_kk) u_k
+    has_obs: np.ndarray,         # (T,)
+    Qinv_half: np.ndarray,       # (r, r)
+    phi: np.ndarray,
+    sigma2: np.ndarray,
+    rho: np.ndarray,
+    rng: np.random.Generator,
+    *,
+    n_newton: int = 10,
+    tol: float = 1e-6,
+) -> tuple[np.ndarray, int, int]:
+    r"""
+    Branch A's block path draw: per factor, an **independence** Metropolis move whose
+    proposal is the mode-centred Laplace approximation of :func:`_lin_gauss_approx`,
+    accepted against the exact coupled target :func:`_logpost_A_common`.
+
+    Per factor ``k``:
+      1. iterate ``x_hat <- smoothed mean of the approximation built at x_hat`` from
+         the FIXED start ``x_hat = 0`` (Durbin-Koopman mode finding).  Starting from
+         a constant — not from the current draw — is what makes the proposal an
+         *independence* proposal: ``q`` depends on the data and the parameters only,
+         so the reverse density needs no second linearisation and the ratio is just
+         ``q(x_cur)/q(x_prop)``.  It is also what retires the flat-start trap (P3):
+         the very first proposal is already a sensible path, so no KSC warm seed is
+         needed;
+      2. draw the whole path from ``q`` by FFBS;
+      3. accept with the EXACT Branch-A target, other factors held fixed.
+
+    Returns ``(logh_new (T, r), n_accept, n_propose)`` with one accept/reject per
+    factor per sweep (so ``n_propose = r``, not ``T*r`` — read the acceptance rate
+    accordingly: it is a *block* acceptance).
+    """
+    T, r = logh_u.shape
+    x = np.asarray(logh_u, float).copy()
+    n_acc = 0
+
+    for k in range(r):
+        # ── 1. mode of the approximation, from a fixed start (independence) ───
+        x_hat = np.zeros(T)
+        approx = None
+        for _ in range(n_newton):
+            approx = _lin_gauss_approx(x_hat, S[:, k], E[:, k], has_obs,
+                                       float(phi[k]), float(sigma2[k]), float(rho[k]))
+            a, P = _tv_filter(*approx)
+            x_new_hat = _tv_backward(a, P, approx[3], approx[4], approx[5])
+            if np.max(np.abs(x_new_hat - x_hat)) < tol:
+                x_hat = x_new_hat
+                break
+            x_hat = x_new_hat
+        approx = _lin_gauss_approx(x_hat, S[:, k], E[:, k], has_obs,
+                                   float(phi[k]), float(sigma2[k]), float(rho[k]))
+        y_eff, V_eff, mask, G, c, W, stat_var = approx
+        a, P = _tv_filter(*approx)
+
+        # ── 2. propose the whole path ─────────────────────────────────────────
+        x_prop = _tv_backward(a, P, G, c, W, rng=rng)
+
+        # ── 3. accept against the EXACT target (other factors fixed) ──────────
+        x_cur_k = x[:, k].copy()
+        lp_cur = _logpost_A_common(x, b, S, has_obs, Qinv_half, phi, sigma2, rho)
+        x[:, k] = x_prop
+        lp_prop = _logpost_A_common(x, b, S, has_obs, Qinv_half, phi, sigma2, rho)
+
+        lq_cur = _lin_gauss_logdens(x_cur_k, y_eff, V_eff, mask, G, c, W, stat_var)
+        lq_prop = _lin_gauss_logdens(x_prop, y_eff, V_eff, mask, G, c, W, stat_var)
+
+        if np.log(rng.random()) < (lp_prop - lp_cur) + (lq_cur - lq_prop):
+            n_acc += 1                          # keep x[:, k] = x_prop
+        else:
+            x[:, k] = x_cur_k
+    return x, n_acc, r
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Family B under leverage: (phi, sigma^2) — leverage-aware draws
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -481,7 +760,12 @@ def sample_volatility_block_leverage(
     prop_path: float = 0.25,
     prop_sigma2: float = 0.20,
     prop_rho: float = 0.06,
+    lev_path_sampler: str = "single",
+    rho_sampler: str = "rw",
+    rho_grid_size: int = 401,
+    rho_log_prior=None,
     inv_sqrt_spd=None,
+    **_ignored,
 ) -> dict:
     r"""
     Contemporaneous-leverage volatility + leverage-parameter sampler (Branch A).
@@ -545,22 +829,34 @@ def sample_volatility_block_leverage(
     rho_u = np.asarray(rho_u, float).copy()                # (r,)
     phi_u = sv_u[:, 1].copy(); s2_u = sv_u[:, 2].copy()
 
-    # Warm-start the path from a blocked KSC-FFBS draw when it enters flat (the
-    # warm start's log h == 0).  The per-factor single-move Metropolis mixes far
-    # more slowly than the blocked KSC-FFBS and, coupled to the state feedback,
-    # can otherwise sit in the flat-init trap (h ~ 1 -> homoskedastic states ->
-    # u ~ homoskedastic -> h ~ 1).  Seeding the sweep with the exact rho=0 path
-    # (sample_common_vol_mv, the Spec II common block) leaves the target
-    # unchanged and lets the subsequent Metropolis explore around a sensible path.
-    if not np.any(np.abs(logh_u) > 1e-9):
-        from mcmc.sample_vol import sample_common_vol_mv
-        seed_sv = np.column_stack([np.zeros(r), phi_u, s2_u])
-        logh_u = sample_common_vol_mv(u, Q, w_u, logh_u, seed_sv, rng,
-                                      offset=1e-6)["logh_u"]
+    if lev_path_sampler not in ("single", "laplace"):
+        raise ValueError(f"lev_path_sampler={lev_path_sampler!r}: 'single' or 'laplace'.")
 
-    # (b) coupled multivariate single-move path draw (drift keys on the raw shock)
-    logh_u_new, na, npp = _lev_path_mh_mv_common(
-        logh_u, b_u, S_u, has_u, Qinv_half, phi_u, s2_u, rho_u, prop_path, rng)
+    if lev_path_sampler == "single":
+        # Warm-start the path from a blocked KSC-FFBS draw when it enters flat (the
+        # warm start's log h == 0).  The per-factor single-move Metropolis mixes far
+        # more slowly than the blocked KSC-FFBS and, coupled to the state feedback,
+        # can otherwise sit in the flat-init trap (h ~ 1 -> homoskedastic states ->
+        # u ~ homoskedastic -> h ~ 1).  Seeding the sweep with the exact rho=0 path
+        # (sample_common_vol_mv, the Spec II common block) leaves the target
+        # unchanged and lets the subsequent Metropolis explore around a sensible path.
+        # NB: the seed is a patch on the *initialisation*; 'laplace' does not need it
+        # (its proposal is mode-centred, so the first sweep already lands on a
+        # sensible path) — audit P3.
+        if not np.any(np.abs(logh_u) > 1e-9):
+            from mcmc.sample_vol import sample_common_vol_mv
+            seed_sv = np.column_stack([np.zeros(r), phi_u, s2_u])
+            logh_u = sample_common_vol_mv(u, Q, w_u, logh_u, seed_sv, rng,
+                                          offset=1e-6)["logh_u"]
+
+        # (b) coupled multivariate single-move path draw (drift keys on the raw shock)
+        logh_u_new, na, npp = _lev_path_mh_mv_common(
+            logh_u, b_u, S_u, has_u, Qinv_half, phi_u, s2_u, rho_u, prop_path, rng)
+    else:
+        # (b') block draw: Laplace proposal, exact Branch-A acceptance (audit P2/P3)
+        E_u = b_u / np.sqrt(qdiag)[None, :]                 # signed e_{k,t}; S_u = E_u^2
+        logh_u_new, na, npp = _lev_path_laplace_mh_common(
+            logh_u, b_u, S_u, E_u, has_u, Qinv_half, phi_u, s2_u, rho_u, rng)
     acc["path_u"] = na / npp
 
     # raw shocks at the new path: z^u_t = Q^{-1/2} (exp(-x_t/2) * b_t)  (T, r)
@@ -585,7 +881,9 @@ def sample_volatility_block_leverage(
                                         sigma_prior=sigma_prior, half_normal_B=half_normal_B)
             eta_k = logh_u_new[1:, k] - ph_k * logh_u_new[:-1, k]
             k_reg = np.sqrt(s2_k) * z_u[1:, k]                 # k_t = sigma_k z^u_{k,t}
-            rho_k, a_rk = draw_rho_scalar(rho_k, eta_k, k_reg, s2_k, prop_rho, rng)
+            rho_k, a_rk = draw_rho(rho_k, eta_k, k_reg, s2_k, rng,
+                                   sampler=rho_sampler, prop_sd=prop_rho,
+                                   grid_size=rho_grid_size, log_prior=rho_log_prior)
             sv_u_new[k] = (0.0, ph_k, s2_k); rho_u_new[k] = rho_k
             acc_s_u += a1; acc_r_u += a_rk
     else:
@@ -611,7 +909,9 @@ def sample_volatility_block_leverage(
             ph_k = float(sv_u_new[k, 1]); s2_k = float(sv_u_new[k, 2])
             eta_k = logh_u_new[1:, k] - ph_k * logh_u_new[:-1, k]
             k_reg = np.sqrt(s2_k) * z_u[1:, k]
-            rho_k, a_rk = draw_rho_scalar(float(rho_u[k]), eta_k, k_reg, s2_k, prop_rho, rng)
+            rho_k, a_rk = draw_rho(float(rho_u[k]), eta_k, k_reg, s2_k, rng,
+                                   sampler=rho_sampler, prop_sd=prop_rho,
+                                   grid_size=rho_grid_size, log_prior=rho_log_prior)
             rho_u_new[k] = rho_k; acc_r_u += a_rk
     acc["sigma2"] = acc_s_u                                # accepts over the r factors
     acc["rho_u"] = acc_r_u / max(1, r)
@@ -658,7 +958,9 @@ def sample_volatility_block_leverage(
         lev_mask = has_i[1:]
         eta_i = (lh_i[1:] - phi_i * lh_i[:-1])[lev_mask]
         k_i = (np.sqrt(s2_i) * z_i[1:])[lev_mask]
-        rho_i, a_ri = draw_rho_scalar(rho_i, eta_i, k_i, s2_i, prop_rho, rng)
+        rho_i, a_ri = draw_rho(rho_i, eta_i, k_i, s2_i, rng,
+                               sampler=rho_sampler, prop_sd=prop_rho,
+                               grid_size=rho_grid_size, log_prior=rho_log_prior)
         acc_s += a_si; acc_re += a_ri
 
         logh_eps_new[:, i] = lh_i

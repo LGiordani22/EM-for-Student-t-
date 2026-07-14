@@ -124,10 +124,34 @@ def simulate_dfm_sv(
                           spec broadcast to all series, or per-series).
     burn_in : int         factor/vol burn-in (>= 4 so the MM lags are genuine).
 
+    .. warning::
+       **sigma in, sigma-SQUARED out** — and the two are *not* the same field.
+
+       Every ``sv_*`` **input** above is ``(mu, phi, sigma)``: the log-vol
+       innovation **standard deviation** (that is what ``_ar1_path`` multiplies the
+       normal draw by).  The **sampler**, however, parameterises the same process by
+       the **variance**: ``fit_dfm_mcmc`` reads ``sv_init=(mu, phi, sigma^2)`` and
+       its ``draws["sv_u"][:, :, 2]`` is ``sigma^2``.
+
+       The two conventions once collided on the same key: this function used to
+       *return* its ``sigma`` input under the name ``sv_u``, so
+       ``sim["sv_u"]`` and ``res["draws"]["sv_u"]`` looked comparable and were not.
+       A recovery check written against it silently compared ``sigma`` to
+       ``sigma^2`` — the kind of error that returns plausible numbers.
+
+       The inputs are left in ``sigma`` (they define the DGPs of the whole suite,
+       and re-reading them as variances would silently change every one of them),
+       and the **returned** ``sv_u`` / ``sv_eps`` are converted to the sampler's
+       ``(mu, phi, sigma^2)``.  So ``sim["sv_u"]`` may be compared with
+       ``res["draws"]["sv_u"]`` directly — that is the whole point.  The inputs are
+       echoed back, unconverted, as ``sv_u_sigma`` / ``sv_eps_sigma``.
+
     Returns dict with ``Y`` (T, M), ``F`` (T, r), ``h_u_true`` — (T,) scalar-common,
     (T, r) under ``sv_u_perfactor`` — ``h_eps_true`` (T, M), ``logh_u_true``,
     ``logh_eps_true``, ``w_u_true`` (T,), ``w_eps_true`` (T,), ``sv_u``,
-    ``sv_eps`` (M, 3), ``theta_used``.
+    ``sv_eps`` (M, 3) — **both in the sampler's ``(mu, phi, sigma^2)``** — plus
+    ``sv_u_sigma`` / ``sv_eps_sigma`` (the inputs, in ``sigma``), ``rho_u_true``,
+    ``rho_eps_true``, ``theta_used``.
     """
     A = np.asarray(theta["A"]); Q = np.asarray(theta["Q"])
     Lambda = np.asarray(theta["Lambda"]); R = np.asarray(theta["R"]).ravel()
@@ -312,12 +336,25 @@ def simulate_dfm_sv(
         quarter_end_offset=quarter_end_offset,
     )
 
+    # sigma in, sigma^2 out (see the warning in the docstring): the inputs define the
+    # DGP in standard-deviation units, the sampler speaks variance.  Convert on the
+    # way out so that sim["sv_u"] and res["draws"]["sv_u"] mean the SAME thing, and
+    # echo the raw inputs under a name that cannot be mistaken for either.
+    sv_u_sigma = np.asarray(sv_u_pf if perfactor else sv_u, float)
+    sv_eps_sigma = np.asarray(sv_eps, float)
+
+    def _to_var(sv: np.ndarray) -> np.ndarray:
+        out = np.array(sv, float, copy=True)
+        out[..., 2] = out[..., 2] ** 2
+        return out
+
     return {
         "Y": Y, "F": F,
         "h_u_true": h_u, "h_eps_true": h_eps,
         "logh_u_true": logh_u, "logh_eps_true": logh_eps,
         "w_u_true": w_u, "w_eps_true": w_eps,
-        "sv_u": sv_u_pf if perfactor else np.asarray(sv_u, float), "sv_eps": sv_eps,
+        "sv_u": _to_var(sv_u_sigma), "sv_eps": _to_var(sv_eps_sigma),
+        "sv_u_sigma": sv_u_sigma, "sv_eps_sigma": sv_eps_sigma,
         "rho_u_true": rho_u_vec, "rho_eps_true": rho_eps_vec,
         "theta_used": dict(theta),
     }

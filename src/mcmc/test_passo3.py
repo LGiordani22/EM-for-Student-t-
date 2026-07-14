@@ -121,9 +121,17 @@ def test_end_to_end(theta, fl, bm, oc, r):
                        fl, bm, oc, n_iter=800, burn_in=300, thin=1, seed=4,
                        sv=True, leverage=True, store_vol=True, verbose=False)
     acc = res["meta"]["acceptance"]
-    ok_acc = all(0.05 < acc[k] < 0.95 for k in acc)
-    _check("all Metropolis acceptance rates in (0.05, 0.95)", ok_acc,
-           f"{ {k: round(v,2) for k,v in acc.items()} }")
+    # Family C is now the griddy on BOTH branches (it draws rho from its full
+    # conditional, so it accepts by construction): its acceptance is 1.0 and is NOT a
+    # mixing diagnostic — read ESS instead.  Only the genuine Metropolis kernels (the
+    # path and sigma2) are bounded here.
+    mh_keys = [k for k in acc if not k.startswith("rho_")]
+    ok_acc = all(0.05 < acc[k] < 0.95 for k in mh_keys)
+    _check("Metropolis acceptance rates (path, sigma2) in (0.05, 0.95)", ok_acc,
+           f"{ {k: round(acc[k], 2) for k in mh_keys} }")
+    _check("the griddy Family C accepts by construction (rho acc = 1)",
+           all(acc[k] == 1.0 for k in acc if k.startswith("rho_")),
+           f"{ {k: round(v, 2) for k, v in acc.items() if k.startswith('rho_')} }")
     rho_u = res["theta_mean"]["rho_u"]
     jdom = int(np.argmax(np.abs(rho_u_true)))
     _check("dominant rho_u component has negative sign", rho_u[jdom] < 0,

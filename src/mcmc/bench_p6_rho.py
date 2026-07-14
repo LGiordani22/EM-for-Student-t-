@@ -87,6 +87,7 @@ def run_bench(*, n_iter: int = 4000, burn_in: int = 1500, chains: int = 2,
 
     t0 = time.time()
     rho_chains = []
+    sig2_chains = []
     ess_per_chain = []
     for c in range(chains):
         if verbose:
@@ -96,9 +97,11 @@ def run_bench(*, n_iter: int = 4000, burn_in: int = 1500, chains: int = 2,
                            sv=True, leverage=True, timing="lagged",
                            verbose=False, **fit_kwargs)
         rho_chains.append(res["draws"]["rho_u"])                 # (n_keep, r)
+        sig2_chains.append(res["draws"]["sv_u"][:, :, 2])        # (n_keep, r)
         ess_per_chain.append(res["diagnostics"]["rho_u"]["ess"])  # (r,)
 
     R = np.stack(rho_chains)                                     # (chains, n_keep, r)
+    S = np.stack(sig2_chains)                                    # (chains, n_keep, r)
     n_keep = R.shape[1]
 
     out = {"rho_true": RHO_TRUE, "n_iter": n_iter, "burn_in": burn_in,
@@ -108,6 +111,7 @@ def run_bench(*, n_iter: int = 4000, burn_in: int = 1500, chains: int = 2,
            "ess_per_chain": np.stack(ess_per_chain)}             # (chains, r)
 
     pooled_ess, rhat, mean, lo, hi, mcse = [], [], [], [], [], []
+    ess_s2, rhat_s2 = [], []
     for k in range(r):
         ch = R[:, :, k]                                          # (chains, n_keep)
         pooled_ess.append(float(ess(ch)))
@@ -117,8 +121,14 @@ def run_bench(*, n_iter: int = 4000, burn_in: int = 1500, chains: int = 2,
         lo.append(float(np.quantile(flat, 0.05)))
         hi.append(float(np.quantile(flat, 0.95)))
         mcse.append(float(flat.std() / np.sqrt(max(pooled_ess[-1], 1.0))))
+        # sigma_eta^2: e' la coordinata con cui rho forma la cresta (audit P6). Se un
+        # rimedio agisce via il mixing di sigma, deve vedersi prima qui.
+        s2 = S[:, :, k]
+        ess_s2.append(float(ess(s2)))
+        rhat_s2.append(float(split_r_hat(s2)))
     out.update(ess=np.array(pooled_ess), r_hat=np.array(rhat), mean=np.array(mean),
-               lo=np.array(lo), hi=np.array(hi), mcse=np.array(mcse))
+               lo=np.array(lo), hi=np.array(hi), mcse=np.array(mcse),
+               ess_sigma2=np.array(ess_s2), r_hat_sigma2=np.array(rhat_s2))
     return out
 
 
@@ -142,6 +152,8 @@ def print_bench(out: dict, label: str = "") -> None:
     print(f"  acceptance(rho_u) = {out['acceptance_rho_u']:.3f}")
     n_tot = out["n_keep"] * out["chains"]
     print(f"  efficienza ESS/draw: {np.round(out['ess'] / n_tot, 4)}")
+    print(f"  ESS(sigma_eta^2):    {np.round(out['ess_sigma2'], 1)}"
+          f"   R-hat: {np.round(out['r_hat_sigma2'], 3)}")
 
 
 def main() -> int:
