@@ -50,8 +50,8 @@ def _sigma_prior_bias(g, mode) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     una curiosita': abbiamo curato P6 agendo su questo prior senza mai controllare cosa
     facesse alla STIMA del parametro su cui agisce."""
     true = np.asarray(g["sim"]["sv_u"], float)[:, 2]          # gia' in varianza
-    hn = D.fit(g, seed=900, sv_sigma_prior="half_normal")
-    ig = D.fit(g, seed=900, sv_sigma_prior="inverse_gamma")
+    hn = D.fit(g, seed=700, sv_sigma_prior="half_normal")   # = il fit di default (cache)
+    ig = D.fit(g, seed=700, sv_sigma_prior="inverse_gamma", n_chains=1)
     m_hn = D.stack(hn, "sv_u")[:, :, :, 2].reshape(-1, true.size).mean(axis=0)
     m_ig = D.stack(ig, "sv_u")[:, :, :, 2].reshape(-1, true.size).mean(axis=0)
     return true, m_hn, m_ig

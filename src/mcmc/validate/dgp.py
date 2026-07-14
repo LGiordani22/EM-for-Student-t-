@@ -77,7 +77,7 @@ class Mode:
 
 
 QUICK = Mode("quick", T=300, n_iter=400, burn_in=150, chains=2)
-FULL = Mode("full", T=600, n_iter=2500, burn_in=800, chains=2)
+FULL = Mode("full", T=600, n_iter=1800, burn_in=600, chains=2)
 
 
 def coverage_mode(n_reps: int) -> Mode:
@@ -118,9 +118,25 @@ def build(mode: Mode, *, branch: str = "B", seed: int = 22,
             "timing": timing, "mode": mode, "seed": seed}
 
 
-def fit(dgp: dict, *, seed: int = 700, **kw) -> list[dict]:
+#: **La cache dei fit.**  Senza di essa il validatore rifa' la stessa catena in ogni
+#: modulo — `linear`, `volatility` e `leverage` chiedono tutti e tre il fit di default —
+#: e in modalita' --full questo significa ore di calcolo buttate.  La chiave e' l'intero
+#: contenuto della richiesta (DGP + seme + kwargs), quindi due chiamate identiche
+#: restituiscono la *stessa* catena: nessun rischio di confrontare draw diversi credendoli
+#: uguali.
+_CACHE: dict = {}
+
+
+def _key(dgp: dict, seed: int, kw: dict) -> tuple:
+    m = dgp["mode"]
+    return (dgp["branch"], dgp["seed"], m.name, m.T, m.n_iter, m.burn_in, m.chains,
+            seed, tuple(sorted((k, repr(v)) for k, v in kw.items())))
+
+
+def fit(dgp: dict, *, seed: int = 700, n_chains: int | None = None, **kw) -> list[dict]:
     """Gira ``mode.chains`` catene e restituisce i risultati.  **Un solo fit serve molti
-    check**: e' cio' che rende il validatore eseguibile invece di un'ora per parametro.
+    check** — ed e' cio' che rende il validatore eseguibile invece di un'ora per
+    parametro: i risultati sono in cache per (DGP, seme, kwargs).
 
     Default: prior half-Normal e griddy su ``rho`` — la configurazione che spediremmo.
     Ogni check che voglia variarli lo fa **esplicitamente**, e la sua ragione lo dice.
@@ -130,13 +146,20 @@ def fit(dgp: dict, *, seed: int = 700, **kw) -> list[dict]:
     kw.setdefault("rho_sampler", "griddy")
     kw.setdefault("store_states", True)      # servono i draw di f_t per validarli
     kw.setdefault("store_vol", True)         # e i path h^u / h^eps
+
+    nc = mode.chains if n_chains is None else n_chains
+    k = _key(dgp, seed, kw) + (nc,)
+    if k in _CACHE:
+        return _CACHE[k]
+
     out = []
-    for c in range(mode.chains):
+    for c in range(nc):
         out.append(fit_dfm_mcmc(
             dgp["sim"]["Y"], dgp["theta"], w["freq_list"], w["block_map"],
             w["ordered_cols"], n_iter=mode.n_iter, burn_in=mode.burn_in,
             seed=seed + c, sv=True, leverage=True, timing=dgp["timing"],
             verbose=False, **kw))
+    _CACHE[k] = out
     return out
 
 

@@ -98,7 +98,9 @@ def _asis_cells(mode: D.Mode, branch: str) -> list[Verdict]:
             if asis and prior == "inverse_gamma":
                 cells[key] = None                            # cella irraggiungibile
                 continue
-            ch = D.fit(g, seed=800, use_asis=asis, sv_sigma_prior=prior)
+            # (off, half_normal) e' il fit di DEFAULT: stesso seme => cache hit, gratis.
+            nc = None if (not asis and prior == "half_normal") else 1
+            ch = D.fit(g, seed=700, use_asis=asis, sv_sigma_prior=prior, n_chains=nc)
             sv = D.stack(ch, "sv_u")
             cells[key] = {
                 "phi": summarize(sv[:, :, 0, 1]),
@@ -225,7 +227,7 @@ def _qml(mode: D.Mode) -> list[Verdict]:
     out = {}
     for cp in ("decoupled", "qml"):
         kw = {"allow_experimental": True} if cp == "qml" else {}
-        ch = D.fit(gq, seed=910, common_vol_coupling=cp, **kw)
+        ch = D.fit(gq, seed=700, common_vol_coupling=cp, n_chains=1, **kw)
         out[cp] = {
             "phi": D.stack(ch, "sv_u")[:, :, :, 1].reshape(-1, gq["r"]).mean(axis=0),
             "rho": summarize(D.stack(ch, "rho_u")[:, :, 0],
