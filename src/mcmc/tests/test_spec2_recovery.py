@@ -29,7 +29,7 @@ import sys
 
 import numpy as np
 
-_SRC = pathlib.Path(__file__).resolve().parent.parent
+_SRC = pathlib.Path(__file__).resolve().parents[2]
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 

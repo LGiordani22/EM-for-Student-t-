@@ -32,7 +32,7 @@ import numpy as np
 from scipy.special import digamma as _digamma
 
 # ── make src/ importable (flat EM imports) ───────────────────────────────────
-_SRC = pathlib.Path(__file__).resolve().parent.parent
+_SRC = pathlib.Path(__file__).resolve().parents[2]
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 

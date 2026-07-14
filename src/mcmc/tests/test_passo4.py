@@ -46,14 +46,14 @@ import sys
 
 import numpy as np
 
-_SRC = pathlib.Path(__file__).resolve().parent.parent
+_SRC = pathlib.Path(__file__).resolve().parents[2]
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 from mcmc.constants import OMORI10, validate_mixture                    # noqa: E402
 from mcmc.gibbs import load_warm_init, fit_dfm_mcmc                      # noqa: E402
 from mcmc.simulate_sv import simulate_dfm_sv
-from mcmc.test_leverage_common import leverage_end_to_end                            # noqa: E402
+from mcmc.tests.test_leverage_common import leverage_end_to_end                            # noqa: E402
 from mcmc.sample_vol import _scalar_ar1_ffbs                            # noqa: E402
 from mcmc.sample_leverage_lagged import _ffbs_tv                        # noqa: E402
 from mcmc.sample_leverage import draw_rho_scalar                        # noqa: E402
