@@ -614,9 +614,7 @@ def fit_dfm_mcmc(
             lev_sampler = (sample_volatility_block_leverage
                            if timing == "contemporaneous"
                            else sample_volatility_block_leverage_lagged)
-            # The Family C griddy (fix P6) is wired on Branch B only — Branch A keeps
-            # its RW-Metropolis untouched, by explicit scope decision.
-            # The Family C kernel (griddy / RW, fix P6) is now wired on BOTH branches:
+            # The Family C kernel (griddy / RW, fix P6) is wired on BOTH branches:
             # comparing A against B on the leverage estimate requires the same rho
             # kernel on both sides, or a difference in rho_hat could not be attributed
             # to the target (exact vs Omori-linearised) rather than to the sampler.

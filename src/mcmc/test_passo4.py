@@ -52,7 +52,8 @@ if str(_SRC) not in sys.path:
 
 from mcmc.constants import OMORI10, validate_mixture                    # noqa: E402
 from mcmc.gibbs import load_warm_init, fit_dfm_mcmc                      # noqa: E402
-from mcmc.simulate_sv import simulate_dfm_sv                            # noqa: E402
+from mcmc.simulate_sv import simulate_dfm_sv
+from mcmc.test_leverage_common import leverage_end_to_end                            # noqa: E402
 from mcmc.sample_vol import _scalar_ar1_ffbs                            # noqa: E402
 from mcmc.sample_leverage_lagged import _ffbs_tv                        # noqa: E402
 from mcmc.sample_leverage import draw_rho_scalar                        # noqa: E402
@@ -133,45 +134,12 @@ def test_skewness_lagged(theta):
 
 
 def test_end_to_end(theta, fl, bm, oc, r):
-    print("\n[5] Branch-B (Spec II per-factor) Gibbs: FFBS accept=1, dominant sign, recovery")
-    # Branch B is now per-factor (Option A, Phase 7): h_u is (T, r), rho_u is (r,).
-    # The per-factor SV pays the sqrt(r) data cost (Phase 1), so recovery needs a
-    # longer panel than the old scalar-common gate — T=240 collapses, T=500 recovers
-    # the dominant leverage and tracks every factor's path (verified up to T=900).
-    rho_u_true = np.array([-0.6, -0.3, -0.2])[:r]
-    sim = simulate_dfm_sv(theta, T=500, freq_list=fl, block_map=bm, ordered_cols=oc, r=r,
-                          seed=9, sv_u=(0.0, 0.97, 0.22), sv_eps=(0.0, 0.95, 0.15),
-                          rho_u=rho_u_true, rho_eps=-0.3, timing="lagged")
-    res = fit_dfm_mcmc(sim["Y"], {**theta, "Sigma_0": np.asarray(theta["Sigma_0"])},
-                       fl, bm, oc, n_iter=600, burn_in=250, thin=1, seed=4,
-                       sv=True, leverage=True, timing="lagged", store_vol=True, verbose=False)
-    acc = res["meta"]["acceptance"]
-    _check("FFBS path acceptance == 1.0 (direct draw)",
-           acc["path_u"] == 1.0 and acc["path_eps"] == 1.0, f"{acc}")
-    # sigma2 stays a Metropolis move; rho is now a griddy draw (fix P6), so its
-    # "acceptance" is 1.0 by construction — exactly as the FFBS path draw reports.
-    # Acceptance is therefore NOT a mixing diagnostic for rho: read ESS (below).
-    _check("sigma2 acceptance in (0.05,0.95) — still Metropolis",
-           0.05 < acc["sigma2"] < 0.95, f"{ {k: round(v,2) for k,v in acc.items()} }")
-    _check("rho acceptance == 1.0 (griddy = direct draw from the full conditional)",
-           acc["rho_u"] == 1.0 and acc["rho_eps"] == 1.0,
-           f"rho_u={acc['rho_u']}, rho_eps={acc['rho_eps']}")
-    d = res["diagnostics"]["rho_u"]
-    _check("rho ESS is reported (no rho_hat without its ESS)",
-           d["ess"].shape == (r,) and np.all(d["ess"] > 0), f"ESS={np.round(d['ess'],1)}")
-    rho_u = res["theta_mean"]["rho_u"]
-    jdom = int(np.argmax(np.abs(rho_u_true)))
-    _check("dominant rho_u component has negative sign", rho_u[jdom] < 0,
-           f"rho_u={np.round(rho_u,3)}")
-    # per-factor h_u (T, r): every factor should track the common path (avg corr)
-    lhu = np.log(res["draws"]["h_u"].mean(axis=0))          # (T, r)
-    if lhu.ndim == 2:
-        c = float(np.mean([np.corrcoef(lhu[:, k], sim["logh_u_true"])[0, 1]
-                           for k in range(lhu.shape[1])]))
-    else:
-        c = float(np.corrcoef(lhu, sim["logh_u_true"])[0, 1])
-    _check("per-factor h^u tracks the common path (avg corr>0.4)", c > 0.4, f"avg corr={c:.3f}")
-
+    """Branch B del gate end-to-end — stesso corpo di Branch A, in `test_leverage_common`.
+    Cio' che cambia e' cio' che DEVE cambiare: sotto B il path e' un draw FFBS diretto
+    (acceptance 1.0 per costruzione, non un tasso), e T e' piu' lungo perche' la SV
+    per-fattore legge ogni h^u_k da UNA sola log-square per periodo (P2)."""
+    print("\n[5] Branch B end-to-end: FFBS accept=1, segno dominante, tracking")
+    leverage_end_to_end("B", theta, fl, bm, oc, r, _check)
 
 def test_rho_griddy_same_target():
     print("\n[7] fix P6: the griddy draws from the SAME target as the RW-Metropolis")

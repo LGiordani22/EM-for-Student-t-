@@ -424,7 +424,16 @@ def test_common_vol_mv_seam(_S):
     sv_u = (0.0, 0.95, 0.05); sv_eps = np.array([[0.0, 0.95, 0.05]])
     theta = {"A": A, "Q": Q, "Lambda": Lambda, "R": R}
 
-    # scalar common block (first RNG consumer inside the block is the common path)
+    # ⚠ SEME DI RAMO MORTO — non un motore vivo.
+    # `sample_volatility_block` implementa la restrizione SCALARE `H^u = h·I` (una sola
+    # volatilita' comune condivisa dagli r fattori) e **non e' raggiungibile da
+    # fit_dfm_mcmc**: l'orchestratore chiama solo `sample_volatility_block_specII` (o i
+    # blocchi con leverage).  Questo e' il suo UNICO chiamante in tutto il repo.
+    # Perche' e' tenuto: e' il *seme* con cui si verifica che il blocco per-fattore, a
+    # r = 1, riproduca bit-per-bit il vecchio blocco scalare — cioe' che il refactoring
+    # 1 -> r non abbia cambiato la legge nel caso in cui i due coincidono.  E' un
+    # ancoraggio storico, non codice di produzione: chi cerca "quale motore campiona la
+    # volatilita'" deve guardare altrove.
     vb = sample_volatility_block(Y, f_aug, theta, w_u, w_eps, logh_u0, logh_eps0,
                                  sv_u, sv_eps, np.random.default_rng(7))
     # per-factor block at r=1, same RNG seed

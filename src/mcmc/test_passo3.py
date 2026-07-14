@@ -40,7 +40,8 @@ if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 from mcmc.gibbs import load_warm_init, fit_dfm_mcmc                       # noqa: E402
-from mcmc.simulate_sv import simulate_dfm_sv                             # noqa: E402
+from mcmc.simulate_sv import simulate_dfm_sv
+from mcmc.test_leverage_common import leverage_end_to_end                             # noqa: E402
 from mcmc.sample_leverage import draw_rho_scalar, _lev_path_mh           # noqa: E402
 from mcmc.diagnostics import leverage_skewness_check                     # noqa: E402
 
@@ -112,42 +113,11 @@ def test_nesting():
 
 
 def test_end_to_end(theta, fl, bm, oc, r):
-    print("\n[4] short leverage Gibbs: runs, acceptance sane, dominant sign")
-    rho_u_true = np.array([-0.6, -0.3, -0.2])
-    sim = simulate_dfm_sv(theta, T=220, freq_list=fl, block_map=bm, ordered_cols=oc, r=r,
-                          seed=9, sv_u=(0.0, 0.97, 0.22), sv_eps=(0.0, 0.95, 0.15),
-                          rho_u=rho_u_true, rho_eps=-0.3)
-    res = fit_dfm_mcmc(sim["Y"], {**theta, "Sigma_0": np.asarray(theta["Sigma_0"])},
-                       fl, bm, oc, n_iter=800, burn_in=300, thin=1, seed=4,
-                       sv=True, leverage=True, store_vol=True, verbose=False)
-    acc = res["meta"]["acceptance"]
-    # Family C is now the griddy on BOTH branches (it draws rho from its full
-    # conditional, so it accepts by construction): its acceptance is 1.0 and is NOT a
-    # mixing diagnostic — read ESS instead.  Only the genuine Metropolis kernels (the
-    # path and sigma2) are bounded here.
-    mh_keys = [k for k in acc if not k.startswith("rho_")]
-    ok_acc = all(0.05 < acc[k] < 0.95 for k in mh_keys)
-    _check("Metropolis acceptance rates (path, sigma2) in (0.05, 0.95)", ok_acc,
-           f"{ {k: round(acc[k], 2) for k in mh_keys} }")
-    _check("the griddy Family C accepts by construction (rho acc = 1)",
-           all(acc[k] == 1.0 for k in acc if k.startswith("rho_")),
-           f"{ {k: round(v, 2) for k, v in acc.items() if k.startswith('rho_')} }")
-    rho_u = res["theta_mean"]["rho_u"]
-    jdom = int(np.argmax(np.abs(rho_u_true)))
-    _check("dominant rho_u component has negative sign", rho_u[jdom] < 0,
-           f"rho_u={np.round(rho_u,3)}")
-    # Branch A is now per-factor (Spec II, Option A): h_u is (T, r).  The
-    # scalar-common DGP has every factor read the same true common path, so each
-    # per-factor h^u_k should track it; average the per-factor correlation (the
-    # sqrt(r) data cost of per-factor SV means a short run tracks more weakly).
-    lhu = np.log(res["draws"]["h_u"].mean(axis=0))          # (T, r)
-    if lhu.ndim == 2:
-        c = float(np.mean([np.corrcoef(lhu[:, k], sim["logh_u_true"])[0, 1]
-                           for k in range(lhu.shape[1])]))
-    else:
-        c = float(np.corrcoef(lhu, sim["logh_u_true"])[0, 1])
-    _check("per-factor h^u tracks the common path (avg corr>0.3 short run)", c > 0.3,
-           f"avg corr={c:.3f}")
+    """Branch A del gate end-to-end.  Il corpo vive in `test_leverage_common`, condiviso
+    con Branch B: quando il griddy ha cambiato la semantica dell'acceptance di rho, la
+    correzione andava fatta in DUE posti e uno e' stato dimenticato.  Ora e' uno solo."""
+    print("\n[4] Branch A end-to-end: path Metropolis, segno dominante, tracking")
+    leverage_end_to_end("A", theta, fl, bm, oc, r, _check)
 
 
 def main():
