@@ -138,7 +138,9 @@ def _asis_cells(mode: D.Mode, branch: str) -> list[Verdict]:
         estimate=d_phi, mode=mode.name, detail={"spec_key": "_asis_correct"}))
 
     # (2) EFFICIENZA — separata dalla correttezza
-    gain_phi = on["phi"]["ess"] / max(off["phi"]["ess"], 1e-9)
+    eff = lambda d: d["ess"] / max(d["n"], 1)      # ESS PER DRAW: l'unica misura
+    gain_phi = eff(on["phi"]) / max(eff(off["phi"]), 1e-12)   # confrontabile fra fit con
+                                                              # numero di catene diverso
     V.append(Verdict(
         "ASIS efficienza (ESS phi)", "fattori", branch,
         Outcome.RECOVERED if gain_phi > 1.15 else Outcome.RECOVERED_BIASED,
@@ -151,8 +153,8 @@ def _asis_cells(mode: D.Mode, branch: str) -> list[Verdict]:
     assert err is None, err
     ig = cells[(False, "inverse_gamma")]
     hn = cells[(False, "half_normal")]
-    gain_prior = hn["rho"]["ess"] / max(ig["rho"]["ess"], 1e-9)
-    gain_asis = on["rho"]["ess"] / max(off["rho"]["ess"], 1e-9)
+    gain_prior = eff(hn["rho"]) / max(eff(ig["rho"]), 1e-12)
+    gain_asis = eff(on["rho"]) / max(eff(off["rho"]), 1e-12)
 
     # Un guadagno di ESS non e' misurabile da catene corte: l'ESS stesso ha un errore
     # standard enorme quando e' dell'ordine di 20.  In --quick questo confronto NON PUO'

@@ -115,13 +115,23 @@ def check_oracle(mode: D.Mode) -> list[Verdict]:
     say(f"oracolo (path VERO): z esatto x{np.round(ratios_e, 2)}  "
         f"Omori x{np.round(ratios_o, 2)}")
 
-    ok = all(0.85 < r_ < 1.15 for r_ in ratios_e)
-    om_ok = all(abs(re - ro) < 0.10 for re, ro in zip(ratios_e, ratios_o))
+    # ⚠ La soglia NON puo' essere sul RAPPORTO: sul canale debole rho vero = -0.15, e un
+    # rapporto su un valore cosi' piccolo e' dominato dal rumore (0.68 significa uno scarto
+    # assoluto di 0.05, cioe' nulla).  Asserire il rapporto la' sarebbe asserire una
+    # proprieta' di una quantita' NON IDENTIFICATA — il peccato che questo validatore
+    # esiste per impedire, e che alla prima run ho commesso io.  La statistica giusta e'
+    # lo scarto ASSOLUTO, che ha lo stesso significato su tutti e tre i canali.
+    err_e = [abs(s["mean"] - s["truth"]) for s in o["exact"]]
+    err_o = [abs(s["mean"] - s["truth"]) for s in o["omori"]]
+    ok = all(e < 0.08 for e in err_e)
+    om_ok = all(abs(a - b) < 0.05 for a, b in zip(err_e, err_o))
+    say(f"  scarto assoluto: z esatto {np.round(err_e, 3)}  Omori {np.round(err_o, 3)}")
     V.append(Verdict(
         "rho^u | path VERO", "fattori", "B",
         Outcome.RECOVERED if ok else Outcome.BROKEN,
         ("**LA PROVA.** Con path/volatilita'/pesi VERI congelati, Family C recupera rho a "
-         f"x{np.mean(ratios_e):.2f} del vero. Il conditional e' dunque CORRETTO: "
+         f"scarto assoluto max {max(err_e):.3f} (rapporti {np.round(ratios_e, 2)}). "
+         "Il conditional e' dunque CORRETTO: "
          "l'attenuazione del Gibbs completo (x0.64) NON viene da un bug in Family C, ma "
          "**tutta dall'incertezza sulle latenti** (errors-in-variables)."),
         estimate=float(np.mean(ratios_e)), truth=1.0, mode="full",
