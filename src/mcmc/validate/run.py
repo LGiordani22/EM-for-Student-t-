@@ -98,6 +98,9 @@ def main() -> int:
     if mode.name == "quick":
         print("  ⚠  --quick non e' probante su rho, sigma^2_eta e h: i loro OK portano il caveat.")
 
+    out = _SRC.parent / a.report
+    out.parent.mkdir(parents=True, exist_ok=True)
+
     verdicts = []
     modules = {"linear": linear, "volatility": volatility,
                "leverage": leverage, "variants": variants}
@@ -106,12 +109,14 @@ def main() -> int:
             continue
         print(f"\n  ── {name} " + "─" * (60 - len(name)), flush=True)
         verdicts += mod.run(mode, coverage_reps=a.coverage)
+        # Salvataggio INCREMENTALE: una run in modalita' --full dura ore, e un'interruzione
+        # a tre quarti non deve costare tutto.  Dopo ogni modulo il report su disco e' gia'
+        # valido — parziale, ma vero.
+        report.markdown(report.fill_untested(list(verdicts), mode.name), mode.name, out)
+        print(f"  [salvato] {name} -> {out.name}", flush=True)
 
     verdicts = report.fill_untested(verdicts, mode.name)
     rc = report.console(verdicts, mode.name)
-
-    out = _SRC.parent / a.report
-    out.parent.mkdir(parents=True, exist_ok=True)
     report.markdown(verdicts, mode.name, out)
     print(f"  report: {out}    wall-clock: {time.time() - t0:.0f}s\n")
     return rc

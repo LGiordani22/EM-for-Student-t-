@@ -77,7 +77,7 @@ class Mode:
 
 
 QUICK = Mode("quick", T=300, n_iter=400, burn_in=150, chains=2)
-FULL = Mode("full", T=600, n_iter=1800, burn_in=600, chains=2)
+FULL = Mode("full", T=600, n_iter=1200, burn_in=400, chains=2)
 
 
 def coverage_mode(n_reps: int) -> Mode:
