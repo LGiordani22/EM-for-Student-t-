@@ -1,4 +1,4 @@
-# Validation report — modalità `quick`
+# Validation report — modalità `full`
 
 Generato da `python -m mcmc.validate.run`. Una riga per parametro; il verdetto è
 uno dei quattro di `validate/verdict.py`. **Rosso = sampler rotto, e basta**: un
@@ -8,37 +8,39 @@ parametro non identificato è un limite del dato, non un difetto del codice.
 
 | parametro | ramo | verdetto | vero | stima | ESS | R-hat | copertura | ragione |
 |---|---|---|---|---|---|---|---|---|
-| `QML sotto leverage` | B | **recuperato con bias noto** | -0.700 | -0.341 | 27 | 0.996 | — | **progresso, non soluzione** — e il check congela ENTRAMBI i fatti. A corr(Q)=0.8 la deriva corretta (z = M eps esatto) recupera rho: -0.34 contro il -0.27 del decoupled (vero -0.70) ⇒ **P5 eliminata** [NON confermato]. Ma phi di un fattore COLLASSA ancora: [1.   0.43 0.43]. Resta dietro allow_experimental. |
-| `ASIS x prior (cella off-IG)` | B | **non identificato** | — | — | — | — | — | la cella (use_asis=True, prior=IG) e' **IRRAGGIUNGIBILE**: gibbs.py:498 forza il half-Normal. Non e' un bug — CP e NCP devono esprimere lo STESSO prior perche' l'interweaving campioni il giunto esatto, e il gaussiano sul sigma segnato e' cio' che rende coniugato il draw NCP. Via 1 (draw NCP non coniugato sotto IG, ~30 righe) documentata e NON implementata; adottata la via 2: disciplina sperimentale. |
-| `A` | - | **mai testato** | — | — | — | — | — | nessun check lo copre |
-| `Q` | - | **mai testato** | — | — | — | — | — | nessun check lo copre |
-| `f_t` | - | **mai testato** | — | — | — | — | — | nessun check lo copre |
+| `Q` | B | **recuperato con bias noto** | +0.248 | +0.112 | 15 | 1.230 | — | err. rel. 49% contro il vero, **sotto SV + leverage** (prima era validato solo contro l'EM e senza SV) |
+| `Q` | A | **recuperato con bias noto** | +0.248 | +0.055 | 10 | 1.912 | — | err. rel. 38% contro il vero, **sotto SV + leverage** (prima era validato solo contro l'EM e senza SV) |
 | `h^u_k` | - | **mai testato** | — | — | — | — | — | nessun check lo copre |
 | `mu^u_k` | - | **mai testato** | — | — | — | — | — | non e' un parametro stimato: fissato per identificazione |
-| `nu_u` | - | **mai testato** | — | — | — | — | — | nessun check lo copre |
 | `phi^u_k` | - | **mai testato** | — | — | — | — | — | nessun check lo copre |
 | `rho^u_k` | - | **mai testato** | — | — | — | — | — | nessun check lo copre |
 | `sigma^2_{eta,k}` | - | **mai testato** | — | — | — | — | — | nessun check lo copre |
-| `w^u_t` | - | **mai testato** | — | — | — | — | — | nessun check lo copre |
-| `ASIS correttezza` | B | **recuperato** | — | +0.008 | — | — | — | a prior FISSATO (half-Normal), ASIS on/off campionano lo stesso target: |d phi| = 0.008, |d sigma^2|/sigma^2 = 4%. Se divergessero, ASIS sarebbe ROTTO (una riparametrizzazione non puo' spostare la legge invariante). |
-| `ASIS efficienza (ESS phi)` | B | **recuperato** | — | +1.346 | — | — | — | ESS(phi) x1.35 con ASIS. E' cio' per cui ASIS e' costruito — la cresta (phi, sigma^2). Non alzarlo lo renderebbe INUTILE, non rotto. |
-| `QML sotto Branch A` | A | **recuperato** | — | — | — | — | — | solleva ValueError **per costruzione**: Branch A non forma MAI una covarianza di misura (nessuna mistura, nessuna linearizzazione; usa Q^{-1/2} pieno in modo esatto), quindi non c'e' nulla da accoppiare. **Non e' una lacuna, e' una proprieta'** — ed e' la ragione per cui A e' la controparte esatta. |
-| `leva su rho: prior, non ASIS` | B | **recuperato** | — | +0.855 | — | — | — | a ASIS FISSATO (off), cambiare il prior IG -> half-Normal moltiplica ESS(rho) per x0.9. A prior FISSATO, accendere ASIS lo moltiplica per x0.9. **La leva e' il prior, non l'interweaving** — la catena causale 'meglio sigma => meglio rho' del .tex e' falsificata. |
-| `recommend_coupling` | B | **recuperato** | — | — | — | — | — | la soglia e' sulla SOVRA-CONFIDENZA indotta (<=5%), non su corr(Q): a Q diagonale -0.0% -> 'decoupled'; a corr(Q)=0.8 30% -> 'qml'. Sul pannello reale (~0.4%) => decoupled. |
+| `w^u_t` | B | **mai testato** | — | — | — | — | — | i pesi non sono immagazzinati nei draws (sono interni allo sweep): l'algebra del loro conditional e' verificata in test_shared, ma il path non e' confrontabile col vero senza esporli |
+| `w^u_t` | A | **mai testato** | — | — | — | — | — | i pesi non sono immagazzinati nei draws (sono interni allo sweep): l'algebra del loro conditional e' verificata in test_shared, ma il path non e' confrontabile col vero senza esporli |
+| `A` | B | **recuperato** | +0.108 | +0.140 | 510 | 1.001 | — | err. rel. 17% contro il vero, **sotto SV + leverage** (prima era validato solo contro l'EM e senza SV) |
+| `A` | A | **recuperato** | +0.108 | +0.139 | 232 | 1.067 | — | err. rel. 23% contro il vero, **sotto SV + leverage** (prima era validato solo contro l'EM e senza SV) |
+| `f_t` | B | **recuperato** | — | +0.991 | — | — | — | corr. media col vero 0.99 (un path si giudica sulla traccia, non sul valore) |
+| `f_t` | A | **recuperato** | — | +0.992 | — | — | — | corr. media col vero 0.99 (un path si giudica sulla traccia, non sul valore) |
+| `nu_u` | B | **recuperato** | +4.080 | +4.386 | 138 | 1.011 | — | CI copre il vero, rapporto 1.07 |
+| `nu_u` | A | **recuperato** | +4.080 | +4.438 | 134 | 1.020 | — | CI copre il vero, rapporto 1.09 |
 
 ## Blocco osservazioni
 
 | parametro | ramo | verdetto | vero | stima | ESS | R-hat | copertura | ragione |
 |---|---|---|---|---|---|---|---|---|
-| `Lambda` | - | **mai testato** | — | — | — | — | — | nessun check lo copre |
-| `R` | - | **mai testato** | — | — | — | — | — | nessun check lo copre |
+| `Lambda` | A | **recuperato con bias noto** | +0.938 | +1.920 | 7 | 2.320 | — | err. rel. 67% contro il vero, **sotto SV + leverage** (buco chiuso) |
 | `h^eps_i` | - | **mai testato** | — | — | — | — | — | nessun check lo copre |
 | `mu^eps_i` | - | **mai testato** | — | — | — | — | — | non e' un parametro stimato: fissato per identificazione |
-| `nu_eps` | - | **mai testato** | — | — | — | — | — | nessun check lo copre |
 | `phi^eps_i` | - | **mai testato** | — | — | — | — | — | nessun check lo copre |
 | `rho^eps_i` | - | **mai testato** | — | — | — | — | — | nessun check lo copre |
 | `sigma^2_{eps,i}` | - | **mai testato** | — | — | — | — | — | nessun check lo copre |
-| `w^eps_t` | - | **mai testato** | — | — | — | — | — | nessun check lo copre |
+| `w^eps_t` | B | **mai testato** | — | — | — | — | — | i pesi non sono immagazzinati nei draws (sono interni allo sweep): l'algebra del loro conditional e' verificata in test_shared, ma il path non e' confrontabile col vero senza esporli |
+| `w^eps_t` | A | **mai testato** | — | — | — | — | — | i pesi non sono immagazzinati nei draws (sono interni allo sweep): l'algebra del loro conditional e' verificata in test_shared, ma il path non e' confrontabile col vero senza esporli |
+| `Lambda` | B | **recuperato** | +0.938 | +1.374 | 6 | 2.004 | — | err. rel. 30% contro il vero, **sotto SV + leverage** (buco chiuso) |
+| `R` | B | **recuperato** | +0.015 | +0.020 | 109 | 1.025 | — | err. rel. 14% contro il vero, **sotto SV + leverage** (buco chiuso) |
+| `R` | A | **recuperato** | +0.015 | +0.020 | 52 | 1.155 | — | err. rel. 11% contro il vero, **sotto SV + leverage** (buco chiuso) |
+| `nu_eps` | B | **recuperato** | +4.400 | +4.822 | 454 | 1.009 | — | CI copre il vero, rapporto 1.10 |
+| `nu_eps` | A | **recuperato** | +4.400 | +4.803 | 445 | 1.000 | — | CI copre il vero, rapporto 1.09 |
 
 ## Come leggere i verdetti
 

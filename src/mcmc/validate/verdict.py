@@ -99,6 +99,13 @@ class Verdict:
             return None
         return self.estimate / self.truth
 
+    #: Sotto queste soglie la catena **non ha esplorato**, e nessuna sua media e' una
+    #: misura.  Non e' pedanteria: la prima run --full ha dichiarato ``Q`` "recuperato"
+    #: sulla base di un errore relativo calcolato da una catena con **R-hat = 2.3 ed ESS
+    #: = 6**.  Un numero del genere non e' una stima sbagliata: **non e' una stima**.
+    ESS_MIN = 30.0
+    R_HAT_MAX = 1.15
+
     def __post_init__(self):
         # Terza regola, applicata al tipo: un verdetto "recuperato" su un parametro
         # delicato non puo' poggiare su un solo dataset.  Non lo VIETIAMO qui (sarebbe
@@ -106,3 +113,27 @@ class Verdict:
         # OK prodotto in --quick porta la sua etichetta con se'.
         if self.outcome is Outcome.RECOVERED and self.mode == "quick":
             self.detail.setdefault("caveat", "verdetto da --quick: non probante")
+
+        # ── IL CANCELLO DI CONVERGENZA ────────────────────────────────────────
+        # Un verdetto POSITIVO (recuperato / bias noto) afferma qualcosa sulla posterior.
+        # Se la catena non e' convergente su quel parametro, quell'affermazione non ha
+        # fondamento — e va sospesa, non annacquata.  Il verdetto diventa "non
+        # identificato" con una ragione che distingue esplicitamente le due cose, perche'
+        # sono diverse e la differenza conta:
+        #   * "il DATO non lo pinza"      -> limite informativo, nessun rimedio nel sampler;
+        #   * "la CATENA non converge"    -> limite del CAMPIONATORE, e un rimedio esiste.
+        positive = self.outcome in (Outcome.RECOVERED, Outcome.RECOVERED_BIASED)
+        bad_ess = self.ess is not None and self.ess < self.ESS_MIN
+        bad_rhat = self.r_hat is not None and self.r_hat > self.R_HAT_MAX
+        if positive and (bad_ess or bad_rhat):
+            self.detail["suspended_from"] = self.outcome.value
+            self.detail["ess"] = self.ess
+            self.detail["r_hat"] = self.r_hat
+            self.outcome = Outcome.NOT_IDENTIFIED
+            self.reason = (
+                f"**VERDETTO SOSPESO — la CATENA non converge su questo parametro** "
+                f"(ESS {self.ess:.0f}, R-hat {self.r_hat:.2f}). Attenzione: NON e' il dato "
+                f"che non lo pinza, e' il campionatore che non lo esplora — sono due cose "
+                f"diverse e il rimedio e' diverso. Qualunque media a posteriori calcolata "
+                f"da questa catena non e' una stima sbagliata: **non e' una stima**. "
+                f"(Sarebbe stato: {self.detail['suspended_from']} — {self.reason})")
