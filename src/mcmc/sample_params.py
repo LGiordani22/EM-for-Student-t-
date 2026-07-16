@@ -85,6 +85,7 @@ def draw_A_Q_block(
     nu0: float = 0.0,
     A0: np.ndarray | None = None,
     kappa: float = 0.0,
+    fix_q_identity: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     r"""
     Draw ``(A, Q)`` from the MNIW full conditional given the sampled factor path
@@ -110,7 +111,8 @@ def draw_A_Q_block(
     zeros = np.zeros((T, 5 * r, 5 * r))
     mom = compute_weighted_moments(f_aug, zeros, zeros, w_u, r)
     return draw_A_Q(mom["P00"], mom["P10"], mom["P11"], T - 1, rng,
-                    Psi0=Psi0, nu0=nu0, A0=A0, kappa=kappa)
+                    Psi0=Psi0, nu0=nu0, A0=A0, kappa=kappa,
+                    fix_q_identity=fix_q_identity)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

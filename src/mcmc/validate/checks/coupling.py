@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from mcmc.diagnostics import innovation_correlation, loadings_unit_factor
 from mcmc.validate import dgp as D
 from mcmc.validate.checks import relerr, say, summarize
 from mcmc.validate.verdict import Outcome, Verdict
@@ -58,13 +59,18 @@ def run(mode: D.Mode, *, coverage_reps: int = 0) -> list[Verdict]:
     sim, r = g["sim"], g["r"]
     say(f"Q NON diagonale (off-diag {_CORR}), branch B — un solo fit, tutta la batteria")
 
-    # ── A, Q (l'off-diagonale, che a Q diagonale vale 0 e non e' mai messo alla prova) ──
+    # ── A, Q — l'off-diagonale come CORRELAZIONE R_Q (l'oggetto identificato) ──────
+    # A Q non diagonale la correlazione fra shock dei fattori e' sostanza (reale vs
+    # finanziario) ed e' l'input di QML.  La covarianza grezza Q_01 e' contaminata dalla
+    # scala non identificata (ESS ~29); la correlazione R_Q_01 e' scale-invariante e
+    # mescola bene (ESS ~500).  Riportiamo quella.
     A_true = np.asarray(g["theta"]["A"], float)
     Q_true = np.asarray(g["theta"]["Q"], float)
     A_hat = D.stack(chains, "A").reshape(-1, *A_true.shape).mean(axis=0)
-    Q_hat = D.stack(chains, "Q").reshape(-1, *Q_true.shape).mean(axis=0)
-    sQ = summarize(D.stack(chains, "Q")[:, :, 0, 1], truth=float(Q_true[0, 1]))
-    eA, eQ = relerr(A_hat, A_true), relerr(Q_hat, Q_true)
+    Rq = innovation_correlation(D.stack(chains, "Q"))
+    Rq_true = innovation_correlation(Q_true)
+    sR = summarize(Rq[:, :, 0, 1], truth=float(Rq_true[0, 1]))
+    eA = relerr(A_hat, A_true)
     V.append(Verdict(
         "A [Q corr]", "fattori", "B",
         Outcome.RECOVERED if eA < 0.35 else Outcome.RECOVERED_BIASED,
@@ -72,16 +78,22 @@ def run(mode: D.Mode, *, coverage_reps: int = 0) -> list[Verdict]:
         estimate=float(A_hat[0, 0]), truth=float(A_true[0, 0]), mode=mode.name,
         detail={"spec_key": "A"}))
     V.append(Verdict(
-        "Q off-diag [Q corr]", "fattori", "B",
-        Outcome.RECOVERED if (sQ["covers"] and abs(sQ["ratio"] - 1) < 0.5) else Outcome.RECOVERED_BIASED,
-        f"off-diag vero {Q_true[0,1]:+.3f}, stima {Q_hat[0,1]:+.3f}; err. rel. Q (matrice) {eQ:.0%}.",
-        truth=float(Q_true[0, 1]), estimate=float(Q_hat[0, 1]), ci=(sQ["lo"], sQ["hi"]),
-        ess=sQ["ess"], r_hat=sQ["r_hat"], mode=mode.name, detail={"spec_key": "Q"}))
+        "Q corr off-diag [Q corr]", "fattori", "B",
+        Outcome.RECOVERED if (sR["covers"] and abs(sR["ratio"] - 1) < 0.3) else Outcome.RECOVERED_BIASED,
+        f"correlazione R_Q vera {Rq_true[0,1]:+.2f}, stima {sR['mean']:+.2f} — l'oggetto "
+        f"identificato (la scala grezza e' assorbita da Lambda). Off-diag mescola bene "
+        f"dove la covarianza grezza no.",
+        truth=float(Rq_true[0, 1]), estimate=float(sR["mean"]), ci=(sR["lo"], sR["hi"]),
+        ess=sR["ess"], r_hat=sR["r_hat"], mode=mode.name, detail={"spec_key": "Q"}))
 
     # ── Lambda, R ──────────────────────────────────────────────────────────────
-    L_true = np.asarray(g["theta"]["Lambda"], float)
+    # Lambda nella normalizzazione a fattore a varianza unitaria (come in linear.py):
+    # l'oggetto identificato.  Il vero e' normalizzato con lo stesso criterio.
+    L_true = loadings_unit_factor(np.asarray(g["theta"]["Lambda"], float),
+                                  np.asarray(sim["F"], float)[:, :r])
     R_true = np.asarray(g["theta"]["R"], float).ravel()
-    L_hat = D.stack(chains, "Lambda").reshape(-1, *L_true.shape).mean(axis=0)
+    L_hat = loadings_unit_factor(D.stack(chains, "Lambda"),
+                                 D.stack(chains, "F")).reshape(-1, *L_true.shape).mean(axis=0)
     R_hat = D.stack(chains, "R").reshape(-1, R_true.size).mean(axis=0)
     for nm, hat, tru, key, blk in (("Lambda", L_hat, L_true, "Lambda", "osservazioni"),
                                    ("R", R_hat, R_true, "R", "osservazioni")):

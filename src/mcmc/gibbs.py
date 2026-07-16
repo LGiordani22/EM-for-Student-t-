@@ -325,6 +325,7 @@ def fit_dfm_mcmc(
     store_states: bool = False,
     store_vol: bool = False,
     store_weights: bool = False,
+    fix_q_identity: bool = False,
     compute_diagnostics: bool = True,
     verbose: bool = True,
 ) -> dict:
@@ -509,6 +510,11 @@ def fit_dfm_mcmc(
     nu_u = float(theta_init["nu_u"])
     nu_eps = float(theta_init["nu_eps"])
     r = A.shape[0]
+    # Identificazione unit-Q: Q ≡ I per tutta la catena (la scala del fattore la porta
+    # Lambda, il livello lo ancora mu_h=0).  Fissata gia' all'inizio cosi' anche il primo
+    # FFBS/vol la vede; da qui in poi il draw (d) la lascia I e non la campiona.
+    if fix_q_identity:
+        Q = np.eye(r)
 
     # ── Family A weakly-informative priors (tab:param-prior-tuning) ──────────
     # Anchored ("bridged") on the EM warm start, frozen from the *initial* theta
@@ -707,7 +713,8 @@ def fit_dfm_mcmc(
             aq_kw = dict(aq_prior_pf)
             if hw:
                 aq_kw["Psi0"], aq_kw["nu0"] = Psi0_t, nu0_t
-            A, Q = draw_A_Q_perfactor(f_aug[:, :r], h_u, w_u, A, rng, **aq_kw)
+            A, Q = draw_A_Q_perfactor(f_aug[:, :r], h_u, w_u, A, rng,
+                                      fix_q_identity=fix_q_identity, **aq_kw)
             g_eps = w_eps[:, None] / h_eps
         else:
             # No SV (h == 1): G^u_t = w^u_t Q^{-1} factors out and the closed
@@ -716,7 +723,8 @@ def fit_dfm_mcmc(
             if hw:
                 aq_kw["Psi0"], aq_kw["nu0"] = Psi0_t, nu0_t
             g_eps = w_eps
-            A, Q = draw_A_Q_block(f_aug, w_u, r, rng, **aq_kw)
+            A, Q = draw_A_Q_block(f_aug, w_u, r, rng,
+                                  fix_q_identity=fix_q_identity, **aq_kw)
         if hw:
             hw_a = draw_hw_aux(Q, rng, nu_star=hw_nu_star, A_scales=hw_A)
         Lambda, R = draw_Lambda_R_block(

@@ -3,8 +3,8 @@ mcmc/validate/checks/linear.py
 ==============================
 
 **Recupera:** ``A``, ``Q`` [Fam. A]; ``Lambda``, ``R`` [Fam. A']; ``f_t`` (stati, blocco
-(a)); ``nu_u``, ``nu_eps`` [Fam. D].  I pesi ``w_u``/``w_eps`` NON sono immagazzinati nei
-draw → restano ``UNTESTED`` (il loro conditional è verificato in ``test_shared``).
+(a)); ``nu_u``, ``nu_eps`` [Fam. D]; e i pesi ``w_u``/``w_eps`` [Fam. D] — immagazzinati
+via ``store_weights`` e confrontati col vero sulla traccia (come gli ``h``).
 
 Il blocco lineare — **sotto SV e leverage**, che è la novità.
 
@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from mcmc.diagnostics import innovation_correlation, loadings_unit_factor
 from mcmc.validate import dgp as D
 from mcmc.validate.checks import relerr, say, summarize
 from mcmc.validate.verdict import Outcome, Verdict
@@ -53,46 +54,72 @@ def run(mode: D.Mode, *, coverage_reps: int = 0) -> list[Verdict]:
         sim, r = g["sim"], g["r"]
         say(f"branch {branch}: {mode.chains} catene x {mode.n_iter} iter")
 
-        # ── Famiglia A: A, Q ──────────────────────────────────────────────────
+        # ── Famiglia A: A ─────────────────────────────────────────────────────
         A_true = np.asarray(g["theta"]["A"], float)
-        Q_true = np.asarray(g["theta"]["Q"], float)
         A_hat = D.stack(chains, "A").reshape(-1, *A_true.shape).mean(axis=0)
-        Q_hat = D.stack(chains, "Q").reshape(-1, *Q_true.shape).mean(axis=0)
-        # ESS/R-hat su una coordinata rappresentativa (il primo elemento diagonale):
-        # una matrice non ha un ESS, ma una sua coordinata sì, e serve a dire se la
-        # catena su quel blocco si e' mossa.
         a00 = D.stack(chains, "A")[:, :, 0, 0]
-        q00 = D.stack(chains, "Q")[:, :, 0, 0]
-        sA, sQ = summarize(a00), summarize(q00)
+        sA = summarize(a00)
+        eA = relerr(A_hat, A_true)
+        V.append(Verdict(
+            "A", "fattori", branch,
+            Outcome.RECOVERED if eA < 0.35 else Outcome.RECOVERED_BIASED,
+            (f"err. rel. {eA:.0%} contro il vero, **sotto SV + leverage** (prima era "
+             f"validato solo contro l'EM e senza SV)"),
+            estimate=float(A_hat[0, 0]), truth=float(A_true[0, 0]),
+            ess=sA["ess"], r_hat=sA["r_hat"], mode=mode.name,
+            detail={"spec_key": "A", "relerr": eA}))
+        say(f"  A: err.rel. {eA:.1%}  (ESS {sA['ess']:.0f}, R-hat {sA['r_hat']:.3f})")
 
-        for name, hat, true, s in (("A", A_hat, A_true, sA), ("Q", Q_hat, Q_true, sQ)):
-            e = relerr(hat, true)
-            ok = e < 0.35
-            V.append(Verdict(
-                name, "fattori", branch,
-                Outcome.RECOVERED if ok else Outcome.RECOVERED_BIASED,
-                (f"err. rel. {e:.0%} contro il vero, **sotto SV + leverage** (prima era "
-                 f"validato solo contro l'EM e senza SV)"),
-                estimate=float(hat[0, 0]), truth=float(true[0, 0]),
-                ess=s["ess"], r_hat=s["r_hat"], mode=mode.name,
-                detail={"spec_key": name, "relerr": e}))
-            say(f"  {name}: err.rel. {e:.1%}  (ESS {s['ess']:.0f}, R-hat {s['r_hat']:.3f})")
+        # ── Famiglia A: Q come CORRELAZIONE identificata ──────────────────────
+        # Q = D^{1/2} R_Q D^{1/2}.  La scala D (diagonale) e' la stessa non-identificazione
+        # di Lambda (assorbita da Lambda, ancorata da mu_h) — non un fallimento del sampler.
+        # L'oggetto identificato e' la correlazione R_Q, che mescola bene (ESS ~500).  Nel
+        # DGP canonico Q e' diagonale => R_Q = I: si verifica che le off-diagonali stiano
+        # a zero.  Le correlazioni VERE (Q non diagonale) sono testate in coupling.py.
+        Q_true = np.asarray(g["theta"]["Q"], float)
+        Rq = innovation_correlation(D.stack(chains, "Q"))
+        Rq_true = innovation_correlation(Q_true)
+        r01 = Rq[:, :, 0, 1]
+        sR = summarize(r01, truth=float(Rq_true[0, 1]))
+        offmax = float(np.max(np.abs(Rq.reshape(-1, r, r).mean(axis=0) - np.eye(r))))
+        V.append(Verdict(
+            "Q", "fattori", branch,
+            Outcome.RECOVERED if offmax < 0.15 else Outcome.RECOVERED_BIASED,
+            (f"riportata come CORRELAZIONE R_Q (oggetto identificato): la scala (diagonale) "
+             f"e' la stessa non-identificazione di Lambda, assorbita da Lambda. DGP diagonale "
+             f"=> R_Q = I: off-diag max {offmax:.3f} (vero 0), ESS {sR['ess']:.0f}. La scala "
+             f"grezza di Q NON e' un parametro — le correlazioni vere sono in coupling.py."),
+            estimate=float(sR["mean"]), truth=float(Rq_true[0, 1]),
+            ess=sR["ess"], r_hat=sR["r_hat"], mode=mode.name,
+            detail={"spec_key": "Q", "offdiag_max": offmax}))
+        say(f"  Q (corr R_Q): off-diag max {offmax:.3f}  (ESS {sR['ess']:.0f}, "
+            f"R-hat {sR['r_hat']:.3f})")
 
         # ── Famiglia A': Lambda, R ────────────────────────────────────────────
-        L_true = np.asarray(g["theta"]["Lambda"], float)
+        # Lambda nella normalizzazione a fattore a varianza unitaria (loadings_unit_factor):
+        # l'oggetto identificato.  Anche il VERO va normalizzato con lo stesso criterio,
+        # altrimenti si confrontano scale diverse.  A, Q, R non toccati.
+        L_true = loadings_unit_factor(np.asarray(g["theta"]["Lambda"], float),
+                                      np.asarray(sim["F"], float)[:, :r])
         R_true = np.asarray(g["theta"]["R"], float).ravel()
-        L_hat = D.stack(chains, "Lambda").reshape(-1, *L_true.shape).mean(axis=0)
+        L_n = loadings_unit_factor(D.stack(chains, "Lambda"), D.stack(chains, "F"))
+        L_hat = L_n.reshape(-1, *L_true.shape).mean(axis=0)
         R_hat = D.stack(chains, "R").reshape(-1, R_true.size).mean(axis=0)
-        l00 = D.stack(chains, "Lambda")[:, :, 0, 0]
+        l00 = L_n[:, :, 0, 0]
         r00 = D.stack(chains, "R")[:, :, 0]
-        for name, hat, true, s in (("Lambda", L_hat, L_true, summarize(l00)),
-                                   ("R", R_hat, R_true, summarize(r00))):
+        lam_why = (f"err. rel. {relerr(L_hat, L_true):.0%} contro il vero, nella "
+                   f"normalizzazione a fattore a varianza unitaria (Lambda*sd(f)). "
+                   f"**Buco chiuso.**")
+        r_why = ("err. rel. {e:.0%} contro il vero, **sotto SV + leverage** (buco chiuso)")
+        for name, hat, true, s, why in (
+                ("Lambda", L_hat, L_true, summarize(l00), lam_why),
+                ("R", R_hat, R_true, summarize(r00), None)):
             e = relerr(hat, true)
             ok = e < 0.35
             V.append(Verdict(
                 name, "osservazioni", branch,
                 Outcome.RECOVERED if ok else Outcome.RECOVERED_BIASED,
-                f"err. rel. {e:.0%} contro il vero, **sotto SV + leverage** (buco chiuso)",
+                why if why is not None else r_why.format(e=e),
                 estimate=float(np.asarray(hat).ravel()[0]),
                 truth=float(np.asarray(true).ravel()[0]),
                 ess=s["ess"], r_hat=s["r_hat"], mode=mode.name,

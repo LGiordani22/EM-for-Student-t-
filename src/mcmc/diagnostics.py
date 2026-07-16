@@ -252,6 +252,39 @@ def ess(chains: np.ndarray) -> float:
     return float(m * n / tau)
 
 
+def loadings_unit_factor(Lambda: np.ndarray, F: np.ndarray) -> np.ndarray:
+    r"""
+    Loadings in the unit-variance-factor scale: ``Lambda_.k * sd(f_k)``.
+
+    ``Y = Lambda f + eps`` is invariant under ``f_k -> c f_k, Lambda_.k -> Lambda_.k / c``,
+    so the raw ``Lambda`` draws are not identified in scale; ``Lambda_.k * sd(f_k)`` is
+    the identified, scale-invariant object.  Reads a coordinate — changes no draw.
+
+    ``Lambda`` : (..., M, r),  ``F`` : (..., T, r)  ->  (..., M, r).
+    """
+    Lambda = np.asarray(Lambda, float)
+    F = np.asarray(F, float)
+    c = F.std(axis=-2)
+    return Lambda * c[..., None, :]
+
+
+def innovation_correlation(Q: np.ndarray) -> np.ndarray:
+    r"""
+    Factor-innovation correlation ``R_Q = D^{-1/2} Q D^{-1/2}`` (unit diagonal).
+
+    The innovation covariance factors as ``Q = D^{1/2} R_Q D^{1/2}``: the scale ``D`` (its
+    diagonal) is redundant with the factor scale — absorbed by ``Lambda`` and anchored by
+    ``mu_h`` — while the correlation ``R_Q`` is the identified, scale-invariant part.  The
+    raw ``Q`` diagonal mixes badly for the same reason ``Lambda`` did (scale ridge); ``R_Q``
+    is well identified.  Reads a coordinate — changes no draw.
+
+    ``Q`` : (..., r, r)  ->  (..., r, r).
+    """
+    Q = np.asarray(Q, float)
+    d = np.sqrt(np.einsum("...kk->...k", Q))
+    return Q / (d[..., :, None] * d[..., None, :])
+
+
 def diagnostics_table(per_chain: dict[str, np.ndarray]) -> dict[str, dict[str, float]]:
     """
     R-hat + ESS for each named scalar quantity.

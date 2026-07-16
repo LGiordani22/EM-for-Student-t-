@@ -310,6 +310,7 @@ def draw_A_Q(
     nu0: float = 0.0,
     A0: np.ndarray | None = None,
     kappa: float = 0.0,
+    fix_q_identity: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     r"""
     Draw (A, Q) from the matrix-normal--inverse-Wishart posterior, built on the
@@ -362,16 +363,20 @@ def draw_A_Q(
             P11 = P11 + kappa * (A0 @ A0.T)
 
     A_hat = np.linalg.solve(P00, P10.T).T          # A_hat = P10 inv(P00)
-    S = P11 - A_hat @ P10.T                         # residual scatter = T_eff * Q_EM
-    if Psi0 is not None:
-        S = S + np.asarray(Psi0, float)
-    S = 0.5 * (S + S.T)
 
-    Q_draw = np.atleast_2d(invwishart.rvs(df=T_eff + nu0, scale=S, random_state=rng))
+    # Identificazione unit-Q: Q fissata a I, A | Q=I gaussiano (among-row cov = I).
+    if fix_q_identity:
+        Q_draw = np.eye(r)
+    else:
+        S = P11 - A_hat @ P10.T                     # residual scatter = T_eff * Q_EM
+        if Psi0 is not None:
+            S = S + np.asarray(Psi0, float)
+        S = 0.5 * (S + S.T)
+        Q_draw = np.atleast_2d(invwishart.rvs(df=T_eff + nu0, scale=S, random_state=rng))
 
     P00_inv = np.linalg.inv(P00)
     P00_inv = 0.5 * (P00_inv + P00_inv.T)
-    L_row = np.linalg.cholesky(Q_draw)              # among-row cov = Q
+    L_row = np.linalg.cholesky(Q_draw)              # among-row cov = Q (=I if fixed)
     L_col = np.linalg.cholesky(P00_inv)             # among-col cov = inv(P00)
     Z = rng.standard_normal((r, r))
     A_draw = A_hat + L_row @ Z @ L_col.T
@@ -454,6 +459,7 @@ def draw_A_Q_perfactor(
     nu0: float = 0.0,
     A0: np.ndarray | None = None,
     V0_inv: np.ndarray | None = None,
+    fix_q_identity: bool = False,
     _return_moments: bool = False,
 ):
     r"""
@@ -512,16 +518,24 @@ def draw_A_Q_perfactor(
     T_eff = T - 1
 
     # ── Q | A_cur  (eq:param-Q-post) ────────────────────────────────────────
-    U = ft - ftm1 @ A_cur.T               # (T-1, r) innovations u_t
-    Uc = c * U                            # (T-1, r) whitened residuals check_u_t
-    S = Uc.T @ Uc                         # sum_t check_u_t check_u_t'
-    if Psi0 is not None:
-        S = S + np.asarray(Psi0, float)
-    S = 0.5 * (S + S.T)
-    df = float(T_eff) + float(nu0)
-    Q_draw = np.atleast_2d(invwishart.rvs(df=df, scale=S, random_state=rng))
-    Qinv = np.linalg.inv(Q_draw)
-    Qinv = 0.5 * (Qinv + Qinv.T)
+    # Identificazione unit-Q: Q e' FISSATA a I per tutta la catena (non campionata),
+    # la scala del fattore e' portata da Lambda (e ancorata da mu_h=0).  Il draw di
+    # vec(A) qui sotto e' esatto: e' gia' condizionato su Q via Qinv, che qui e' I.
+    if fix_q_identity:
+        Q_draw = np.eye(r)
+        Qinv = np.eye(r)
+        S, df = None, None
+    else:
+        U = ft - ftm1 @ A_cur.T               # (T-1, r) innovations u_t
+        Uc = c * U                            # (T-1, r) whitened residuals check_u_t
+        S = Uc.T @ Uc                         # sum_t check_u_t check_u_t'
+        if Psi0 is not None:
+            S = S + np.asarray(Psi0, float)
+        S = 0.5 * (S + S.T)
+        df = float(T_eff) + float(nu0)
+        Q_draw = np.atleast_2d(invwishart.rvs(df=df, scale=S, random_state=rng))
+        Qinv = np.linalg.inv(Q_draw)
+        Qinv = 0.5 * (Qinv + Qinv.T)
 
     # ── vec(A) | Q  (eq:param-AQ, eq:param-A-precision) ──────────────────────
     P = np.zeros((r * r, r * r))          # V_n^{-1}
