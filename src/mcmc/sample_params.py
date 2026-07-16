@@ -2,6 +2,24 @@
 src/mcmc/sample_params.py
 =========================
 
+SISTEMA (equazioni dal .tex — notazione originale)
+--------------------------------------------------
+Cosa calcola: i parametri del modello dai loro condizionali completi, dato un percorso
+f già estratto e i pesi w (la volatilità entra solo via la precisione combinata
+g_t = w_t / h_t; con h≡1 tornano i draw pesati semplici):
+
+    (A, Q)      dal VAR di stato   f_t = A f_{t-1} + u_t           [eq:state]
+                → statistiche di secondo momento pesate + draw MNIW
+                  (Matrix-Normal–Inverse-Wishart)
+    (Λ, R)      dall'osservazione  y_t = Λ f_t + ε_t              [eq:obs, eq:idio]
+                → per serie, regressione pesata mixed-frequency + draw NIG
+                  (Normal–Inverse-Gamma); R = diag(r_1..r_M)
+    (ν_u, ν_ε)  dai pesi  w_t ~ Gamma(ν/2, ν/2)  → griddy-Gibbs sul condizionale
+                1-D log-concavo, statistiche sufficienti  Σ_t log w_t  e  Σ_t w_t
+
+Ogni condizionale è l'EM col PUNTO/MEDIA sostituito da un DRAW dallo stesso posterior
+coniugato.
+
 Gibbs step (d): draw the model parameters ``(A, Q)``, ``(Lambda, R)`` and
 ``(nu_u, nu_eps)`` from their full conditionals, given a sampled factor path and
 sampled weights.  These draws are SV/leverage-agnostic: the volatility enters

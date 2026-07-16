@@ -2,6 +2,10 @@
 mcmc/validate/checks/leverage.py
 ================================
 
+**Recupera:** ``rho^u_k`` (r canali comuni) e ``rho^eps`` (media M) — [Fam. C], la
+**MAGNITUDINE** e non solo il segno; più l'**oracolo** (Family C al path vero) e la
+**copertura** su N repliche.
+
 Famiglia **C** — ``rho`` — su **entrambi i blocchi** e **entrambi i rami**.
 
 È il modulo che conta di più, per una ragione che non è tecnica: **``rho`` è ciò che dà
@@ -14,13 +18,13 @@ Tre cose che questo modulo rende impossibili da riseppellire
 ------------------------------------------------------------
 
 **1. La MAGNITUDINE, non solo il segno.**  I test storici asserivano il *segno* e
-l'*ordinamento* dei canali, mai il valore.  È così che un'attenuazione del **35%** è
+l'*ordinamento* dei canali, mai il valore.  È così che una magnitudine attenuata è
 rimasta invisibile per mesi con la suite verde: la suite misurava la cosa sbagliata.
 Qui il verdetto poggia sul rapporto ``rho_hat / rho_vero`` **e sulla copertura del CI**.
 
 **2. L'attenuazione è errors-in-variables, NON la linearizzazione di Omori.**
 :func:`check_oracle` congela il path **vero**, la volatilità **vera** e i pesi **veri**, e
-fa girare **solo** il draw di Family C.  Con le latenti note ``rho`` si recupera al **98%**
+fa girare **solo** il draw di Family C.  Con le latenti note ``rho`` si recupera
 — sia col regressore esatto sia con quello di Omori, che quindi **non attenua**.  Ergo: il
 conditional è **corretto**, e l'attenuazione entra **tutta dall'incertezza sulle latenti**.
 Questa prova sta *in suite*, non in un notebook, perché è la risposta alla domanda più
@@ -132,7 +136,7 @@ def check_oracle(mode: D.Mode) -> list[Verdict]:
         ("**LA PROVA.** Con path/volatilita'/pesi VERI congelati, Family C recupera rho a "
          f"scarto assoluto max {max(err_e):.3f} (rapporti {np.round(ratios_e, 2)}). "
          "Il conditional e' dunque CORRETTO: "
-         "l'attenuazione del Gibbs completo (x0.64) NON viene da un bug in Family C, ma "
+         "l'attenuazione del Gibbs completo NON viene da un bug in Family C, ma "
          "**tutta dall'incertezza sulle latenti** (errors-in-variables)."),
         estimate=float(np.mean(ratios_e)), truth=1.0, mode="full",
         detail={"spec_key": "_oracle", "ratios": ratios_e}))

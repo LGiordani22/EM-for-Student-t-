@@ -2,6 +2,21 @@
 src/mcmc/sample_states.py
 =========================
 
+SISTEMA (equazioni dal .tex — notazione originale)
+--------------------------------------------------
+Cosa calcola: il percorso dei fattori latenti f_{0:T-1}, estratto in blocco dal
+condizionale completo  p(f_{0:T-1} | Y, θ, w, h)  via FFBS (Forward-Filter /
+Backward-Sample) sullo state-space:
+
+    (stato)   f_t = A f_{t-1} + u_t,   u_t ~ N(0, Var(u_t|·))      [eq:state]
+    (oss.)    y_t = Λ f_t + ε_t                                    [eq:obs]
+
+Stato aumentato mixed-frequency  f_aug_t = (f_t, f_{t-1}, f_{t-2}, f_{t-3}, f_{t-4}):
+la transizione inietta rumore SOLO nel blocco-testa di dimensione r (Q_tilde ha
+rango r), gli altri quattro blocchi sono copie deterministiche di f_aug_{t-1}.
+Perciò il backward sweep di Carter-Kohn estrae per ogni t la sola "testa" nuova
+f_{t-4} dal suo condizionale gaussiano — il dettaglio della singolarità è sotto.
+
 Gibbs step (a): draw the latent factor path from its full conditional
 ``p(f_{0:T-1} | Y, theta, w)`` by Forward-Filtering Backward-Sampling (FFBS).
 

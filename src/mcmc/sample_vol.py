@@ -2,6 +2,28 @@
 src/mcmc/sample_vol.py
 ======================
 
+SISTEMA (equazioni dal .tex — notazione originale)
+--------------------------------------------------
+Cosa calcola: le M+r traiettorie di log-volatilità log h_{1:T} e i loro parametri
+AR(1) (φ, σ_η²), caso base SENZA leverage (ρ=0).  Ogni processo di volatilità scala
+un residuo:
+
+    fattore i:  u_t = sqrt(H^u_t) Q^{1/2} z^u_t / sqrt(w^u_t)     [eq:vol-outside, Spec. II]
+    serie i:    ε_{i,t} = sqrt(h^ε_{i,t} r_i / w^ε_t) · z^ε_{i,t}
+
+Sbiancato e log-quadrato (offset c) → LINEARE nello stato log h:
+
+    y*_t = log(e_t² + c) = log h_t + log(z_t²)
+
+L'errore log-χ²_1 è approssimato dalla mistura a 7 componenti KSC (constants.KSC7);
+condizionatamente all'indicatore di componente s il sistema è lineare-gaussiano →
+FFBS scalare.  Transizione (μ=0):
+
+    log h_t = φ log h_{t-1} + η_t,   η_t ~ N(0, σ_η²)             [eq:sv-logvol-u/eps]
+
+Specification II: H^u_t = diag(h^u_{1,t}..h^u_{r,t}) fuori dal sandwich Q^{1/2}, così
+Var(u_t|·) = sqrt(H^u_t) Q sqrt(H^u_t)/w^u_t e h^u_{i,t} è la vol del fattore i.
+
 Gibbs step (b), **base case** (KSC, no leverage): sample the M+r stochastic
 log-volatility paths and their AR(1) parameters, given the states, the tail
 weights and the parameters.  Specification II (``eq:vol-outside``): r per-factor

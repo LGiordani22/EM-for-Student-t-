@@ -1,8 +1,22 @@
 """
-src/mcmc/test_shared.py
-=======================
+src/mcmc/tests/test_shared.py
+=============================
 
-PASSO 0 non-regression / equivalence test for the extracted helpers in
+COPERTURA (parametri/percorsi -- notazione del README/.tex)
+-----------------------------------------------------------
+Livello CONDITIONAL: verifica che ogni full conditional SIA la formula giusta
+(vs EM), non che si recuperi la verita' end-to-end.  Copre:
+  * pesi           w^u, w^eps            [step (c)]      draw Gamma
+  * (A, Q)         [Famiglia A]          MNIW / per-fattore
+  * (Lambda, R)    [Famiglia A]          NIG per serie, mixed-frequency
+  * nu_u, nu_eps   [Famiglia D]          target log-concavo + griddy + prior
+  * (phi, sigma^2) [Famiglia B]          kernel AR(1) log-vol (half-Normal)
+  * a_j            [Famiglia A+]         scale ausiliarie Huang-Wand
+  * deflazione dei residui per h         (il ponte con la volatilita' stocastica)
+E' il gate che il validatore NON puo' dare: un sampler puo' recuperare bene pur
+avendo un conditional sbagliato (errori che si compensano); qui no.
+
+Non-regression / equivalence test for the extracted helpers in
 ``src/mcmc/shared.py``.
 
 Each helper is checked against its EM counterpart on a small, fully synthetic
@@ -269,7 +283,7 @@ def test_nu(S):
     _check("d/dnu log-target == (T/2) nu_foc", abs(grad_num - grad_ana) < 1e-4 * abs(grad_ana) + 1e-6,
            f"num={grad_num:.4f}, ana={grad_ana:.4f}")
 
-    # ── Family D proper prior (Phase 5): exponential / uniform hooks ──────────
+    # ── Family D proper prior: exponential / uniform hooks ──────────
     from mcmc.sample_params import (draw_nu_griddy, nu_log_prior_exponential,   # noqa: E402
                                     nu_log_prior_uniform)
     lp_exp = nu_log_prior_exponential(mean=20.0)
@@ -378,7 +392,7 @@ def test_draw_A_Q_perfactor(S):
     _check("H=4 quarters the Q-scale", np.allclose(pm4["Q_scale"], 0.25 * S_scatter, atol=1e-10),
            f"max|diff|={np.max(np.abs(pm4['Q_scale'] - 0.25*S_scatter)):.2e}")
 
-    # ── proper priors (Phase 2): Q ~ IW(Psi0, nu0), vec(A) ~ N(A0, V0) ────────
+    # ── proper priors: Q ~ IW(Psi0, nu0), vec(A) ~ N(A0, V0) ────────
     Psi0 = 2.0 * np.eye(r); nu0 = float(r + 1)              # nu0 = r+1 (uniform corr)
     V0_inv = 0.05 * np.eye(r * r); A0 = np.zeros((r, r))
     _, Qd, pmp = draw_A_Q_perfactor(f_head, np.ones((T, r)), w_u, A_hat,
@@ -424,7 +438,7 @@ def test_common_vol_mv_seam(_S):
     sv_u = (0.0, 0.95, 0.05); sv_eps = np.array([[0.0, 0.95, 0.05]])
     theta = {"A": A, "Q": Q, "Lambda": Lambda, "R": R}
 
-    # ⚠ SEME DI RAMO MORTO — non un motore vivo.
+    # ⚠ SEME (non un motore vivo): usato solo da questo test di equivalenza a r=1.
     # `sample_volatility_block` implementa la restrizione SCALARE `H^u = h·I` (una sola
     # volatilita' comune condivisa dagli r fattori) e **non e' raggiungibile da
     # fit_dfm_mcmc**: l'orchestratore chiama solo `sample_volatility_block_specII` (o i
@@ -449,7 +463,7 @@ def test_common_vol_mv_seam(_S):
            f"{mv['sv_u'][0]} vs {vb['sv_u']}")
     _check("mv shapes (T,r)/(r,3)", mv["logh_u"].shape == (T, 1) and mv["sv_u"].shape == (1, 3))
     # Commit 2 (coupled r-dim FFBS) runs and is finite at r=1 (R_xi=[[1]]).
-    # EXPERIMENTAL: needs the explicit opt-in (audit P1) — the guard is asserted below.
+    # EXPERIMENTAL: needs the explicit opt-in — the guard is asserted below.
     mvc = sample_common_vol_mv(u_head, Q, w_u, logh_u0.reshape(T, 1), np.array([sv_u]),
                                np.random.default_rng(1), R_xi=np.eye(1),
                                allow_experimental=True)
@@ -461,7 +475,7 @@ def test_common_vol_mv_seam(_S):
         ok = False
     except ValueError:
         ok = True
-    _check("coupled R_xi raises without allow_experimental (audit P1)", ok)
+    _check("coupled R_xi raises without allow_experimental", ok)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -566,7 +580,7 @@ def test_lambda_r(S):
         _check(f"MC mean(r)[{i}] ~ IG mean", abs(mr - ig_mean) < 0.05 * ig_mean,
                f"{mr:.5f} vs {ig_mean:.5f}")
 
-    # ── proper NIG prior (Phase 2): MC mean matches the analytic posterior ────
+    # ── proper NIG prior: MC mean matches the analytic posterior ────
     a0, b0, m0, M0_inv = 3.0, 0.5, 0.2, 2.0
     Fbar = den + M0_inv; cbar = num + M0_inv * m0
     lam_post = cbar / Fbar
@@ -586,7 +600,7 @@ def test_lambda_r(S):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 6. draw_Lambda_R_block prior threading (Phase 2c wiring)
+# 6. draw_Lambda_R_block prior threading
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_lambda_r_block_priors(S):
@@ -638,7 +652,7 @@ def test_lambda_r_block_priors(S):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 7. draw_ar1_params half-Normal sigma_eta prior (Phase 3, Family B)
+# 7. draw_ar1_params half-Normal sigma_eta prior (Family B)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_ar1_half_normal():
@@ -812,7 +826,7 @@ def test_A_Q_priors_and_huang_wand(S):
 
 def main() -> int:
     print("=" * 72)
-    print("PASSO 0 — equivalence test: src/mcmc/shared.py vs EM counterparts")
+    print("SHARED -- i conditional dei blocchi vs EM (src/mcmc/shared.py)")
     print("=" * 72)
     S = _build_synthetic(seed=0)
     test_realized_d(S)

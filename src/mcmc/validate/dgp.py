@@ -23,14 +23,31 @@ reale (T effettivo corto), quindi il validatore lo misura invece di scegliere un
 compiacente.
 
 ``Q`` è **diagonale** nel DGP canonico.  È una scelta, e va detta: a ``Q`` diagonale il
-blocco decoupled è *esatto* (nessun effetto P1/P4) e il whitening di magnitudine di
-Branch B è *esatto* (nessuna attenuazione P5, ``lambda(c)=1``).  Così ciò che la tabella
+blocco decoupled è *esatto* (nessun effetto di coupling) e il whitening di magnitudine di
+Branch B è *esatto* (nessuna attenuazione da whitening, ``lambda(c)=1``).  Così ciò che la tabella
 misura sul leverage è il **leverage**, non il coupling.  Il coupling ha il suo DGP
 dedicato (``dgp_correlated_Q``), usato solo dai check su QML.
 
 Il blocco idiosincratico ha **SV e leverage propri** (``rho^eps = -0.3``): esistono nel
-modello, girano a ogni sweep, entrano nella densità predittiva — e non erano mai stati
-validati.
+modello, girano a ogni sweep, entrano nella densità predittiva.
+
+Come si costruisce Y (il "sample")
+----------------------------------
+``Y`` **non è dato reale**: è simulato da parametri NOTI, così che ogni stima abbia un
+vero con cui confrontarsi.  ``build(mode, branch)`` fa tre passi:
+
+  1. ``load_warm_init(config)`` — prende ``theta`` (``A, Q, Lambda, R, nu, Sigma_0``) dalla
+     stima **EM** della config: valori realistici, non inventati;
+  2. rende ``Q`` **diagonale** (``_diagonal``) — la scelta motivata sopra;
+  3. ``simulate_dfm_sv(theta, T, sv_u_perfactor=SV_U_PF, sv_eps=SV_EPS,
+     rho_u=RHO_U_TRUE, rho_eps=RHO_EPS_TRUE, timing)`` — **il DGP**, il "verso opposto"
+     del sampler: genera i path di volatilità AR(1), i pesi Gamma, gli shock (Spec II +
+     Option A), i fattori ``f_t`` e infine ``Y = Lambda·f_t + eps`` a frequenza mista.
+
+Il ``sim`` restituito porta ``Y`` **e tutte le latenti VERE** (``F``, ``logh_u_true``,
+``logh_eps_true``, ``w_u_true``, ``rho_u_true``, ``sv_u`` in varianza, …): sono queste il
+"vero" contro cui i check misurano il recupero.  **Un solo ``seed`` = un solo sample**; le
+repliche (``--coverage``) rifanno solo il passo 3 con semi diversi.
 """
 
 from __future__ import annotations
@@ -83,8 +100,8 @@ FULL = Mode("full", T=600, n_iter=1200, burn_in=400, chains=2)
 def coverage_mode(n_reps: int) -> Mode:
     # Catene piu' corte ma MOLTE repliche: la copertura non ha bisogno di un ESS enorme
     # per replica, ha bisogno di N indipendenti.  E' l'unico modo di distinguere
-    # "sfortuna" da "bias": su un dataset rho_hat = -0.50 sembrava rumore, su 12 la
-    # copertura al 25% l'ha smascherato.
+    # "sfortuna" da "bias": un singolo dataset non distingue la sfortuna dal bias; le repliche sì, tramite la
+    # copertura del CI.
     return Mode("coverage", T=600, n_iter=1200, burn_in=400, chains=1, n_reps=n_reps)
 
 
@@ -146,6 +163,7 @@ def fit(dgp: dict, *, seed: int = 700, n_chains: int | None = None, **kw) -> lis
     kw.setdefault("rho_sampler", "griddy")
     kw.setdefault("store_states", True)      # servono i draw di f_t per validarli
     kw.setdefault("store_vol", True)         # e i path h^u / h^eps
+    kw.setdefault("store_weights", True)     # e i pesi w^u / w^eps (per confrontarli col vero)
 
     nc = mode.chains if n_chains is None else n_chains
     k = _key(dgp, seed, kw) + (nc,)

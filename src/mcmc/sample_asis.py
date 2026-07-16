@@ -2,6 +2,24 @@
 src/mcmc/sample_asis.py
 =======================
 
+SISTEMA (equazioni dal .tex — notazione originale)
+--------------------------------------------------
+Cosa calcola: ri-estrae i parametri Famiglia~B (φ, σ_η²) di UN processo di log-vol
+interlacciando due parametrizzazioni, per rompere la cresta path/scala e alzare l'ESS.
+Wrapper sul draw Famiglia~B, μ=0.  Transizione centrata (CP):
+
+    log h_t = φ log h_{t-1} + η_t,   η_t ~ N(0, σ_η²)             [eq:sv-logvol-u/eps]
+
+Riparametrizzazione NON-centrata (NCP)  x̃_t = log h_t / σ_η: σ_η migra nell'equazione
+di MISURA come coefficiente di regressione gaussiano —
+
+    y*_t - m_{s_t} = σ_η · x̃_t + errore(v²_{s_t}),   x̃_t = φ x̃_{t-1} + N(0,1)   [eq:asis-ncp]
+                                                     (+ drift ρ z_t sotto leverage)
+
+Si ridisegna (σ_η signed, φ) in NCP e si riscala indietro  log h_t = σ_η x̃_t.  Le due
+parametrizzazioni sono quasi-indipendenti nelle loro direzioni cattive ⇒ il kernel
+interlacciato è veloce se ANCHE UNA SOLA delle due mescola bene (Yu–Meng 2011).
+
 Ancillarity--Sufficiency Interweaving Strategy (ASIS) for the Family~B parameters
 ``(phi, sigma_eta^2)`` of a single log-volatility process — the mixing booster of
 ``docs/EM_for_student_t.tex`` §"Boosting the Mixing" (``sec:asis``).

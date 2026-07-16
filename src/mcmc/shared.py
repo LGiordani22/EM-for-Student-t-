@@ -2,6 +2,25 @@
 src/mcmc/shared.py
 ==================
 
+SISTEMA (equazioni dal .tex — notazione originale)
+--------------------------------------------------
+Cosa calcola: i kernel matematici riusabili dei condizionali completi (stessa formula
+dell'EM, con "media/punto → draw").  I principali:
+
+  Pesi delle code (mistura di scala gaussiana; residui di Mahalanobis deflazionati per h):
+    d^u_t = (f_t - A f_{t-1})' Q^{-1} (f_t - A f_{t-1}) / h^u_t    [eq:d-u]
+    w^u_t | · ~ Gamma((ν_u + r)/2,  (ν_u + d^u_t)/2)               [eq:post-w-u]
+    d^ε_t = (y_t - Λ f_t)' R^{-1} (y_t - Λ f_t) / h^ε_t            [eq:d-eps]
+    w^ε_t | · ~ Gamma((ν_ε + m_t)/2, (ν_ε + d^ε_t)/2)             [eq:post-w-eps]
+
+  (A, Q)   draw MNIW dai momenti di secondo ordine pesati di  f_t = A f_{t-1} + u_t
+  (Λ, R)   draw NIG per serie da  y_t = Λ f_t + ε_t  (regressore MM per le trimestrali)
+  ν        target log-concavo g(ν) del condizionale di ν, da  w_t ~ Gamma(ν/2, ν/2)   [eq:g-nu-u]
+
+Tutto additivo: dipende solo da numpy/scipy, non importa l'EM, ed è verificato contro
+l'EM in test_shared.py (uguaglianza a macchina per i pezzi deterministici, entro errore
+Monte-Carlo per i draw).
+
 Reusable mathematical kernels for the Gibbs sampler of the Student-t DFM with
 stochastic volatility and leverage (master cell D1-b x D2-b).
 

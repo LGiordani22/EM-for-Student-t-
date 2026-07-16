@@ -13,23 +13,46 @@ recuperare bene i parametri pur avendo un conditional sbagliato (errori che si c
 e il validatore non lo vedrebbe mai — ``test_shared`` sì, perché verifica che la precisione
 del conditional di ``A`` sia *letteralmente* ``P00 ⊗ Q^{-1}``.
 
-Cosa c'è, e cosa NON è coperto dal validatore
----------------------------------------------
-* ``test_shared``           l'algebra dei conditional, i prior, i pesi, la deflazione per h
-* ``test_passo1``           blocco lineare vs EM (senza SV)
-* ``test_passo2``           mistura KSC, bit-identita' del path senza SV
-* ``test_passo3``           Branch A: kernel di Family C, nesting a rho=0, end-to-end
-* ``test_passo4``           Branch B: costanti di Omori, FFBS a rho=0 bit-identico, griddy
-* ``test_leverage_common``  il gate end-to-end, UNA funzione parametrizzata per ramo
-* ``test_asis``             invarianza dell'interweaving
-* ``test_variants``         le celle D1xD2, i tripwire di P1, Huang-Wand
-* ``test_diagnostics``      le funzioni diagnostiche + non consumano RNG
-* ``test_spec2_recovery``   recovery Spec II senza leverage
-* ``test_branchA_qml``      invarianza del kernel Laplace; costanti QML; instabilita' congelata
-* ``test_sigma_eta``        la convenzione sigma / sigma^2 (la mina) + recovery di sigma^2_eta
-* ``test_perfactor_leverage``  ⚠ 3 ROSSI NOTI: asseriscono proprieta' del rho del canale
-                            DEBOLE, che NON e' identificato. Da ritirare: il validatore lo
-                            copre meglio (magnitudine, ESS, R-hat, copertura).
+Cosa c'e', e cosa NON e' coperto dal validatore
+------------------------------------------------
+* ``test_shared``        l'algebra dei conditional, i prior, i pesi, la deflazione per h
+* ``test_linear``        blocco lineare vs EM (senza SV): stati + (A,Q,Lambda,R,nu)
+* ``test_vol_base``      SV base (KSC): filtro, FFBS, recovery per-fattore, convenzione
+                         sigma/sigma^2, e la recovery del lato IDIOSINCRATICO
+* ``test_leverage``      Famiglia C (rho): Branch A + Branch B, Omori, griddy, blocco
+                         Laplace, skewness, DGP per-fattore, end-to-end per ramo
+* ``test_variants``      le celle D1xD2 come restrizioni, i tripwire, Huang-Wand
+* ``test_asis``          invarianza dell'interweaving (Famiglia B)
+* ``test_diagnostics``   le funzioni diagnostiche + non consumano RNG
+* ``test_coupling_qml``  il passo accoppiato del blocco comune: QML, guard, e il
+                         comportamento a corr(Q)=0.8 sotto leverage (baseline dietro
+                         --slow; la caratterizzazione piena e' materia del validate)
+
+Mappa di copertura (ogni parametro/percorso -> dove, e a che livello)
+--------------------------------------------------------------------
+Livelli:  C = conditional (formula vs EM)    R = recovery (e2e vs verita')
+          S = strutturale (c'e'/non c'e')     M = mixing (ESS/invarianza)
+
+  percorso / parametro       test                          livello   note
+  -------------------------  ----------------------------  --------  -----------------------
+  f (stati)                  test_linear                   R
+  A, Q        [Fam A]        test_shared, test_linear      C + R
+  Lambda, R   [Fam A]        test_shared, test_linear      C + R
+  w^u, w^eps  [step c]       test_shared                   C
+  nu_u,nu_eps [Fam D]        test_shared, test_linear      C + R
+  a_j  (HW)   [Fam A+]       test_shared, test_variants    C + S
+  h^u         [percorso]     test_vol_base, test_leverage  R
+  phi^u,sg2^u [Fam B com.]   test_vol_base, test_asis      R + M
+  h^eps       [percorso]     test_vol_base                 R
+  phi^eps     [Fam B idio]   test_vol_base                 R
+  sg2^eps     [Fam B idio]   test_vol_base                 R debole   <- solo via il path
+  rho^u       [Fam C com.]   test_leverage                 R (segno)  <- magnitudine: validatore
+  rho^eps     [Fam C idio]   test_leverage                 R (segno)  <- magnitudine: validatore
+
+Tutto e' coperto almeno una volta.  I punti DEBOLI, da approfondire con esperimenti:
+  * sg2^eps e il canale per-fattore a bassa volatilita' -> sotto-identificati a T corto;
+  * la MAGNITUDINE di rho (attenuata, non solo il segno) -> vive nel validatore, non qui.
+Sigma_0 (prior su f_0) e' l'unico parametro NON estratto (tenuto fisso): niente da testare.
 """
 from __future__ import annotations
 
@@ -41,9 +64,8 @@ HERE = pathlib.Path(__file__).resolve().parent
 
 #: L'ordine e' dal piu' veloce al piu' lento: un rosso in test_shared rende inutile
 #: aspettare venti minuti per gli altri.
-SUITE = ["test_shared", "test_passo1", "test_passo2", "test_diagnostics", "test_variants",
-         "test_asis", "test_passo3", "test_passo4", "test_spec2_recovery",
-         "test_branchA_qml", "test_sigma_eta", "test_perfactor_leverage"]
+SUITE = ["test_shared", "test_linear", "test_vol_base", "test_diagnostics",
+         "test_variants", "test_asis", "test_leverage", "test_coupling_qml"]
 
 
 def main() -> int:
@@ -56,8 +78,8 @@ def main() -> int:
     print(f"\n{'=' * 72}")
     if fails:
         print(f"  ROSSI: {', '.join(fails)}")
-        print("  (test_perfactor_leverage e test_sigma_eta hanno rossi NOTI e documentati:")
-        print("   asseriscono quantita' non identificate / un bias reale del prior.)")
+        print("  (la suite non porta piu' rossi noti: un rosso e' un fallimento vero.")
+        print("   Le quantita' non identificate/attenuate sono materia del validatore.)")
     else:
         print("  tutto verde")
     print("=" * 72)

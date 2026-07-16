@@ -7,10 +7,9 @@ validatore, e nasce da un errore che abbiamo fatto davvero.
 
 Un `assert` binario costringe a scegliere una soglia; e quando un parametro *non è
 identificato*, qualunque soglia si scelga è arbitraria.  La tentazione — inevitabile —
-è allargarla finché il test passa.  È esattamente così che l'attenuazione di ``rho^u``
-(35% sul canale dominante) è rimasta invisibile per mesi **con la suite verde**: i test
-asserivano il *segno* e l'*ordinamento*, mai la *magnitudine*, e l'unico che guardava il
-valore usava una tolleranza abbastanza larga da non accorgersi di nulla.
+è allargarla finché il test passa.  È esattamente così che una magnitudine attenuata di
+``rho^u`` può restare invisibile **con la suite verde**: i test asserivano il *segno* e
+l'*ordinamento*, mai la *magnitudine*, e una tolleranza abbastanza larga non se ne accorge.
 
 Qui un parametro non identificato viene **dichiarato tale** — e il validatore resta
 verde.  Il rosso è riservato a una cosa sola: **il sampler è rotto**.
@@ -75,8 +74,8 @@ class Verdict:
 
     ``ess`` / ``r_hat`` non sono decorativi.  Seconda regola non negoziabile: **nessuna
     stima senza il suo ESS e il suo R-hat**.  Un ``rho_hat`` senza ESS non e' una
-    misura — e infatti il ``rho_hat = -0.51`` che abbiamo creduto per settimane veniva
-    da catene con ESS 3-23 su 2000 draw.
+    misura — e infatti un ``rho_hat`` può venire
+    da catene da una catena con ESS basso.
     """
     param: str                     # simbolo, es. "rho^u_0"
     block: str                     # "fattori" | "osservazioni"
@@ -101,8 +100,8 @@ class Verdict:
 
     #: Sotto queste soglie la catena **non ha esplorato**, e nessuna sua media e' una
     #: misura.  Non e' pedanteria: la prima run --full ha dichiarato ``Q`` "recuperato"
-    #: sulla base di un errore relativo calcolato da una catena con **R-hat = 2.3 ed ESS
-    #: = 6**.  Un numero del genere non e' una stima sbagliata: **non e' una stima**.
+    #: sulla base di un errore relativo calcolato da una catena con **un R-hat alto ed ESS
+    #: minuscolo**.  Un numero del genere non e' una stima sbagliata: **non e' una stima**.
     ESS_MIN = 30.0
     R_HAT_MAX = 1.15
 

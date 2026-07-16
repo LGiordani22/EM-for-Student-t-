@@ -77,6 +77,15 @@ def console(verdicts: list[Verdict], mode: str) -> int:
         n = sum(v.outcome is o for v in verdicts)
         if n:
             print(f"  {o.mark:<6} {o.value:<26} {n}")
+
+    # ── Sintesi: QUALI parametri NON si recuperano pienamente (il punto della tabella) ──
+    problem_order = {Outcome.BROKEN: 0, Outcome.RECOVERED_BIASED: 1,
+                     Outcome.NOT_IDENTIFIED: 2, Outcome.UNTESTED: 3}
+    problems = [v for v in verdicts if v.outcome in problem_order]
+    if problems:
+        print("\n  Parametri che NON si recuperano pienamente (da approfondire):")
+        for v in sorted(problems, key=lambda x: (problem_order[x.outcome], x.block, x.param)):
+            print(f"    {v.outcome.mark:<6} {v.param:<26} [{v.block[:4]}/{v.branch}]  {v.outcome.value}")
     print("=" * w)
     if n_red:
         print(f"  🔴 {n_red} ROTTI — il campionatore sbaglia.  Da riparare, non annotare.")

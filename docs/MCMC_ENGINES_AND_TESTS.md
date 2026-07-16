@@ -28,7 +28,7 @@ una convinzione precedente, vince il codice e lo segnalo.
 | **`simulate_sv.py`** (360) | — (DGP) | genera i dati veri | — | test / bench | — |
 | **`constants.py`** (165) | — | `KSC7`, `OMORI10`, `LOG_CHI2_*`, `QML_A/B` | — | tutti | — |
 | **`diagnostics.py`** (1148) | — | ESS, split-R̂, diagnostiche P1/P4/P5, harness di recovery | — | `gibbs` (diagnostica) / manuale | — |
-| **`bench_p6_rho.py`** (175) | — | benchmark del mixing di `ρ` (Branch B) | — | manuale | — |
+| **`tests/bench_p6_rho.py`** (175) | — | benchmark del mixing di `ρ` (Branch B) | — | manuale | — |
 
 ### Rami morti e semi di test
 

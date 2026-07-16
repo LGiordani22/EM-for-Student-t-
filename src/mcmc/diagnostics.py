@@ -2,6 +2,11 @@
 src/mcmc/diagnostics.py
 =======================
 
+Cosa calcola (in due parole): le diagnostiche di convergenza (R-hat, ESS) e la
+harness di recovery a 3 livelli — lo strumento di correttezza del sampler.  Non è un
+motore del modello: non tocca le equazioni del sistema, misura se le catene hanno
+recuperato la verità (parametri coperti dagli intervalli, percorsi correlati col vero).
+
 Convergence diagnostics (R-hat, ESS) and the **3-level recovery harness** for
 the Gibbs sampler.  The recovery test is the central correctness instrument:
 MCMC bugs do not crash, they produce subtly wrong posteriors, so the only

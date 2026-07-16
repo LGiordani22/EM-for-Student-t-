@@ -47,7 +47,7 @@ Le tre regole
 Se un check ti sembra "quasi passare" e sei tentato di allargarne la tolleranza:
 **fermati**.  O il verdetto giusto è *non identificato* / *bias noto* — e allora va detto
 — oppure il sampler è rotto.  Allargare la soglia è il modo in cui un bug di
-identificazione torna a nascondersi: è già successo, con l'attenuazione del 35% su
+identificazione torna a nascondersi: è già successo, con una magnitudine attenuata su
 ``rho^u_0`` e la suite tutta verde.
 """
 
@@ -64,7 +64,7 @@ if str(_SRC) not in sys.path:
 
 from mcmc.validate import dgp as D                                   # noqa: E402
 from mcmc.validate import report                                     # noqa: E402
-from mcmc.validate.checks import leverage, linear, variants, volatility   # noqa: E402
+from mcmc.validate.checks import coupling, leverage, linear, variants, volatility   # noqa: E402
 
 
 def main() -> int:
@@ -83,12 +83,24 @@ def main() -> int:
                    help="catene lunghe — l'UNICA che ha diritto di pronunciarsi su rho")
     p.add_argument("--coverage", type=int, default=0, metavar="N",
                    help="N repliche: distingue la sfortuna dal bias")
+    p.add_argument("--T", type=int, default=0, metavar="N",
+                   help="override della lunghezza del pannello: un solo sample, T piu' "
+                        "lungo, per vedere se AL LIMITE si recupera (l'attenuazione di rho, "
+                        "se e' errors-in-variables, deve ridursi al crescere di T)")
+    p.add_argument("--n-iter", type=int, default=0, metavar="N",
+                   help="override del numero di iterazioni (piu' iter = piu' ESS: utile a "
+                        "T grande perche' il cancello di convergenza non sospenda i verdetti)")
+    p.add_argument("--burn-in", type=int, default=0, metavar="N", help="override del burn-in")
     p.add_argument("--report", type=str, default="docs/VALIDATION_REPORT.md")
     p.add_argument("--only", type=str, default="",
-                   help="csv fra: linear,volatility,leverage,variants")
+                   help="csv fra: linear,volatility,leverage,coupling,variants")
     a = p.parse_args()
 
     mode = D.FULL if a.full else D.QUICK
+    if a.T or a.n_iter or a.burn_in:
+        # stesso NOME (resta probante), con gli override richiesti — un solo sample.
+        mode = D.Mode(mode.name, T=a.T or mode.T, n_iter=a.n_iter or mode.n_iter,
+                      burn_in=a.burn_in or mode.burn_in, chains=mode.chains)
     only = set(a.only.split(",")) if a.only else None
     t0 = time.time()
 
@@ -103,7 +115,7 @@ def main() -> int:
 
     verdicts = []
     modules = {"linear": linear, "volatility": volatility,
-               "leverage": leverage, "variants": variants}
+               "leverage": leverage, "coupling": coupling, "variants": variants}
     for name, mod in modules.items():
         if only and name not in only:
             continue

@@ -2,6 +2,35 @@
 src/mcmc/sample_leverage.py
 ===========================
 
+SISTEMA (equazioni dal .tex — notazione originale)
+--------------------------------------------------
+Cosa calcola: blocco (b) + Famiglia C con LEVERAGE contemporaneo (Branch A).  Oltre
+alle traiettorie log h e ai parametri AR(1), estrae le correlazioni di leverage ρ_i
+(una per canale).  La coppia (shock di livello, innovazione di log-vol):
+
+    (z_t, η_t) ~ N(0, [[1, ρσ_η], [ρσ_η, σ_η²]])
+  ⇒ η_t | z_t ~ N(ρ σ_η z_t,  σ_η² (1-ρ²))                        [eq:lev-cond-scalar]
+
+Il drift di leverage entra nella transizione dello STESSO periodo:
+
+    log h_t | log h_{t-1}, z_t ~ N(φ log h_{t-1} + ρ σ_η z_t,  σ_η² (1-ρ²))
+
+Residuo grezzo sbiancato (Spec. II, Option A) — componente i = shock proprio del
+fattore i, accoppiato a η^u_{i,t}:
+
+    z^u_t = sqrt(w^u_t) Q^{-1/2} (sqrt H^u_t)^{-1} u_t
+    η^u_{i,t} | z^u_{i,t} ~ N(ρ_i σ_{u,i} z^u_{i,t}, σ_{u,i}²(1-ρ_i²))   [eq:lev-cond-common]
+
+Il drift rende la transizione NON lineare-gaussiana ⇒ niente KSC/FFBS: il percorso
+si aggiorna con un Metropolis-Hastings single-move; ogni ρ_i è una mossa scalare.
+A ρ=0 il blocco si riduce esattamente al caso base (drift 0, varianza σ_η²).
+
+Nota (coupling / QML): il target di Branch A usa la verosimiglianza ESATTA col
+whitening pieno Q^{-1/2}, quindi tratta una Q piena senza approssimazioni — non gli
+serve alcun passo "accoppiato" (QML).  Il coupling è un dispositivo del solo Branch B
+(che linearizza con Omori) e del blocco comune SENZA leverage; sotto Branch A è vietato
+(guard in gibbs).
+
 Gibbs step (b) + Family C, **Branch A** (contemporaneous timing, Metropolis):
 the first sampler with *leverage* — the asymmetric coupling between the level
 shock and the log-volatility innovation that gives the predictive density its

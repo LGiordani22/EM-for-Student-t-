@@ -2,6 +2,32 @@
 src/mcmc/gibbs.py
 =================
 
+SISTEMA (equazioni dal .tex — notazione originale)
+--------------------------------------------------
+Cosa calcola: l'INTERO campionatore Gibbs del DFM Student-t mixed-frequency con
+volatilità stocastica e leverage.  Una spazzata estrae dal posterior congiunto,
+a turno, stati / volatilità / pesi / parametri.  Modello (cella master D1-b × D2-b),
+per t = 1..T:
+
+    (oss.)    y_t = Λ f_t + ε_t                                    [eq:obs, eq:idio]
+    (stato)   f_t = A f_{t-1} + u_t                                [eq:state]
+
+  Code di Student come mistura di scala gaussiana (pesi Gamma iid, media 1):
+    ε_t | w^ε_t ~ N(0, H^ε_t R / w^ε_t),  w^ε_t ~ Gamma(ν_ε/2, ν_ε/2),  R=diag(r_1..r_M)
+    u_t | w^u_t, H^u_t = sqrt(H^u_t) Q^{1/2} z^u_t / sqrt(w^u_t),  z^u_t ~ N(0, I_r)
+      ⇒ Var(u_t | ·) = sqrt(H^u_t) Q sqrt(H^u_t) / w^u_t           [eq:vol-outside, Spec. II]
+
+  Volatilità stocastica (r per-fattore + M per-serie), AR(1) su log h con μ=0:
+    log h_t = φ log h_{t-1} + η_t,  η_t ~ N(0, σ_η²)               [eq:sv-logvol-u/eps]
+    H^u_t = diag(h^u_{1,t}..h^u_{r,t}),  H^ε_t = diag(h^ε_{1,t}..h^ε_{M,t})
+
+  Leverage (Option A, una correlazione scalare ρ per canale):
+    η_t | z_t ~ N(ρ σ_η z_t, σ_η² (1-ρ²))                          [eq:lev-cond-scalar/common]
+    con z il residuo "sbiancato" (base scale, peso e volatilità rimossi).
+
+Ogni cella della griglia D1×D2 è una RESTRIZIONE di questo sistema: sv=False ⇒ h≡1;
+tails='gaussian' ⇒ w≡1; leverage=False ⇒ ρ=0 (drift nullo, varianza piena).
+
 Gibbs orchestrator for the Student-t mixed-frequency DFM — the **complete model**
 with stochastic volatility and leverage, selectable by flag (``sv``, ``leverage``,
 ``timing``).  This is the MCMC counterpart of the EM: the same model and the same
@@ -298,6 +324,7 @@ def fit_dfm_mcmc(
     rho_log_prior=None,
     store_states: bool = False,
     store_vol: bool = False,
+    store_weights: bool = False,
     compute_diagnostics: bool = True,
     verbose: bool = True,
 ) -> dict:
@@ -577,6 +604,9 @@ def fit_dfm_mcmc(
         draws["nu_eps"] = np.zeros(n_keep)
     if store_states:
         draws["F"] = np.zeros((n_keep, T, r))
+    if student_t and store_weights:      # pesi Student-t (blocco (c)); (T,) per periodo
+        draws["w_u"] = np.zeros((n_keep, T))
+        draws["w_eps"] = np.zeros((n_keep, T))
     if hw:
         draws["hw_a"] = np.zeros((n_keep, r))    # the r auxiliary half-t scales
     if sv:
@@ -712,6 +742,9 @@ def fit_dfm_mcmc(
             if student_t:
                 draws["nu_u"][keep] = nu_u
                 draws["nu_eps"][keep] = nu_eps
+            if student_t and store_weights:
+                draws["w_u"][keep] = w_u
+                draws["w_eps"][keep] = w_eps
             if store_states:
                 draws["F"][keep] = st["F"]
             if hw:

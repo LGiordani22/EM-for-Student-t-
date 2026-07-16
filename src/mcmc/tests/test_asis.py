@@ -1,8 +1,18 @@
 """
-src/mcmc/test_asis.py
-=====================
+src/mcmc/tests/test_asis.py
+===========================
 
-PASSO 6 gate for the ASIS interweaving (``mcmc.sample_asis``, thesis ``sec:asis``).
+COPERTURA (parametri/percorsi -- notazione del README/.tex)
+-----------------------------------------------------------
+Livello MIXING (non recovery, non conditional): l'interweaving ASIS agisce sui
+parametri di Famiglia B di UN processo di log-vol,
+  * (phi, sigma^2)   [Famiglia B]
+e si verifica (i) che il posterior NON si sposti (stessa legge, CP vs CP+ASIS) e
+(ii) che l'ESS del parametro peggiore (la persistenza phi sulla cresta path/scala)
+SALGA nettamente.  Con e senza leverage.  Non stima h ne' rho: li prende come dati
+e misura il CAMPIONATORE.
+
+Gate per l'interweaving ASIS (``mcmc.sample_asis``, thesis ``sec:asis``).
 
 ASIS is judged by its *effect*, not a point seam (it changes the chain, not the
 target): the two things that must hold are
@@ -196,7 +206,7 @@ def test_end_to_end_leverage():
 
 def main() -> int:
     print("=" * 72)
-    print("PASSO 6 — ASIS interweaving gate (sample_asis.py)")
+    print("ASIS -- interweaving di (phi, sigma^2) [Famiglia B]")
     print("=" * 72)
     test_invariance_and_ess()
     test_signed_sigma()

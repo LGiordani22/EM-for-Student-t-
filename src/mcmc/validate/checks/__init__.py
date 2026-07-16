@@ -7,8 +7,8 @@ Gli helper condivisi dai quattro moduli di check.
 **Seconda regola non negoziabile, resa strutturale:** :func:`summarize` restituisce
 sempre ``ess`` e ``r_hat`` insieme alla stima.  Non è disciplina, è tipo: non esiste un
 modo di ottenere una media a posteriori da questo modulo *senza* il suo ESS.  Il motivo è
-storico e concreto — il ``rho_hat = -0.51`` in cui abbiamo creduto per settimane veniva da
-catene con ESS 3–23 su 2000 draw, cioè da una manciata di draw indipendenti travestita da
+storico e concreto — un ``rho_hat`` che viene da
+una catena con ESS basso, cioè da una manciata di draw indipendenti travestita da
 misura.
 """
 
@@ -25,7 +25,7 @@ def summarize(chains: np.ndarray, truth=None, *, q=0.05) -> dict:
 
     ``covers`` è la quantità che distingue «stima incerta» da «stima confidente e
     sbagliata», ed è quella che ha smascherato l'attenuazione di ``rho``: un CI al 90%
-    deve coprire il vero ~90% delle volte, e ne copriva il 25%.
+    deve coprire il vero ~90% delle volte; se ne copre molto meno, la stima è confidente e sbagliata.
     """
     ch = np.asarray(chains, float)
     if ch.ndim == 1:

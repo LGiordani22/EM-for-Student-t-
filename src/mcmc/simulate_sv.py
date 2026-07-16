@@ -2,6 +2,21 @@
 src/mcmc/simulate_sv.py
 =======================
 
+SISTEMA (equazioni dal .tex — notazione originale)
+--------------------------------------------------
+Cosa calcola: GENERA un pannello sintetico dal DGP completo (il verso opposto al
+sampler), per il test di recovery.  Da parametri noti θ produce fattori, pesi,
+volatilità e osservazioni mixed-frequency:
+
+    log h_t = φ log h_{t-1} + η_t,  η_t ~ N(0, σ²),  log h_0 ~ N(0, σ²/(1-φ²))   [eq:sv-logvol-*]
+    w_t ~ Gamma(ν/2, ν/2)
+    u_t ~ N(0, sqrt(H^u_t) Q sqrt(H^u_t) / w^u_t)  (Spec. II)     [eq:vol-outside]
+    ε_{i,t} ~ N(0, h^ε_{i,t} r_i / w^ε_t)
+    f_t = A f_{t-1} + u_t,   y_t = Λ f_t + ε_t                     [eq:state, eq:obs]
+
+Casi limite (gate di coerenza): σ≡0 ⇒ h≡1 (DGP Student-t di Passo 1); in più ν→∞ ⇒
+DGP gaussiano.  Vedi sotto per le due varianti di volatilità comune (scalar vs per-fattore).
+
 Stochastic-volatility extension of the DFM simulator, for the Passo-2 recovery
 test.  Self-contained in ``mcmc/`` (the EM-side ``simulate_dfm`` is left
 untouched), but it reuses the masking (:func:`simulate_dfm.apply_missing_pattern`)
@@ -24,24 +39,34 @@ The factor innovation and idiosyncratic noise then carry *both* multipliers:
 Setting all ``sigma == 0`` (constant unit h) reproduces the Passo-1 Student-t
 DGP; setting in addition ``nu -> inf`` reproduces the Gaussian one.
 
-Two common-volatility DGPs
---------------------------
-* **scalar-common** (``sv_u``, the historical default): the restriction
-  ``H^u_t = h^u_t I`` — a *single* volatility shared by all r factors, with a
-  *vector* ``rho_u`` under leverage.  At ``H = h I`` the two placements of
-  ``subsec:vol-placement`` coincide (``Q^{1/2} H Q^{1/2} = sqrt(H) Q sqrt(H)
-  = h^u_t Q``), so this DGP does **not** select a specification; it is simply
-  the degenerate case.  Kept bit-identical (the Passo-2/3/4 gates use it).
-* **per-factor, Specification II** (``sv_u_perfactor``): ``r`` *independent*
-  volatilities ``h^u_{k,t}`` on the diagonal of ``H^u_t``, entering through the
-  **outside** sandwich ``u_t = sqrt(H^u_t) Q^{1/2} z_t / sqrt(w^u_t)``
-  (eq:vol-outside), so ``Var(u_{k,t}) = h^u_{k,t} q_kk`` reads factor k's *own*
-  volatility off the diagonal — the reason the thesis adopts II over the inside
-  placement I (eq:vol-inside), whose diagonal blends every ``h^u_j`` through
-  ``Q^{1/2}``.  Under Option A each channel carries its own scalar ``rho_k``,
-  coupling ``eta_k`` to the raw shock ``z_k``.  This is what the sampler
-  estimates on every SV path, and the only DGP in which distinct per-factor
-  ``(phi_k, sigma_k, rho_k)`` are identified.
+Due DGP di volatilità comune: il modello e il suo caso limite
+-------------------------------------------------------------
+La volatilità comune si può generare in due modi, e conviene tenerli distinti perché
+decidono *cosa* un test che passa ha davvero verificato.
+
+* **per-factor, Specification II** (``sv_u_perfactor``) — il DGP del modello.
+  ``r`` volatilità INDIPENDENTI ``h^u_{k,t}`` sulla diagonale di ``H^u_t``, tramite il
+  sandwich esterno ``u_t = sqrt(H^u_t) Q^{1/2} z_t / sqrt(w^u_t)`` (eq:vol-outside),
+  così ``Var(u_{k,t}) = h^u_{k,t} q_kk`` legge la vol PROPRIA del fattore k — il motivo
+  per cui la tesi adotta II sulla placement interna I (eq:vol-inside), la cui diagonale
+  mescola ogni ``h^u_j`` via ``Q^{1/2}``.  Sotto Option A ogni canale porta il proprio
+  ``rho_k`` scalare che accoppia ``eta_k`` allo shock grezzo ``z_k``.  È l'unico DGP in
+  cui ``(phi_k, sigma_k, rho_k)`` distinti sono identificati.
+
+* **scalar-common** (``sv_u``, con eventuale ``rho_u``) — il CASO LIMITE.  La restrizione
+  ``H^u_t = h^u_t I``: UNA sola volatilità condivisa da tutti gli r fattori.  A ``H = h I``
+  le due placement di ``subsec:vol-placement`` coincidono (``Q^{1/2} H Q^{1/2} =
+  sqrt(H) Q sqrt(H) = h^u_t Q``), quindi non seleziona alcuna specificazione: è il caso
+  degenere del per-fattore, con gli r ``h^u_k`` collassati in uno solo.  Serve proprio
+  come limite — SENZA leverage è il caso più semplice (il gate base e, a ``rho=0``, il
+  confronto con l'EM, che non ha SV).  Va però letto per quello che è: essendo tutti gli
+  ``h^u_k`` uguali, la separazione per-fattore qui è VACUA (non c'è nulla da distinguere);
+  e CON leverage il ``rho_u`` è vettoriale, ``eta_t = s (rho_u·z_t) + s sqrt(1 -
+  rho_u'rho_u) nu_t``, cioè un'unica direzione di accoppiamento — non gli r canali scalari
+  ``rho_k`` che il sampler stima, che in questo limite non sono separatamente identificati.
+  Perciò su questo DGP un test può confermare le MECCANICHE (che il sampler gira, accetta,
+  produce skew) ma non il recupero dei ``rho_k`` per-fattore, per cui serve
+  ``sv_u_perfactor``.
 """
 
 from __future__ import annotations
@@ -107,7 +132,10 @@ def simulate_dfm_sv(
                           a vector ``rho_u`` loading the r shocks).  At ``H = h I``
                           the inside and outside placements coincide, so this DGP
                           picks no specification.  Ignored when ``sv_u_perfactor``
-                          is given.
+                          is given.  Nota: con ``rho_u`` vettoriale la leverage agisce
+                          lungo un'unica direzione (il caso limite) e i ``rho_k``
+                          per-fattore non sono separatamente identificati — vedi la
+                          testata del modulo.
     sv_u_perfactor : (r, 3) or None    the **Specification II / Option A** DGP:
                           ``r`` *independent* per-factor log-vol AR(1)s
                           ``(mu_k, phi_k, sigma_k)``, and under leverage ``r``
@@ -145,6 +173,15 @@ def simulate_dfm_sv(
        ``(mu, phi, sigma^2)``.  So ``sim["sv_u"]`` may be compared with
        ``res["draws"]["sv_u"]`` directly — that is the whole point.  The inputs are
        echoed back, unconverted, as ``sv_u_sigma`` / ``sv_eps_sigma``.
+
+    .. warning::
+       **Leverage su scalar-common = caso limite.**  Passare ``rho_u``/``rho_eps`` con
+       ``sv_u`` scalare (cioè SENZA ``sv_u_perfactor``) genera una leverage lungo
+       un'unica direzione ``eta_t = s(rho_u·z_t) + s·sqrt(1-rho_u'rho_u)·nu_t``: gli
+       ``r`` canali scalari ``rho_k`` che il sampler stima non sono separatamente
+       identificati in questo limite, quindi un recovery dei ``rho_k`` è mal posto.
+       Va bene per testare meccaniche (acceptance, skewness); per il recupero di
+       ``rho`` passare ``sv_u_perfactor`` (Specification II + Option A).
 
     Returns dict with ``Y`` (T, M), ``F`` (T, r), ``h_u_true`` — (T,) scalar-common,
     (T, r) under ``sv_u_perfactor`` — ``h_eps_true`` (T, M), ``logh_u_true``,

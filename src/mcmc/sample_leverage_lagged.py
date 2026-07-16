@@ -2,6 +2,25 @@
 src/mcmc/sample_leverage_lagged.py
 ==================================
 
+SISTEMA (equazioni dal .tex — notazione originale)
+--------------------------------------------------
+Cosa calcola: blocco (b) + Famiglia C con LEVERAGE laggato (Branch B).  Come Branch A
+estrae log h, i parametri AR(1) e le ρ_i, ma con timing LAGGATO: z_t è correlato con
+η_{t+1}, l'innovazione della transizione SUCCESSIVA.  Identità di segno:
+
+    z_t = d_t exp(ξ_t/2),  d_t = sign(e_t),  ξ_t = y*_t - log h_t,  y*_t = log(e_t² + c)
+                                                                   [eq:lev-sign-identity]
+
+Mistura a 10 componenti di Omori (constants.OMORI10) per la legge congiunta (ξ_t, η_{t+1});
+condizionata all'indicatore s_t ∈ {1..10} E al segno d_t:
+
+    ξ_t | s=j            ~ N(m_j, v²_j)
+    η_{t+1} | (j, d, ξ)  ~ N( d_t ρ σ e^{m_j/2}(a_j + b_j(ξ_t - m_j)),  σ²(1-ρ²) )   [eq:lev-omori-cond]
+
+La media è LINEARE in log h_t (perché ξ_t = y*_t - log h_t) ⇒ condizionatamente a
+(s, d) il sistema è genuinamente lineare-gaussiano → il percorso è un vero draw FFBS
+(il punto di Branch B: dovrebbe mescolare meglio del Metropolis di Branch A).
+
 Gibbs step (b) + Family C, **Branch B** (lagged timing, Omori sign-augmented
 mixture + FFBS): the *second* leverage sampler.  Unlike Branch A (contemporaneous
 + single-move Metropolis on the path), Branch B keeps the volatility path a

@@ -2,6 +2,10 @@
 mcmc/validate/checks/linear.py
 ==============================
 
+**Recupera:** ``A``, ``Q`` [Fam. A]; ``Lambda``, ``R`` [Fam. A']; ``f_t`` (stati, blocco
+(a)); ``nu_u``, ``nu_eps`` [Fam. D].  I pesi ``w_u``/``w_eps`` NON sono immagazzinati nei
+draw → restano ``UNTESTED`` (il loro conditional è verificato in ``test_shared``).
+
 Il blocco lineare — **sotto SV e leverage**, che è la novità.
 
 I parametri di Famiglia **A** (``A``, ``Q``) e **A'** (``Lambda``, ``R``) erano validati
@@ -129,19 +133,21 @@ def run(mode: D.Mode, *, coverage_reps: int = 0) -> list[Verdict]:
             say(f"  {key}: vero {true:.1f}, stima {s['mean']:.1f} "
                 f"[{s['lo']:.1f},{s['hi']:.1f}]  (ESS {s['ess']:.0f})")
 
-        # ── Famiglia D: i pesi.  Non hanno un "vero" scalare da confrontare (sono un
-        # path latente); cio' che si puo' asserire e' che tracciano i pesi veri, cioe'
-        # che il campionatore vede DAVVERO gli outlier che il DGP ha messo.
+        # ── Famiglia D: i pesi.  Sono un path per periodo (uno per ogni t), non uno
+        # scalare: si giudicano sulla TRACCIA, come gli h — la posterior media dei pesi
+        # traccia i pesi veri se il campionatore vede gli outlier che il DGP ha messo.
+        # (store_weights=True in dgp.fit li espone nei draws.)
         for key, tex, blk in (("w_u", "w^u_t", "fattori"), ("w_eps", "w^eps_t", "osservazioni")):
             true_w = np.asarray(sim[f"{key}_true"], float)
-            # i pesi non sono nei draws (sono interni allo sweep): il proxy onesto e'
-            # dichiarare che non li osserviamo, invece di inventare un confronto.
+            w_hat = D.stack(chains, key).reshape(-1, true_w.size).mean(axis=0)
+            c = _corr(w_hat, true_w)
             V.append(Verdict(
-                tex, blk, branch, Outcome.UNTESTED,
-                "i pesi non sono immagazzinati nei draws (sono interni allo sweep): "
-                "l'algebra del loro conditional e' verificata in test_shared, ma il path "
-                "non e' confrontabile col vero senza esporli",
-                mode=mode.name, detail={"spec_key": key, "true_mean": float(true_w.mean())}))
+                tex, blk, branch,
+                Outcome.RECOVERED if c > 0.5 else Outcome.NOT_IDENTIFIED,
+                f"i pesi sono un path per periodo: corr. media della posterior media col "
+                f"vero {c:.2f} (giudicati sulla traccia, come gli h).",
+                estimate=c, mode=mode.name, detail={"spec_key": key}))
+            say(f"  {key}: corr {c:.3f}")
 
         if mode.name == "quick":
             break   # in --quick un solo ramo: serve a vedere se gira, non a decidere

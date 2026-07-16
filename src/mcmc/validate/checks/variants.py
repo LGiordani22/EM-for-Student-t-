@@ -2,7 +2,11 @@
 mcmc/validate/checks/variants.py
 ================================
 
-Le due varianti algoritmiche — **ASIS** e **QML** — che nessun test copriva in modo
+**Verifica** (non nuovi parametri, ma modi ALTERNATIVI di campionare ``(phi, sigma^2)^u``
+e ``rho^u``): **ASIS** (correttezza = stesso target on/off; efficienza = ESS di ``phi``) e
+**QML** (guard su Branch A; ``recommend_coupling``; QML sotto leverage a ``corr(Q)`` forte).
+
+Le due varianti algoritmiche — **ASIS** e **QML** — che si testano qui in modo
 sistematico.
 
 ASIS
@@ -49,14 +53,14 @@ indicatori — ed è il motivo per cui la forma ``literal`` è instabile).
 * **senza leverage**: stabile a ``corr(Q)`` alta ⇒ ✓
 * **sotto leverage**: la versione corretta (``z = M·eps`` esatto,
   ``M = Q^{-1/2} diag(sqrt q_kk)``, transizione FFBS piena) **recupera ``rho``** — a
-  ``corr(Q)=0.8`` dà ``rho_hat ≈ -0.47`` contro il ``-0.15`` del decoupled ⇒ **P5
+  ``corr(Q)=0.8`` dà ``rho`` dove il decoupled lo attenua ⇒ **attenuazione da whitening
   eliminata** — ma ``phi`` di un fattore **collassa ancora**.  **Progresso, non
   soluzione** ⇒ verdetto *recuperato con bias noto*, con entrambi i fatti congelati.
 * **sotto Branch A**: solleva ``ValueError`` **per costruzione** — A non forma mai una
   covarianza di misura (nessuna mistura, nessuna linearizzazione).  **Non è una lacuna, è
   una proprietà**, e va asserita come tale invece di lasciare la cella vuota.
 * ``recommend_coupling``: la soglia è sulla **sovra-confidenza** (≤5% ⇒ ``decoupled``),
-  non su ``corr(Q)``.  Sul pannello reale (0.4%) ⇒ ``decoupled``.
+  non su ``corr(Q)``.  Sul pannello reale (sovra-confidenza bassa) ⇒ ``decoupled``.
 """
 
 from __future__ import annotations
@@ -221,7 +225,7 @@ def _qml(mode: D.Mode) -> list[Verdict]:
         (f"la soglia e' sulla SOVRA-CONFIDENZA indotta (<=5%), non su corr(Q): a Q diagonale "
          f"{rec_diag['overconfidence']:.1%} -> '{rec_diag['recommend']}'; a corr(Q)=0.8 "
          f"{rec_corr['overconfidence']:.0%} -> '{rec_corr['recommend']}'. Sul pannello reale "
-         f"(~0.4%) => decoupled."),
+         f"(sovra-confidenza bassa) => decoupled."),
         mode=mode.name, detail={"spec_key": "_qml_rec"}))
 
     # (c) Sotto leverage a corr(Q)=0.8: PROGRESSO e COLLASSO RESIDUO, entrambi congelati
@@ -245,7 +249,7 @@ def _qml(mode: D.Mode) -> list[Verdict]:
         (f"**progresso, non soluzione** — e il check congela ENTRAMBI i fatti. "
          f"A corr(Q)=0.8 la deriva corretta (z = M eps esatto) recupera rho: "
          f"{out['qml']['rho']['mean']:+.2f} contro il {out['decoupled']['rho']['mean']:+.2f} "
-         f"del decoupled (vero {D.RHO_U_TRUE[0]:+.2f}) ⇒ **P5 eliminata** "
+         f"del decoupled (vero {D.RHO_U_TRUE[0]:+.2f}) ⇒ **attenuazione da whitening eliminata** "
          f"[{'confermato' if better_rho else 'NON confermato'}]. Ma phi di un fattore "
          f"{'COLLASSA ancora' if still_collapses else 'non collassa piu'}: "
          f"{np.round(out['qml']['phi'], 2)}. Resta dietro allow_experimental."),

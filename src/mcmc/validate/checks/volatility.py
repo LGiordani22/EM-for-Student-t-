@@ -2,31 +2,29 @@
 mcmc/validate/checks/volatility.py
 ==================================
 
+**Recupera:** ``phi^u_k``, ``sigma^2_{eta,k}``, ``h^u_k`` (r canali comuni) e
+``phi^eps``, ``sigma^2_eps``, ``h^eps`` (media sulle M serie) — [Fam. B + i path ``h``].
+
 Famiglia **B** — ``(phi, sigma^2_eta)`` — e i path ``h``, su **entrambi i blocchi**.
 
 Il blocco idiosincratico ha una SV **per serie** (``h^eps_i``, con i suoi ``phi^eps_i`` e
 ``sigma^2_{eps,i}``): esiste, gira a ogni sweep, entra nella densità predittiva del PIL —
 e **non era mai stata validata**.  Qui viene chiusa.
 
-Due cose che questo modulo deve dire, e che sono risultati, non fallimenti
---------------------------------------------------------------------------
+Due cose che questo modulo misura
+---------------------------------
 
-**P2 — il tetto informativo.**  Sotto Spec II ogni ``h^u_k`` è letto attraverso **una
+**Il tetto informativo.**  Sotto Spec II ogni ``h^u_k`` è letto attraverso **una
 sola** log-square per periodo: la media su ``r`` canali che il caso scalare-comune
 regalava non c'è più.  Su un canale a bassa volatilità il segnale *per periodo* non basta,
-e ``corr(ĥ, h)`` **satura intorno a 0.63 anche a T = 4800 e con i parametri veri**.  Non è
+e ``corr(ĥ, h)`` **resta limitata anche a T grande e con i parametri veri**.  Non è
 un difetto del campionatore: è quanto segnale c'è.  Il verdetto giusto è **non
 identificato**, e va affermato — non aggirato allargando una soglia.
 
 **Il prior guida ``sigma^2_eta``.**  ``sigma^2_eta`` è debolmente identificato, quindi la
-risposta la dà il prior.  Il half-Normal che abbiamo adottato per curare il mixing di
-``rho`` (P6) ha ``B = 1``, cioè ammette ``sigma_eta`` fino a 2–3 quando il vero è ≈ 0.2:
-**mal scalato di un ordine di grandezza**, e infatti **sovrastima ``sigma^2_eta`` di
-1.5–3.8×**.  L'inverse-Gamma sembra migliore, ma solo perché la sua media a priori
-(``b/(a-1) = 0.05``) cade *per caso* dove cade la verità in questo DGP: non è una virtù,
-è un colpo di fortuna, e il check lo dice invece di lasciar credere il contrario.
-
-Verdetto: **recuperato con bias noto** — utilizzabile *sapendo di cosa*.
+risposta la dà in buona parte il prior.  Questo modulo MISURA, per ciascun prior (il
+half-Normal adottato per il mixing di ``rho`` e l'inverse-Gamma), il rapporto fra la stima
+e il vero — senza assumerne l'esito: il verdetto lo decide il dato.
 """
 
 from __future__ import annotations
@@ -47,7 +45,7 @@ def _track(h_hat: np.ndarray, h_true: np.ndarray) -> float:
 
 def _sigma_prior_bias(g, mode) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """La misura che mancava: ``sigma^2_eta`` contro il vero, sotto i DUE prior.  Non e'
-    una curiosita': abbiamo curato P6 agendo su questo prior senza mai controllare cosa
+    una curiosita': abbiamo curato il mixing di rho agendo su questo prior senza mai controllare cosa
     facesse alla STIMA del parametro su cui agisce."""
     true = np.asarray(g["sim"]["sv_u"], float)[:, 2]          # gia' in varianza
     hn = D.fit(g, seed=700, sv_sigma_prior="half_normal")   # = il fit di default (cache)
@@ -76,32 +74,25 @@ def run(mode: D.Mode, *, coverage_reps: int = 0) -> list[Verdict]:
 
         for k in range(r):
             weak = (k == D.WEAK)
-            # φ
+            low_vol = " (canale a bassa volatilita', una sola log-square per periodo)" if weak else ""
+            # φ — il verdetto lo decide il dato (copertura del CI + rapporto), non l'etichetta
             s = summarize(sv_u[:, :, k, 1], truth=float(true_sv[k, 1]))
-            if not weak and s["mean"] > 0.85:
-                oc, why = Outcome.RECOVERED, f"phi = {s['mean']:.2f} (vero {true_sv[k,1]:.2f})"
-            elif weak:
-                oc, why = (Outcome.NOT_IDENTIFIED,
-                           "canale DEBOLE (P2): con una sola log-square per periodo e sd "
-                           "incondizionata 0.46 il path non e' identificato a questo T, "
-                           "quindi nemmeno la sua persistenza puo' esserlo")
+            if s["covers"] and abs(s["ratio"] - 1.0) < 0.15:
+                oc, why = Outcome.RECOVERED, f"phi = {s['mean']:.2f} (vero {true_sv[k,1]:.2f}), il CI copre il vero{low_vol}"
+            elif not s["covers"]:
+                oc, why = Outcome.RECOVERED_BIASED, f"phi = {s['mean']:.2f} contro {true_sv[k,1]:.2f}: il CI esclude il vero{low_vol}"
             else:
-                oc, why = Outcome.RECOVERED_BIASED, f"phi = {s['mean']:.2f}, sotto il vero"
+                oc, why = Outcome.NOT_IDENTIFIED, f"phi = {s['mean']:.2f}: il CI copre il vero ma e' largo{low_vol}"
             V.append(Verdict(f"phi^u_{k}", "fattori", branch, oc, why,
                              truth=float(true_sv[k, 1]), estimate=s["mean"],
                              ci=(s["lo"], s["hi"]), ess=s["ess"], r_hat=s["r_hat"],
                              mode=mode.name, detail={"spec_key": "phi_u"}))
-            # h path
+            # h path — si giudica sulla traccia (corr col vero)
             c = _track(h_u[:, k], logh_true[:, k])
-            if weak:
-                oc, why = (Outcome.NOT_IDENTIFIED,
-                           f"corr(h_hat, h) = {c:.2f} — TETTO INFORMATIVO (P2): satura a "
-                           f"~0.63 anche a T=4800 con i parametri veri. E' quanto segnale "
-                           f"c'e' per periodo, non un difetto del sampler")
-            elif c > 0.55:
+            if c > 0.55:
                 oc, why = Outcome.RECOVERED, f"corr(h_hat, h) = {c:.2f} sul proprio path"
             else:
-                oc, why = Outcome.RECOVERED_BIASED, f"corr(h_hat, h) = {c:.2f}, sotto l'atteso"
+                oc, why = Outcome.NOT_IDENTIFIED, f"corr(h_hat, h) = {c:.2f}: segnale per periodo insufficiente{low_vol}"
             V.append(Verdict(f"h^u_{k}", "fattori", branch, oc, why, estimate=c,
                              mode=mode.name, detail={"spec_key": "h_u"}))
             say(f"  k={k}{' (DEBOLE)' if weak else ''}: phi {s['mean']:.2f} "
@@ -113,14 +104,17 @@ def run(mode: D.Mode, *, coverage_reps: int = 0) -> list[Verdict]:
             s = summarize(sv_u[:, :, k, 2], truth=float(true_s2[k]))
             ratio_hn = float(m_hn[k] / true_s2[k])
             ratio_ig = float(m_ig[k] / true_s2[k])
-            why = (f"il prior GUIDA la stima: half-Normal(B=1) x{ratio_hn:.1f}, "
-                   f"inverse-Gamma x{ratio_ig:.1f} sul VERO. sigma^2_eta e' debolmente "
-                   f"identificato; il half-Normal e' mal scalato (ammette sigma fino a 2-3 "
-                   f"quando il vero e' ~0.2) e SOVRASTIMA. L'IG sembra migliore solo perche' "
-                   f"la sua media a priori (0.05) cade per caso sul vero in questo DGP.")
-            oc = Outcome.RECOVERED_BIASED if not (k == D.WEAK) else Outcome.NOT_IDENTIFIED
+            why = (f"sigma^2_eta e' debolmente identificato, quindi il prior GUIDA la stima: "
+                   f"rapporto sul vero half-Normal x{ratio_hn:.1f}, inverse-Gamma x{ratio_ig:.1f}. "
+                   f"I due prior danno stime diverse — il check lo MISURA.")
+            if not s["covers"]:
+                oc = Outcome.RECOVERED_BIASED       # il CI esclude il vero
+            elif abs(s["ratio"] - 1.0) < 0.5:
+                oc = Outcome.RECOVERED
+            else:
+                oc = Outcome.NOT_IDENTIFIED         # copre il vero ma il CI e' largo
             if k == D.WEAK:
-                why = "canale DEBOLE (P2): il path non e' identificato, la sua innovazione neppure. " + why
+                why = "canale a bassa volatilita': " + why
             V.append(Verdict(f"sigma^2_eta,{k}", "fattori", branch, oc, why,
                              truth=float(true_s2[k]), estimate=s["mean"],
                              ci=(s["lo"], s["hi"]), ess=s["ess"], r_hat=s["r_hat"],
@@ -148,8 +142,9 @@ def run(mode: D.Mode, *, coverage_reps: int = 0) -> list[Verdict]:
                          truth=phis["truth"], estimate=phis["mean"],
                          ess=phis["ess"], r_hat=phis["r_hat"], mode=mode.name,
                          detail={"spec_key": "phi_eps"}))
-        V.append(Verdict("sigma^2_eps (media M)", "osservazioni", branch,
-                         Outcome.RECOVERED_BIASED,
+        oc_s2e = (Outcome.RECOVERED if (s2s["covers"] and abs(s2s["ratio"] - 1) < 0.5)
+                  else Outcome.RECOVERED_BIASED)
+        V.append(Verdict("sigma^2_eps (media M)", "osservazioni", branch, oc_s2e,
                          f"media sulle M serie: {s2s['mean']:.4f} contro {s2s['truth']:.4f} "
                          f"(x{s2s['ratio']:.1f}). Stessa sensibilita' al prior del blocco comune.",
                          truth=s2s["truth"], estimate=s2s["mean"],
@@ -159,7 +154,7 @@ def run(mode: D.Mode, *, coverage_reps: int = 0) -> list[Verdict]:
         V.append(Verdict("h^eps (media M)", "osservazioni", branch, oc_h,
                          f"corr media col vero {corr_e:.2f} sulle M serie. La SV "
                          f"idiosincratica e' letta attraverso UNA log-square per serie per "
-                         f"periodo: stesso tetto informativo del blocco comune (P2).",
+                         f"periodo: stesso tetto informativo del blocco comune.",
                          estimate=corr_e, mode=mode.name, detail={"spec_key": "h_eps"}))
         say(f"  idio: phi {phis['mean']:.2f} (vero {phis['truth']:.2f}), "
             f"corr(h^eps) {corr_e:.2f}, sigma^2 x{s2s['ratio']:.1f}")

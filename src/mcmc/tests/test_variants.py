@@ -1,10 +1,23 @@
 """
-src/mcmc/test_variants.py
-=========================
+src/mcmc/tests/test_variants.py
+===============================
 
-**Phase 8 gate** — the D1 x D2 grid as restrictions of the master sampler
+COPERTURA (parametri/percorsi -- notazione del README/.tex)
+-----------------------------------------------------------
+Livello STRUTTURALE (non recovery): verifica QUALI parametri/percorsi vengono
+estratti in ogni cella D1xD2, e che accendere/spegnere una cella non tocchi il
+resto.  Presenza/assenza di:
+  * w^u, w^eps [step c] e nu_u, nu_eps [Fam D]  -> spenti sotto D1-a (gaussiano)
+  * h^eps, sv_eps [Fam B idio]                  -> spenti sotto D2-a
+  * h^u, sv_u [Fam B comune]                    -> spenti nel "current model" (no SV)
+  * rho^u, rho^eps [Fam C]                      -> spenti a leverage=False / rho=0
+  * a_j [Fam A+]                                -> presenti solo col prior Huang-Wand
+Piu' i prior di Famiglia A cablati su ogni percorso.  NB: non misura se un parametro
+e' GIUSTO, solo se c'e' o non c'e' -- e' la mappa di copertura delle celle.
+
+**Gate delle varianti** -- the D1 x D2 grid as restrictions of the master sampler
 (``sec:gibbs-variants``, Table ``tab:gibbs-variants``), plus the optional
-Huang--Wand prior on ``Q`` (Phase 2d, ``eq:param-Q-hw-prior``).
+Huang--Wand prior on ``Q`` (``eq:param-Q-hw-prior``).
 
 The point of the section is that the *skeleton never changes* — states (a),
 volatilities (b), tails (c), parameters (d) — and each cell only switches blocks
@@ -34,7 +47,7 @@ on or off.  These tests assert exactly that, block by block:
       MNIW): priors on/off both run, no warning, and the flat default is
       bit-identical to the pre-prior sampler.
 
-  [7] **Huang--Wand** (Phase 2d): the hierarchical IW runs as a drop-in for the
+  [7] **Huang--Wand**: the hierarchical IW runs as a drop-in for the
       plain IW, appends the r auxiliary scales to Family A, and — the robustness
       check the thesis prescribes — leaves the posterior correlations among the
       factor innovations essentially unmoved.
@@ -248,7 +261,7 @@ def test_family_a_priors_all_paths(theta, fl, bm, oc, Y):
 
 
 def test_huang_wand(theta, fl, bm, oc, Y):
-    print("\n[7] Huang-Wand (Phase 2d): drop-in IW swap + robustness check")
+    print("\n[7] Huang-Wand: drop-in IW swap + robustness check")
     try:
         _fit(Y, theta, fl, bm, oc, n_iter=10, burn_in=1, q_prior="lkj"); ok = False
     except ValueError:
@@ -287,8 +300,8 @@ def test_huang_wand(theta, fl, bm, oc, Y):
            np.all(np.isfinite(res["draws"]["Q"])) and "hw_a" in res["draws"])
 
 
-def test_p1_coupled_unreachable(theta, fl, bm, oc, Y):
-    print("\n[8] P1: the coupled R_xi branch is unreachable from the sampler")
+def test_coupled_unreachable(theta, fl, bm, oc, Y):
+    print("\n[8] il ramo R_xi accoppiato e' irraggiungibile dal sampler")
     import inspect
     import mcmc.gibbs as gibbs_mod
     import mcmc.sample_vol as sv_mod
@@ -363,7 +376,7 @@ def main():
     test_rho_zero(theta, fl, bm, oc, Y)
     test_family_a_priors_all_paths(theta, fl, bm, oc, Y)
     test_huang_wand(theta, fl, bm, oc, Y)
-    test_p1_coupled_unreachable(theta, fl, bm, oc, Y)
+    test_coupled_unreachable(theta, fl, bm, oc, Y)
 
     print("\n" + "=" * 72)
     print(f"  {_PASS} passed, {_FAIL} failed")

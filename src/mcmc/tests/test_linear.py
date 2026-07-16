@@ -1,9 +1,21 @@
 """
-src/mcmc/test_passo1.py
-=======================
+src/mcmc/tests/test_linear.py
+=============================
 
-Fast correctness gate for **Passo 1** (the no-SV Gibbs sampler = the MCMC
-version of the EM).  Complements the full distributional recovery harness in
+COPERTURA (parametri/percorsi -- notazione del README/.tex)
+-----------------------------------------------------------
+Livello RECOVERY, cella SENZA volatilita' (h == 1; w attivi), contro l'EM sullo
+stesso pannello sintetico.  Recupera:
+  * stati       f_{1:T}        [step (a), FFBS]   corr coi veri fattori
+  * A, Q        [Famiglia A]   media a posteriori ~ EM  (+ orientamento Kronecker
+                               della DISPERSIONE di A: P00^{-1} (x) Q)
+  * Lambda, R   [Famiglia A]   ~ EM
+  * nu_eps      [Famiglia D]   ~ EM
+In questa cella h e rho non esistono: la loro copertura sta in test_vol_base /
+test_leverage.
+
+Fast correctness gate for the **no-SV Gibbs sampler** (= the MCMC version of the
+EM).  Complements the full distributional recovery harness in
 :func:`mcmc.diagnostics.run_recovery_mcmc` (which is slower: multi-chain, T~400)
 with three quick, decisive checks that a CI / a human can run in ~1-2 minutes:
 
@@ -27,7 +39,7 @@ with three quick, decisive checks that a CI / a human can run in ~1-2 minutes:
 
 Run
 ---
-    python src/mcmc/test_passo1.py
+    python src/mcmc/tests/test_linear.py
 
 Prints [PASS]/[FAIL] per check; exits non-zero if any fails.
 """
@@ -173,7 +185,7 @@ def test_em_crosscheck(theta, freq_list, block_map, ordered_cols, r):
 
 def main() -> int:
     print("=" * 72)
-    print("PASSO 1 — no-SV Gibbs sampler correctness gate")
+    print("LINEARE (no-SV) -- Gibbs == EM: stati e (A, Q, Lambda, R, nu)")
     print("=" * 72)
     w = load_warm_init("small")
     theta = dict(w["theta"])

@@ -2,6 +2,10 @@
 src/mcmc/constants.py
 =====================
 
+Cosa contiene (in due parole): le costanti tabulate delle misture che approssimano
+la densità log-χ²₁ nei blocchi di volatilità stocastica — KSC-7 (senza leverage) e
+Omori-10 (leverage laggato).  Non è un motore: è la tabella che i motori SV leggono.
+
 Tabulated mixture constants for the stochastic-volatility blocks of the Gibbs
 sampler.  They are consumed by the KSC / Omori volatility blocks; with ``sv=False``
 the sampler does not touch any of these tables.
@@ -18,7 +22,7 @@ Two tables live here (see ``docs/EM_for_student_t.tex`` ``tab:omori-mixture``):
 
 ================================================================================
 NOTA — VALIDAZIONE DELLE TABELLE (gia' implementata in ``validate_mixture`` e
-coperta da ``test_passo4`` [1]).  I tre check vanno SEMPRE fatti **CON
+coperta da ``test_leverage`` [1]).  I tre check vanno SEMPRE fatti **CON
 TOLLERANZA**, MAI con uguaglianza stretta: le misture sono APPROSSIMAZIONI
 numeriche della log-chi^2, i cui coefficienti NON soddisfano le identita' in
 modo esatto, solo entro errore di tabulazione.  I check sono (np.isclose /
