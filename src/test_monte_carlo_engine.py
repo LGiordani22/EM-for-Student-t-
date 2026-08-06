@@ -47,8 +47,7 @@ _SRC_DIR = _PROJECT_ROOT / "src"
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
-from config_utils import parse_config_args                      # noqa: E402
-from data_loader import load_config                             # noqa: E402
+from config_utils import parse_spec_variant_args                # noqa: E402
 from em.em_main import load_dfm_fit, _theta_fingerprint            # noqa: E402
 from monte_carlo import (                                        # noqa: E402
     run_one_replication,
@@ -252,14 +251,15 @@ def test_A5_aggregation(ctx: dict) -> str:
     )
     assert agg, "aggregate dict is empty"
 
+    fnames = ctx["factor_names"]
     base_keys = {"mean", "std", "median", "q05", "q95"}
-    headline = [
+    # Scalari sempre finiti (plumbing):
+    scalar_headline = [
         "rho_A_relerr",
         "lambda_relerr_procrustes_blockdiag",
         "lambda_relerr_normalised",
-        "factor_abscorr_real", "factor_abscorr_fin", "factor_abscorr_other",
     ]
-    for key in headline:
+    for key in scalar_headline:
         assert key in agg, f"expected aggregate key '{key}' missing"
         present = base_keys & set(agg[key])
         assert present == base_keys, (
@@ -267,8 +267,20 @@ def test_A5_aggregation(ctx: dict) -> str:
         assert np.isfinite(agg[key]["mean"]), f"'{key}'.mean is not finite"
         assert np.isfinite(agg[key]["median"]), f"'{key}'.median is not finite"
 
-    return (f"{len(agg)} aggregated metrics; mean/std/median/q05/q95 present "
-            f"and finite for {len(headline)} headline keys")
+    # Chiavi per-fattore: presenza + campi, r-generico. GUARDIA ANTI-DROP: una
+    # per fattore, esattamente r — col vecchio `len == 3` su r=4 sparivano tutte.
+    for b in fnames:
+        key = f"factor_abscorr_{b}"
+        assert key in agg, f"expected per-factor key '{key}' missing"
+        assert base_keys & set(agg[key]) == base_keys, (
+            f"'{key}' missing stat fields")
+    n_fac = sum(1 for k in agg if k.startswith("factor_abscorr_"))
+    assert n_fac == len(fnames), (
+        f"expected {len(fnames)} factor_abscorr_* keys (one per factor), "
+        f"found {n_fac} — a factor was silently dropped")
+
+    return (f"{len(agg)} aggregated metrics; scalars finite; "
+            f"{n_fac}/{len(fnames)} per-factor recovery keys present")
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -371,11 +383,12 @@ def test_B4_pi0_untouched(ctx: dict) -> str:
 def test_B5_pi_trend(ctx: dict) -> str:
     """As pi grows: Student-t lift stays >1, Gaussian Q rel.err inflates."""
     theta = ctx["theta_star"]
+    fnames = ctx["factor_names"]
     pis = [0.0, 0.10]
 
     def _q_relerr_mean(agg: dict) -> float:
-        vals = [agg[k]["mean"] for k in
-                ("diagQ_relerr_real", "diagQ_relerr_fin", "diagQ_relerr_other")
+        # Media del rel.err di diag(Q) su TUTTI i fattori della spec (r-generico).
+        vals = [agg[k]["mean"] for k in (f"diagQ_relerr_{b}" for b in fnames)
                 if k in agg]
         return float(np.mean(vals)) if vals else float("nan")
 
@@ -438,31 +451,41 @@ def _run(name: str, fn: Callable[[dict], str], ctx: dict,
         results.append((name, False))
 
 
-def main(config: str = "small") -> int:
+def main(spec: str = "fed_overlap", variant: str = "gaussian") -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8")                # type: ignore[attr-defined]
     except Exception:
         pass
 
+    from config_utils import resolve_final_path
+    from em.selftest_fixture import load_fixture
+    from run_final_artifacts import VARIANTS as _V, load_final_fit
+
     bar = "=" * 78
     print(bar)
     print("  MONTE CARLO ENGINE — FAST SELF-TEST  (monte_carlo.py)")
     print(f"  S={S_FAST}, T={T_FAST}/{T_DETECT}, max_iter={MAX_ITER}, tol={TOL}")
-    print(f"  config={config}")
+    print(f"  dataset 'final' | spec={spec} | variante={variant}")
     print(bar)
 
     # ── Fresh temp workspace (resume tests must start from zero) ──────────────
     _clean_dir(_TEST_DIR)
 
-    cfg_data  = load_config(config)
+    fx = load_fixture(spec)
+    _vc = _V[variant]
     mc_kw: dict = {
-        "ordered_cols": cfg_data["ORDERED_COLS"],
-        "block_map":    cfg_data["BLOCK"],
-        "freq_list":    [cfg_data["FREQ"][c] for c in cfg_data["ORDERED_COLS"]],
+        "ordered_cols":       fx.ordered_cols,
+        # solo per il raggruppamento nelle stampe; l'algebra passa da structure
+        "block_map":          fx.structure.display_block_map(),
+        "freq_list":          fx.freq_list,
+        "structure":          fx.structure,
+        "per_series_weights": bool(_vc.get("per_series_weights", False)),
     }
-    fit_path = _PROJECT_ROOT / "data" / "processed" / config / "fit_dfm_result.npz"
+    fit_path = resolve_final_path("processed", "fit_dfm_result.npz",
+                                  spec, variant)
     print(f"Loading calibrated theta_star from: {fit_path}")
-    theta_star = load_dfm_fit(fit_path)["theta"]
+    # load_final_fit, NON load_dfm_fit: formati diversi, stesso nome di file.
+    theta_star = load_final_fit(spec, variant)["theta"]
 
     # ── Shared runs for Group A (computed once, reused across A1/A2/A5) ────────
     print("\nPre-computing shared Group-A runs (3 x run_monte_carlo, S=%d) ..."
@@ -476,11 +499,14 @@ def main(config: str = "small") -> int:
     parallel = run_monte_carlo(n_jobs=2, **common)
 
     ctx: dict[str, Any] = {
-        "theta_star": theta_star,
-        "mc_kw":      mc_kw,
-        "serial_a":   serial_a,
-        "serial_b":   serial_b,
-        "parallel":   parallel,
+        "theta_star":   theta_star,
+        "mc_kw":        mc_kw,
+        "serial_a":     serial_a,
+        "serial_b":     serial_b,
+        "parallel":     parallel,
+        # Nomi dei fattori della spec: A5/B5 controllano le chiavi per-fattore
+        # in modo r-generico (niente real/fin/other cablati).
+        "factor_names": list(fx.structure.factor_names),
     }
 
     tests: list[tuple[str, Callable[[dict], str]]] = [
@@ -517,5 +543,5 @@ def main(config: str = "small") -> int:
 
 
 if __name__ == "__main__":
-    args = parse_config_args("Monte Carlo Engine — Fast Self-Test")
-    sys.exit(main(config=args.config))
+    args = parse_spec_variant_args("Monte Carlo Engine — Fast Self-Test")
+    sys.exit(main(spec=args.spec, variant=args.variant))

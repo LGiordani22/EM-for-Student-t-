@@ -1,29 +1,67 @@
 """
 src/forecast/figures.py
 
-NOWCAST-TRAJECTORY FIGURES for the nowcasting pipeline.
+LA FIGURA in stile Cascaldi-Garcia 8a.
 
-Pure plotter: reads the long CSV produced by rolling_nowcast.py.
+Lettore puro: legge il CSV lungo di `weekly_nowcast.py` e disegna.  Non stima
+niente.
 
-TWO FIGURE TYPES
-----------------
-1. --style cg   (default)
-   2×2 grid, one panel per method (Student-t / Gaussian / ARMA(2,2) / Random Walk).
-   Each panel is a Cascaldi-Garcia continuous timeline: one coloured trajectory
-   per target quarter, filled-circle release dots, short "YYQn" labels.
-   Produces two files per run: level and z-score.
+COSA MOSTRA (e cosa non mostra)
+-------------------------------
+Un pannello per cella (spec x variante).  Sull'asse x il tempo di calendario,
+cioe' le date `as_of` a risoluzione settimanale; sull'asse y il PIL in tasso
+annualizzato.  Una linea continua colorata per ogni trimestre target, che segue
+l'evoluzione del suo nowcast man mano che i dati arrivano; le linee di trimestri
+diversi si sovrappongono nel tempo, perche' a ogni data il modello sta prevedendo
+il trimestre precedente, quello corrente e il prossimo.
 
-2. --style compare  (--target YYYYQn required)
-   Single panel, all 4 methods overlaid for one target quarter.
-   For zooming in on a specific episode (e.g. 2008Q4).
+Le linee sono a GRADINI: piatte fra un rilascio e l'altro, saltano quando esce
+un dato.  Non vanno lisciate — il gradino e' la firma della frequenza
+settimanale, ed e' l'unica cosa che a frequenza mensile non si vedrebbe.
 
-Config-aware: --small / --big.
+I pallini NON appartengono alle linee.  Sono il dato pubblicato: posizionati
+alla data di rilascio del PIL letta dal calendario e all'altezza del valore
+realizzato.  La distanza VERTICALE fra la fine della linea e il pallino e'
+l'errore di nowcast finale.
 
-Run
----
-  python -m src.forecast.figures                         # CG 4-panel, newest CSV
-  python -m src.forecast.figures --csv path/to/file.csv
-  python -m src.forecast.figures --style compare --target 2008Q4
+LA LINEA CORRE FINO AL RILASCIO; LO STACCO RESIDUO E' UNA SOLA SETTIMANA
+-----------------------------------------------------------------------
+La linea di un trimestre resta viva finche' il suo PIL non esce: l'ultima
+as_of disegnata e' l'ultimo venerdi' STRETTAMENTE PRECEDENTE a
+`gdp_release_date(q) = fine_trimestre + 28`.  Include quindi il BACKCAST — le
+settimane in cui il trimestre e' gia' chiuso ma il PIL ufficiale non e' ancora
+uscito — che e' la fase PIU' ACCURATA del nowcast: arrivano occupazione, ISM,
+ecc. che raffinano la stima (2008Q4 si muove da -3.01 a -3.47 fra il 2 e il 23
+gennaio, avvicinandosi al realizzato).
+
+Il pallino sta sul rilascio; il vuoto orizzontale fra la fine della linea e il
+pallino e' solo il residuo fra l'ultimo venerdi' utile e la data di
+pubblicazione — ~1 settimana, non quattro.  La distanza VERTICALE fra
+fine-linea e pallino resta l'errore di nowcast finale.  Questa e' la stessa
+regola che governa `targets_in_flight`: un trimestre e' in volo per ogni
+as_of < gdp_release_date(q).  Chi vuole la linea tagliata a fine
+trimestre (senza backcast) usa `--nascondi-backcast`.
+
+E' una figura di PUNTO, non di densita': nessuna banda di quantili.
+
+FINESTRE E CARTELLE STANNO IN `src/output_layout.py`
+----------------------------------------------------
+`--window 2014-2016` ritaglia il CSV sull'intervallo di date di quella
+finestra e nomina la figura con quel nome; le cartelle di destinazione
+(`dfm/<spec>/<variant>/`) vengono dallo stesso modulo.  Qui non c'e' nessuna
+data e nessun percorso cablato.
+
+LA SCALA E' PER FINESTRA, NON GLOBALE
+-------------------------------------
+Ogni figura si scala sui dati che disegna: assi (x e y) dai valori effettivi
+piu' un margine, legenda posizionata verificando che non copra le curve, e
+niente range fisso ereditato da un'altra finestra.  Il range fisso `(-15,+6)`
+c'era, ed era tarato sulla Grande Recessione: sul 2024-2025 avrebbe schiacciato
+la serie in una striscia.  Chi vuole due celle sulla stessa scala passa
+`--ylim MIN MAX`.
+
+  --style cg8a     un pannello per cella (default)
+  --style compare  un trimestre, tutti i metodi sovrapposti
 """
 
 from __future__ import annotations
@@ -32,523 +70,508 @@ import argparse
 import glob
 import os
 
-from src.config_utils import parse_config_args
-
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.dates as mdates
+import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 import numpy as np
 import pandas as pd
+from matplotlib.lines import Line2D
 
-# ─── Paths ────────────────────────────────────────────────────────────────────
-_PROJECT_ROOT = os.path.dirname(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-)
+from src import output_layout as layout
+from src.forecast.release_calendar import quarter_end
 
-# ─── Cascaldi-Garcia quarter palette ─────────────────────────────────────────
-_CG_COLORS = [
-    "#1f77b4",  # blu
-    "#ff7f0e",  # arancione
-    "#d62728",  # rosso
-    "#9467bd",  # viola
-    "#2ca02c",  # verde
-    "#8c564b",  # marrone
-    "#e377c2",  # rosa
-    "#17becf",  # azzurro
-    "#bcbd22",  # ocra
-    "#7f7f7f",  # grigio
-]
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# ─── Per-method styles and display names ─────────────────────────────────────
-_METHOD_STYLE: dict[str, dict] = {
-    "student_t":   dict(color="#1f77b4", label="Student-t DFM"),
-    "gaussian":    dict(color="#ff7f0e", label="Gaussian DFM"),
-    "arma22":      dict(color="#2ca02c", label="ARMA(2,2)"),
-    "random_walk": dict(color="#9467bd", label="Random Walk"),
-}
-_METHOD_DISPLAY = {
-    "student_t":   "Student-t DFM",
-    "gaussian":    "Gaussian DFM",
-    "arma22":      "ARMA(2,2)",
-    "random_walk": "Random Walk",
-}
-_METHOD_ORDER = ["student_t", "gaussian", "arma22", "random_walk"]
-_FALLBACK_COLORS = ["#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+# ─── Stile accademico ─────────────────────────────────────────────────────────
+# I colori sono l'ordine MATLAB, che e' quello dell'originale.
+_COLORS = ["#0072BD", "#D95319", "#EDB120", "#7E2F8E", "#77AC30", "#4DBEEE"]
 
-_RELEASE_OFFSET_DAYS = 20   # advance GDP release ~2 weeks after last as_of
-_MIN_TRAJ_POINTS = 2        # suppress edge quarters with < 2 nowcast vintages
+_FIGSIZE = (10.0, 6.0)          # ~1.67:1, il formato orizzontale dell'originale
+_YLIM = None                    # scala AUTOMATICA sulla finestra: vedi _autoscale
+_LINEWIDTH = 2.5
+_DOT_SIZE = 55
+_MIN_POINTS = 2                 # traiettorie con un solo punto non dicono niente
 
-# ─── Figure styles ────────────────────────────────────────────────────────────
-# Each entry maps a subfolder name to the rendering parameters.
-# "zoomate"  = auto y-scale, all 4 horizons (original style)
-# "figure_-10_5" = fixed ylim (-10, 5), only h2-h4 per quarter (CG clean style)
-_FIGURE_STYLES: dict[str, dict] = {
-    "figure_zoomate": dict(min_horizon=1, ylim_fixed=None),
-    "figure_-10_5":   dict(min_horizon=2, ylim_fixed=(-10.0, 5.0)),
-}
+_BENCHMARK_SPEC = "benchmark"
+
+# Margine attorno ai dati, in frazione dell'escursione: abbastanza da non
+# tagliare un picco o un pallino, poco abbastanza da non lasciare bordi vuoti.
+_PAD_Y = 0.08
+_PAD_X = 0.04
+# Spazio in piu' a destra per le etichette dei pallini ("08Q4"), che sono
+# disegnate con un offset in punti e non rientrano nel calcolo dei limiti.
+_PAD_X_LABEL = 0.05
+
+# Le etichette dei pallini cadono spesso in mezzo alle traiettorie (nel 2008 i
+# rilasci stanno dentro il grafico, non ai bordi).  Un contorno bianco sottile
+# le tiene leggibili SENZA spostarle: muoverle vorrebbe dire staccarle dal
+# proprio pallino, che e' l'unica cosa che dice a quale trimestre si riferiscono.
+_LABEL_HALO = [pe.withStroke(linewidth=2.6, foreground="white")]
 
 
-# ─── Shared helpers ───────────────────────────────────────────────────────────
+def _apply_axes_style(ax: plt.Axes) -> None:
+    """Riquadro chiuso, tick interni sui quattro lati, niente griglia."""
+    for side in ("top", "right", "bottom", "left"):
+        ax.spines[side].set_visible(True)
+        ax.spines[side].set_linewidth(0.8)
+        ax.spines[side].set_color("black")
+    ax.tick_params(which="both", direction="in", top=True, right=True,
+                   labelsize=9, width=0.8)
+    ax.grid(False)
+    ax.set_facecolor("white")
 
-def _newest_csv(config_name: str = "small") -> str:
-    csv_dir = os.path.join(_PROJECT_ROOT, "output", "forecast_realtime", "csv", config_name)
-    cands = glob.glob(os.path.join(csv_dir, "*.csv"))
+
+def _serif() -> dict:
+    return {"font.family": "serif",
+            "font.serif": ["DejaVu Serif", "Times New Roman", "serif"],
+            "mathtext.fontset": "dejavuserif"}
+
+
+# ─── Scala e legenda: ogni figura inquadra la PROPRIA finestra ────────────────
+
+def _autoscale(ax: plt.Axes, xs: list, ys: list) -> None:
+    """
+    Limiti presi dai dati EFFETTIVAMENTE disegnati in questa figura.
+
+    Il vecchio `_YLIM=(-15,+6)` era tarato sul 2008-2010: applicato al
+    2024-2025 (crescita fra +1 e +3) schiacciava la serie in una striscia
+    alta un decimo del riquadro.  Qui ogni finestra si scala su se stessa.
+
+    `xs` include le date di RILASCIO, non solo le `as_of`: il pallino del PIL
+    pubblicato cade dopo l'ultimo venerdi' disegnato e deve restare dentro il
+    riquadro, non a cavallo del bordo.  A destra si aggiunge un margine per le
+    etichette dei pallini, che sono disegnate con un offset in punti.
+    """
+    if ys:
+        lo, hi = float(np.nanmin(ys)), float(np.nanmax(ys))
+        span = hi - lo
+        pad = (span * _PAD_Y) if span > 0 else max(abs(hi) * 0.1, 0.5)
+        ax.set_ylim(lo - pad, hi + pad)
+    if xs:
+        x0, x1 = min(xs), max(xs)
+        span = (x1 - x0) or pd.Timedelta(days=7)
+        ax.set_xlim(x0 - span * _PAD_X, x1 + span * (_PAD_X + _PAD_X_LABEL))
+
+
+def _data_boxes(ax: plt.Axes) -> list:
+    """I riquadri (in coordinate display) di tutto cio' che e' stato disegnato."""
+    boxes = []
+    for ln in ax.get_lines():
+        if ln.get_linestyle() == "--" and ln.get_color() == "black":
+            continue                      # la linea dello zero non e' un dato
+        xy = ln.get_xydata()
+        if len(xy) == 0:
+            continue
+        pts = ax.transData.transform(xy)
+        pts = pts[np.isfinite(pts).all(axis=1)]
+        if len(pts):
+            boxes.append((pts[:, 0].min(), pts[:, 1].min(),
+                          pts[:, 0].max(), pts[:, 1].max()))
+    return boxes
+
+
+def _legend_overlaps(fig, ax: plt.Axes, leg) -> bool:
+    """La legenda tocca qualcosa di disegnato?  Verifica, non speranza."""
+    fig.canvas.draw()
+    lb = leg.get_window_extent()
+    for x0, y0, x1, y1 in _data_boxes(ax):
+        if lb.x1 > x0 and lb.x0 < x1 and lb.y1 > y0 and lb.y0 < y1:
+            return True
+    return False
+
+
+def _place_legend(fig, ax: plt.Axes, handles: list, ncol: int = 1,
+                  fallback_anchor: tuple[float, float] = (0.5, -0.09),
+                  fallback_ncol: int | None = None):
+    """
+    Mette la legenda dove NON copre i dati.
+
+    Si prova `best` (che minimizza la sovrapposizione con gli artisti gia'
+    disegnati), poi gli angoli a mano; se nessuna posizione e' libera —
+    succede quando le traiettorie riempiono il riquadro — la legenda esce
+    SOTTO il riquadro, dove non puo' coprire niente per costruzione.
+
+    Il ripiego e' parametrico perche' "sotto il riquadro" non e' lo stesso
+    posto in tutte le figure: la RMSE per orizzonte ha un asse secondario a
+    -0.13, e una legenda ancorata a -0.09 gli finirebbe sopra.  Chi ha roba
+    sotto l'asse passa il proprio `fallback_anchor`.  `fallback_ncol` limita
+    le colonne: con nove voci su una riga sola la legenda sfora a destra e
+    l'ultima si taglia.
+    """
+    for loc in ("best", "upper left", "upper right", "lower left", "lower right"):
+        leg = ax.legend(handles=handles, loc=loc, frameon=False,
+                        fontsize=8.5, ncol=ncol)
+        if not _legend_overlaps(fig, ax, leg):
+            return leg
+        leg.remove()
+    return ax.legend(handles=handles, loc="upper center", frameon=False,
+                     fontsize=8.5,
+                     ncol=fallback_ncol or max(ncol, len(handles)),
+                     bbox_to_anchor=fallback_anchor)
+
+
+# ─── Lettura ──────────────────────────────────────────────────────────────────
+
+def _newest_csv() -> str:
+    d = layout.dfm_csv_dir()
+    cands = glob.glob(os.path.join(d, "weekly_nowcast_*.csv"))
     if not cands:
         raise FileNotFoundError(
-            f"No rolling-nowcast CSV found in {csv_dir}.\n"
-            f"Run: python -m src.forecast.rolling_nowcast --{config_name} "
-            f"--start YYYY-MM --end YYYY-MM"
+            f"Nessun CSV in {d}.\n"
+            f"Generane uno con:  python -m src.forecast.weekly_nowcast "
+            f"--start YYYY-MM-DD --end YYYY-MM-DD"
         )
     return max(cands, key=os.path.getmtime)
 
 
-def _resolve_csv(csv_arg: str | None, config: str) -> str:
-    if csv_arg:
-        return csv_arg
-    return _newest_csv(config)
+def load(csv_path: str | None = None) -> pd.DataFrame:
+    df = pd.read_csv(csv_path or _newest_csv())
+    df["target_quarter"] = df["target_quarter"].astype(str)
+    df["as_of_dt"] = pd.to_datetime(df["as_of"])
+    df["release_dt"] = pd.to_datetime(df["gdp_release_date"])
+    df["cella"] = np.where(df["spec"] == _BENCHMARK_SPEC,
+                           df["variant"], df["spec"] + "/" + df["variant"])
+    return df
 
 
-def _quarter_key(label: str) -> tuple[int, int]:
-    y, q = label.upper().split("Q")
-    return int(y), int(q)
+def _quarter_key(q: str) -> tuple[int, int]:
+    y, n = q.upper().split("Q")
+    return int(y), int(n)
 
 
-def _period_str(df: pd.DataFrame) -> str:
-    months = pd.to_datetime(df["as_of"]).dt.strftime("%Y-%m")
-    return f"{months.min()}_{months.max()}"
+def _short(q: str) -> str:
+    """'2008Q4' -> '08Q4', l'etichetta accanto al pallino."""
+    y, n = q.upper().split("Q")
+    return y[2:] + "Q" + n
 
 
-def _methods_present(df: pd.DataFrame) -> list[str]:
-    present = [m for m in _METHOD_ORDER if m in set(df["method"])]
-    extra = [m for m in df["method"].unique() if m not in _METHOD_ORDER]
-    return present + sorted(extra)
+def _period(df: pd.DataFrame) -> str:
+    m = df["as_of_dt"].dt.strftime("%Y-%m")
+    return f"{m.min()}_{m.max()}"
 
 
-def _style_for(method: str, fallback_idx: int = 0) -> dict:
-    if method in _METHOD_STYLE:
-        return _METHOD_STYLE[method]
-    color = _FALLBACK_COLORS[fallback_idx % len(_FALLBACK_COLORS)]
-    return dict(color=color, label=method)
-
-
-def _method_display_name(method: str) -> str:
-    return _METHOD_DISPLAY.get(method, method)
-
-
-def _quarter_short_label(q: str) -> str:
-    """'2008Q3' -> '08Q3'"""
-    year, num = q.upper().split("Q")
-    return year[2:] + "Q" + num
-
-
-def _apply_clean_style(ax: plt.Axes) -> None:
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.spines["left"].set_linewidth(0.7)
-    ax.spines["bottom"].set_linewidth(0.7)
-    ax.grid(True, alpha=0.18, linewidth=0.6, color="gray", which="major")
-    ax.set_facecolor("white")
-
-
-# ─── Z-score recovery ─────────────────────────────────────────────────────────
-
-def _recover_realised_z(sub: pd.DataFrame, realised_level: float) -> float:
+def _line_rows(rows: pd.DataFrame, q: str, nascondi_backcast: bool) -> pd.DataFrame:
     """
-    Fit  level = std * z + mean  across available (level, z) pairs and return
-    standardised realised_level.  Returns NaN if not identifiable.
+    Le righe da disegnare come linea di un trimestre.
+
+    Default: la linea corre fino al RILASCIO escluso, cioe' per ogni
+    as_of < gdp_release_date(q) — backcast incluso, la fase piu' accurata del
+    nowcast.  E' la stessa soglia con cui `targets_in_flight` ha generato le
+    righe, quindi in pratica sono tutte le righe della cella; `release_dt`
+    (colonna `gdp_release_date` del CSV) rende la regola esplicita e robusta.
+
+    `nascondi_backcast=True` ritaglia invece a fine trimestre (con lo stacco
+    di ~4 settimane fino al pallino).
     """
-    z = sub["nowcast_z"].to_numpy(dtype=float)
-    lv = sub["nowcast_livello"].to_numpy(dtype=float)
-    ok = np.isfinite(z) & np.isfinite(lv)
-    z, lv = z[ok], lv[ok]
-    if z.size < 2 or np.unique(np.round(z, 9)).size < 2:
-        return float("nan")
-    std, mean = np.polyfit(z, lv, 1)
-    if std == 0:
-        return float("nan")
-    return (realised_level - mean) / std
+    if nascondi_backcast:
+        return rows[rows["as_of_dt"] <= quarter_end(q)]
+    release = pd.Timestamp(rows["release_dt"].iloc[0])
+    return rows[rows["as_of_dt"] < release] if pd.notna(release) else rows
 
 
-# ─── Single CG panel (one method, shared colour-map) ─────────────────────────
+# ─── La figura 8a ─────────────────────────────────────────────────────────────
 
-def _draw_cg_panel(
-    ax: plt.Axes,
-    df_method: pd.DataFrame,       # already filtered to one method, as_of_dt added
-    quarters: list[str],
-    color_map: dict[str, str],
-    value_col: str,
-    method_name: str,
-    ylabel: str,
-    show_xlabel: bool,
-    show_ylabel: bool,
-    min_horizon: int = 1,
-    ylim_fixed: tuple[float, float] | None = None,
-) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
-    """
-    Draw one CG-style panel.  Returns (xmin, xmax) across plotted data for
-    the caller to set a consistent shared xlim.
-
-    min_horizon: skip horizons below this value (1 = all, 2 = skip h1, …)
-    ylim_fixed:  if set, apply this fixed (ymin, ymax) instead of auto-scaling
-    """
-    all_asof: list[pd.Timestamp] = []
-    all_release: list[pd.Timestamp] = []
+def _draw_cg8a(ax: plt.Axes, df_cell: pd.DataFrame, colors: dict[str, str],
+               ylim: tuple[float, float] | None,
+               nascondi_backcast: bool = False) -> None:
+    """Un pannello: le traiettorie settimanali e i pallini dei rilasci."""
+    quarters = sorted(df_cell["target_quarter"].unique(), key=_quarter_key)
+    xs: list = []
+    ys: list = []
 
     for q in quarters:
-        qrows = df_method[df_method["target_quarter"] == q].sort_values("as_of_dt")
-        if min_horizon > 1:
-            qrows = qrows[qrows["horizon_month"] >= min_horizon]
-        if len(qrows) < _MIN_TRAJ_POINTS:
+        rows = df_cell[df_cell["target_quarter"] == q].sort_values("as_of_dt")
+        if len(rows) < _MIN_POINTS:
             continue
+        color = colors[q]
 
-        color = color_map[q]
-        all_asof.extend(qrows["as_of_dt"].tolist())
+        # Fin dove corre la linea: di default fino al RILASCIO escluso (backcast
+        # incluso), col taglio a fine trimestre solo se richiesto.  E' scelta
+        # GRAFICA in entrambi i casi; il pallino resta sulla data di rilascio.
+        linea = _line_rows(rows, q, nascondi_backcast)
 
-        ax.plot(
-            qrows["as_of_dt"], qrows[value_col],
-            color=color, linewidth=1.8,
-            solid_capstyle="round", solid_joinstyle="round",
-        )
+        # La traiettoria. Nessun marker: i punti sono le settimane, e sono
+        # abbastanza fitti da leggersi come una linea a gradini.
+        if len(linea) >= _MIN_POINTS:
+            ax.plot(linea["as_of_dt"], linea["nowcast_bea"],
+                    color=color, linewidth=_LINEWIDTH,
+                    solid_capstyle="round", solid_joinstyle="round", zorder=3)
+            xs += [linea["as_of_dt"].min(), linea["as_of_dt"].max()]
+            ys += [linea["nowcast_bea"].min(), linea["nowcast_bea"].max()]
 
-        last_asof = qrows["as_of_dt"].max()
-        release_date = last_asof + pd.Timedelta(days=_RELEASE_OFFSET_DAYS)
-        all_release.append(release_date)
+        # Il pallino: dato pubblicato, alla data di rilascio dal calendario.
+        realised = rows["realizzato_bea"].iloc[0]
+        release = rows["release_dt"].iloc[0]
+        if pd.notna(realised) and pd.notna(release):
+            ax.plot([release], [realised], marker="o", markersize=np.sqrt(_DOT_SIZE),
+                    color=color, linestyle="none", zorder=5)
+            ax.annotate(_short(q), (release, realised),
+                        textcoords="offset points", xytext=(6, 0),
+                        ha="left", va="center", fontsize=8, color=color,
+                        annotation_clip=False, zorder=6,
+                        path_effects=_LABEL_HALO)
+            xs.append(release)
+            ys.append(realised)
 
-        realised_level = float(qrows["gdp_realizzato"].iloc[0])
-        if value_col == "nowcast_livello":
-            release_y = realised_level
-        else:
-            # Use all horizons (h1-h4) for z-recovery: methods like ARMA/RW have
-            # constant z across h2-h4 but a distinct value at h1, so we need h1
-            # to get a second unique point for the linear fit.
-            qrows_all_h = df_method[df_method["target_quarter"] == q]
-            release_y = _recover_realised_z(qrows_all_h, realised_level)
-
-        if np.isfinite(release_y):
-            ax.scatter([release_date], [release_y],
-                       color=color, s=45, zorder=5, linewidths=0,
-                       clip_on=False)
-            ax.annotate(
-                _quarter_short_label(q), (release_date, release_y),
-                textcoords="offset points", xytext=(4, 0),
-                ha="left", va="center",
-                fontsize=6.5, color=color, fontweight="bold",
-                annotation_clip=False,
-            )
-
-    ax.axhline(0, color="black", linewidth=0.5, linestyle="--", alpha=0.4)
-    if ylim_fixed is not None:
-        ax.set_ylim(*ylim_fixed)
-    _apply_clean_style(ax)
-
-    ax.set_title(_method_display_name(method_name), fontsize=10, fontweight="bold", pad=6)
-
-    if show_ylabel:
-        ax.set_ylabel(ylabel, fontsize=8.5)
-    ax.yaxis.set_tick_params(labelsize=8)
-
-    # x-axis tick formatting — only show labels on bottom row
-    ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=[1, 4, 7, 10]))
-    if show_xlabel:
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%b\n%Y"))
-        ax.xaxis.set_tick_params(labelsize=7.5)
+    if ylim is not None:
+        ax.set_ylim(*ylim)
+        _autoscale(ax, xs, [])          # la x si scala comunque sulla finestra
     else:
-        ax.xaxis.set_major_formatter(matplotlib.ticker.NullFormatter())
+        _autoscale(ax, xs, ys)
 
-    xmin = min(all_asof) - pd.Timedelta(days=10) if all_asof else None
-    xmax = max(all_release) + pd.Timedelta(days=35) if all_release else None
-    return xmin, xmax
+    # La linea dello zero solo se lo zero e' inquadrato: forzarlo dentro
+    # aggiungerebbe bordo vuoto in una finestra che non attraversa lo zero.
+    lo, hi = ax.get_ylim()
+    if lo <= 0.0 <= hi:
+        ax.axhline(0.0, color="black", linewidth=1.0, linestyle="--", zorder=2)
+
+    _apply_axes_style(ax)
+    ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=4, maxticks=9))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b-%Y"))
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# TIPO 1 — 4-panel Cascaldi-Garcia figure
-# ══════════════════════════════════════════════════════════════════════════════
-
-def _make_cg4_figure(
-    df: pd.DataFrame,
-    value_col: str,
-    suptitle: str,
-    ylabel: str,
-    min_horizon: int = 1,
-    ylim_fixed: tuple[float, float] | None = None,
-) -> plt.Figure:
+def _legend(fig, ax: plt.Axes) -> None:
     """
-    2×2 grid: one CG-style panel per method.  Shared x-axis range and y-axis.
+    Senza riquadro, due voci, e mai sopra ai dati.
 
-    min_horizon: skip horizons below this value (passed to _draw_cg_panel)
-    ylim_fixed:  if set, fix the y-axis range (overrides sharey auto-scale)
+    La posizione non e' piu' un default fisso.  Con `lower right` cablato, sui
+    trimestri di crisi la legenda copriva proprio il pallino del PIL
+    realizzato: il realizzato sta in basso, la data di rilascio e' l'ultimo
+    punto a destra — cioe' l'angolo occupato dalla legenda, e nei trimestri
+    che si guardano di piu'.  Ora la posizione si sceglie verificando la
+    sovrapposizione; vedi `_place_legend`.
     """
-    quarters = sorted(df["target_quarter"].unique(), key=_quarter_key)
-    color_map = {q: _CG_COLORS[i % len(_CG_COLORS)] for i, q in enumerate(quarters)}
-
-    methods = [m for m in _METHOD_ORDER if m in df["method"].unique()]
-    # pad to 4 slots so the grid is always 2×2
-    while len(methods) < 4:
-        methods.append(None)
-
-    fig, axes = plt.subplots(
-        2, 2,
-        figsize=(14, 8),
-        sharex=True, sharey=True,
-        constrained_layout=False,
-    )
-    fig.patch.set_facecolor("white")
-
-    xmins: list[pd.Timestamp] = []
-    xmaxs: list[pd.Timestamp] = []
-
-    for idx, ax in enumerate(axes.flatten()):
-        meth = methods[idx]
-        if meth is None:
-            ax.set_visible(False)
-            continue
-
-        row, col = divmod(idx, 2)
-        show_xlabel = (row == 1)
-        show_ylabel = (col == 0)
-
-        df_m = df[df["method"] == meth].copy()
-        df_m["as_of_dt"] = pd.to_datetime(df_m["as_of"])
-
-        xmin, xmax = _draw_cg_panel(
-            ax, df_m, quarters, color_map,
-            value_col, meth, ylabel,
-            show_xlabel=show_xlabel,
-            show_ylabel=show_ylabel,
-            min_horizon=min_horizon,
-            ylim_fixed=ylim_fixed,
-        )
-        if xmin is not None:
-            xmins.append(xmin)
-        if xmax is not None:
-            xmaxs.append(xmax)
-
-    # apply consistent shared xlim
-    if xmins and xmaxs:
-        axes[0, 0].set_xlim(min(xmins), max(xmaxs))
-
-    # shared legend at the bottom centre
-    legend_handles = [
-        Line2D([0], [0], color="gray", linewidth=1.8, label="Nowcast evolution"),
-        Line2D([0], [0], color="gray", marker="o", markersize=6,
-               linewidth=0, label="GDP release"),
+    handles = [
+        Line2D([0], [0], color="black", linewidth=_LINEWIDTH,
+               label="Nowcast trajectory"),
+        Line2D([0], [0], color="black", marker="o", linestyle="none",
+               markersize=np.sqrt(_DOT_SIZE), label="Published GDP"),
     ]
-    fig.legend(
-        handles=legend_handles,
-        loc="lower center", ncol=2, frameon=False,
-        fontsize=9, bbox_to_anchor=(0.5, 0.01),
-    )
-
-    fig.suptitle(suptitle, fontsize=13, fontweight="bold", y=1.01)
-    fig.tight_layout(rect=[0, 0.06, 1, 1.0])
-    return fig
+    _place_legend(fig, ax, handles, ncol=2)
 
 
-def make_figures_cg(
-    csv_path: str,
-    output_dir: str,
-    config_name: str = "small",
-) -> list[str]:
-    """Write the 4-panel CG figure for LEVEL and Z-SCORE in both styles.
-
-    Generates two subfolders inside output_dir:
-      figure_zoomate/  — auto y-scale, all 4 horizons (original style)
-      figure_-10_5/    — fixed ylim (-10, 5), h2-h4 only (CG clean style)
-
-    Returns all PNG paths written.
+def make_cg8a(df: pd.DataFrame, output_dir: str,
+              ylim: tuple[float, float] | None = _YLIM,
+              cells: list[str] | None = None,
+              nascondi_backcast: bool = False,
+              dir_for_cell=None,
+              window_label: str | None = None) -> list[str]:
     """
-    df = pd.read_csv(csv_path)
-    df["target_quarter"] = df["target_quarter"].astype(str)
-    period = _period_str(df)
+    Una figura per cella.  Restituisce i percorsi scritti.
 
-    views: list[tuple[str, str, str, str]] = [
-        (
-            "nowcast_livello",
-            "Nowcast trajectories (GDP growth, quarterly %)",
-            "GDP growth (%)",
-            "level",
-        )
-    ]
+    `dir_for_cell(cell) -> str` decide la sottocartella di ogni cella.  Il
+    default replica il vecchio albero (`<output_dir>/<spec>/`); i due driver
+    passano il proprio instradamento verso `output_layout`, cosi' la regola
+    di posizionamento sta in un posto solo e questa funzione resta un
+    disegnatore.
 
-    written: list[str] = []
-    for style_folder, style_params in _FIGURE_STYLES.items():
-        out_dir = os.path.join(output_dir, style_folder)
-        os.makedirs(out_dir, exist_ok=True)
-        for value_col, suptitle, ylabel, tag in views:
-            fig = _make_cg4_figure(
-                df, value_col, suptitle, ylabel,
-                min_horizon=style_params["min_horizon"],
-                ylim_fixed=style_params["ylim_fixed"],
-            )
-            fname = f"cg4_{tag}_{period}.png"
-            path = os.path.join(out_dir, fname)
-            fig.savefig(path, dpi=150, bbox_inches="tight")
-            plt.close(fig)
-            written.append(path)
-            print(f"  wrote: {path}")
-
-    return written
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TIPO 2 — Method comparison for one target quarter
-# ══════════════════════════════════════════════════════════════════════════════
-
-def _make_compare_figure(
-    df: pd.DataFrame,
-    target_quarter: str,
-    value_col: str,
-    title: str,
-    ylabel: str,
-) -> plt.Figure:
-    """All methods overlaid on one panel for a single target quarter."""
-    sub = df[df["target_quarter"] == target_quarter].copy()
-    sub["as_of_dt"] = pd.to_datetime(sub["as_of"])
-    methods = _methods_present(df)
-
-    fig, ax = plt.subplots(figsize=(8, 5))
-
-    last_asof: pd.Timestamp | None = None
-
-    for i, meth in enumerate(methods):
-        st = _style_for(meth, i)
-        mrows = sub[sub["method"] == meth].sort_values("as_of_dt")
-        if mrows.empty:
-            continue
-        ax.plot(
-            mrows["as_of_dt"], mrows[value_col],
-            color=st["color"], linewidth=1.8, label=st["label"],
-            solid_capstyle="round", solid_joinstyle="round",
-        )
-        candidate = mrows["as_of_dt"].max()
-        if last_asof is None or candidate > last_asof:
-            last_asof = candidate
-
-    # single release dot
-    if last_asof is not None:
-        release_date = last_asof + pd.Timedelta(days=_RELEASE_OFFSET_DAYS)
-        realised_level = float(sub["gdp_realizzato"].iloc[0])
-        if value_col == "nowcast_livello":
-            release_y = realised_level
-        else:
-            last_h = sub["horizon_month"].max()
-            release_y = _recover_realised_z(
-                sub[sub["horizon_month"] == last_h], realised_level
-            )
-        if np.isfinite(release_y):
-            ax.scatter([release_date], [release_y],
-                       color="black", s=70, zorder=6, linewidths=0,
-                       label="GDP release")
-            ax.annotate(
-                "realised", (release_date, release_y),
-                textcoords="offset points", xytext=(6, 0),
-                ha="left", va="center", fontsize=8.5, color="black",
-            )
-        ax.set_xlim(
-            sub["as_of_dt"].min() - pd.Timedelta(days=8),
-            release_date + pd.Timedelta(days=30),
-        )
-
-    ax.axhline(0, color="black", linewidth=0.6, linestyle="--", alpha=0.45)
-    ax.set_ylabel(ylabel, fontsize=10)
-    ax.yaxis.set_tick_params(labelsize=9)
-    ax.xaxis.set_major_locator(mdates.MonthLocator())
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b\n%Y"))
-    ax.xaxis.set_tick_params(labelsize=8)
-    _apply_clean_style(ax)
-    fig.patch.set_facecolor("white")
-    ax.legend(loc="lower left", frameon=False, fontsize=9)
-    ax.set_title(title, fontsize=12, fontweight="bold", pad=10)
-    fig.tight_layout()
-    return fig
-
-
-def make_figures_compare(
-    csv_path: str,
-    output_dir: str,
-    config_name: str = "small",
-    target_quarter: str | None = None,
-) -> list[str]:
-    """Write method-comparison figure(s).  One quarter or all quarters."""
+    `window_label` (es. "2014-2016") entra nel nome del file al posto del
+    periodo dedotto dai dati: e' il nome della finestra, non quello che il
+    CSV si e' trovato dentro.
+    """
     os.makedirs(output_dir, exist_ok=True)
-    df = pd.read_csv(csv_path)
-    df["target_quarter"] = df["target_quarter"].astype(str)
-    period = _period_str(df)
-    has_z = df["nowcast_z"].notna().any()
+    period = window_label or _period(df)
 
-    quarters = ([target_quarter] if target_quarter
-                else sorted(df["target_quarter"].unique(), key=_quarter_key))
+    quarters = sorted(df["target_quarter"].unique(), key=_quarter_key)
+    colors = {q: _COLORS[i % len(_COLORS)] for i, q in enumerate(quarters)}
 
+    todo = cells if cells else sorted(df["cella"].unique())
     written: list[str] = []
-    for q in quarters:
-        if q not in df["target_quarter"].values:
-            print(f"  WARNING: {q} not in CSV — skipping")
-            continue
-        qlabel = _quarter_short_label(q)
-        views: list[tuple[str, str, str, str]] = [
-            (
-                "nowcast_livello",
-                f"Nowcast trajectories — {q} (all methods)",
-                "GDP growth (%)",
-                "level",
-            )
-        ]
-        if has_z:
-            views.append((
-                "nowcast_z",
-                f"Nowcast trajectories (standardised) — {q} (all methods)",
-                "Nowcast z-score",
-                "zscore",
-            ))
-        for value_col, title, ylabel, tag in views:
-            fig = _make_compare_figure(df, q, value_col, title, ylabel)
-            fname = f"compare_{qlabel}_{tag}_{period}.png"
-            path = os.path.join(output_dir, fname)
-            fig.savefig(path, dpi=150, bbox_inches="tight")
+
+    with plt.rc_context(_serif()):
+        for cell in todo:
+            sub = df[df["cella"] == cell]
+            if sub.empty:
+                print(f"  [salto] {cell}: nessuna riga")
+                continue
+
+            fig, ax = plt.subplots(figsize=_FIGSIZE)
+            fig.patch.set_facecolor("white")
+            _draw_cg8a(ax, sub, colors, ylim, nascondi_backcast)
+            _legend(fig, ax)
+
+            ax.set_ylabel("Annualised growth rate (%)", fontsize=10)
+            ax.set_xlabel("Vintage date (as_of)", fontsize=10)
+            ax.set_title(f"GDP nowcast evolution — {cell}"
+                         + (f" — {period}" if window_label else ""),
+                         fontsize=11.5, pad=10)
+            fig.tight_layout()
+
+            # Dove va la figura: lo decide il chiamante via `dir_for_cell`.
+            # Default = vecchio albero, una sottocartella per spec.
+            if dir_for_cell is not None:
+                cell_dir = dir_for_cell(cell)
+            else:
+                sub_dir = cell.split("/")[0] if "/" in cell else _BENCHMARK_SPEC
+                cell_dir = os.path.join(output_dir, sub_dir)
+            os.makedirs(cell_dir, exist_ok=True)
+            fname = f"cg8a_{cell.replace('/', '_')}_{period}.png"
+            path = os.path.join(cell_dir, fname)
+            fig.savefig(path, dpi=200, bbox_inches="tight", facecolor="white")
             plt.close(fig)
             written.append(path)
-            print(f"  wrote: {path}")
+            print(f"  scritto: {path}")
 
     return written
+
+
+# ─── Instradamento nell'albero di output ──────────────────────────────────────
+
+def _dfm_dir_for_cell(cell: str) -> str:
+    """
+    'diag3/student_t' -> output/forecast_weekly/dfm/diag3/student_t/
+
+    I benchmark non hanno spec: `cella` e' il solo nome ('ar2', 'mean') e la
+    figura non serve — sono un metro nelle tabelle, non una traiettoria.  Se
+    qualcuno la chiede lo stesso, finisce accanto alle celle della spec di
+    riferimento, non in giro per l'albero.
+    """
+    if "/" in cell:
+        spec, variant = cell.split("/", 1)
+        return layout.dfm_forecast_dir(spec, variant)
+    return os.path.join(layout.OUTPUT_ROOT, "dfm", "benchmark", cell)
+
+
+# ─── Confronto fra metodi su un trimestre ─────────────────────────────────────
+
+def make_compare(df: pd.DataFrame, output_dir: str, target_quarter: str,
+                 ylim: tuple[float, float] | None = _YLIM,
+                 nascondi_backcast: bool = False,
+                 window_label: str | None = None) -> list[str]:
+    """
+    Un trimestre solo, tutte le celle sovrapposte, col pallino del realizzato.
+    Serve a guardare da vicino un episodio: chi ci arriva e chi resta indietro.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    sub = df[df["target_quarter"] == target_quarter]
+    if sub.empty:
+        raise SystemExit(f"{target_quarter} non e' nel CSV.")
+
+    cells = sorted(sub["cella"].unique())
+    period = window_label or _period(df)
+
+    with plt.rc_context(_serif()):
+        fig, ax = plt.subplots(figsize=_FIGSIZE)
+        fig.patch.set_facecolor("white")
+        xs: list = []
+        ys: list = []
+        handles: list = []
+
+        for i, cell in enumerate(cells):
+            rows = sub[sub["cella"] == cell].sort_values("as_of_dt")
+            if len(rows) < _MIN_POINTS:
+                continue
+            # Stessa regola grafica della 8a: fino al rilascio escluso (backcast
+            # incluso) di default, a fine trimestre solo con --nascondi-backcast.
+            rows = _line_rows(rows, target_quarter, nascondi_backcast)
+            if len(rows) < _MIN_POINTS:
+                continue
+            color = _COLORS[i % len(_COLORS)]
+            ax.plot(rows["as_of_dt"], rows["nowcast_bea"],
+                    color=color, linewidth=_LINEWIDTH,
+                    label=cell, solid_capstyle="round", zorder=3)
+            handles.append(Line2D([0], [0], color=color,
+                                  linewidth=_LINEWIDTH, label=cell))
+            xs += [rows["as_of_dt"].min(), rows["as_of_dt"].max()]
+            ys += [rows["nowcast_bea"].min(), rows["nowcast_bea"].max()]
+
+        realised = sub["realizzato_bea"].iloc[0]
+        release = sub["release_dt"].iloc[0]
+        if pd.notna(realised) and pd.notna(release):
+            ax.plot([release], [realised], marker="o",
+                    markersize=np.sqrt(_DOT_SIZE + 25), color="black",
+                    linestyle="none", zorder=5)
+            ax.annotate("Published GDP", (release, realised),
+                        textcoords="offset points", xytext=(7, 0),
+                        ha="left", va="center", fontsize=8.5, color="black",
+                        annotation_clip=False, zorder=6,
+                        path_effects=_LABEL_HALO)
+            xs.append(release)
+            ys.append(realised)
+
+        if ylim is not None:
+            ax.set_ylim(*ylim)
+            _autoscale(ax, xs, [])
+        else:
+            _autoscale(ax, xs, ys)
+        lo, hi = ax.get_ylim()
+        if lo <= 0.0 <= hi:
+            ax.axhline(0.0, color="black", linewidth=1.0, linestyle="--", zorder=2)
+        _apply_axes_style(ax)
+        ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=4, maxticks=9))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%b-%Y"))
+        ax.set_ylabel("Annualised growth rate (%)", fontsize=10)
+        ax.set_xlabel("Vintage date (as_of)", fontsize=10)
+        ax.set_title(f"{target_quarter} nowcast — all methods",
+                     fontsize=11.5, pad=10)
+        _place_legend(fig, ax, handles, ncol=2 if len(handles) > 4 else 1)
+        fig.tight_layout()
+
+        path = os.path.join(output_dir, f"compare_{_short(target_quarter)}_{period}.png")
+        fig.savefig(path, dpi=200, bbox_inches="tight", facecolor="white")
+        plt.close(fig)
+        print(f"  scritto: {path}")
+
+    return [path]
 
 
 # ─── CLI ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    def _extra(p: argparse.ArgumentParser) -> None:
-        p.add_argument("--csv", default=None)
-        p.add_argument("--output-dir", default=None)
-        p.add_argument(
-            "--style", choices=["cg", "compare"], default="cg",
-            help="cg = 4-panel CG timeline (default); "
-                 "compare = all methods on one quarter (needs --target)",
-        )
-        p.add_argument("--target", default=None,
-                       help="compare style: target quarter, e.g. 2008Q4")
+    p = argparse.ArgumentParser(description="Figure del nowcast settimanale.")
+    p.add_argument("--csv", default=None, help="default: il piu' recente")
+    p.add_argument("--output-dir", default=None)
+    p.add_argument("--style", choices=["cg8a", "compare"], default="cg8a")
+    p.add_argument("--target", default=None,
+                   help="stile compare: il trimestre, es. 2008Q4")
+    p.add_argument("--cell", nargs="*", default=None,
+                   help="stile cg8a: solo queste celle, es. diag3/student_t")
+    p.add_argument("--ylim", nargs=2, type=float, default=None,
+                   metavar=("MIN", "MAX"),
+                   help="scala y fissa; default: automatica sulla finestra")
+    p.add_argument("--window", default=None,
+                   help="nome di una finestra di output_layout, es. 2014-2016: "
+                        "ritaglia il CSV e nomina le figure con quel nome")
+    p.add_argument("--nascondi-backcast", action="store_true",
+                   help="taglia la linea a fine trimestre (con lo stacco di "
+                        "~4 settimane fino al pallino). Default: la "
+                        "linea corre fino al rilascio escluso, backcast incluso, "
+                        "e il vuoto fino al pallino e' ~1 settimana.")
+    a = p.parse_args()
 
-    args = parse_config_args("Plot rolling-nowcast trajectory figures.", extra=_extra)
+    csv_path = a.csv or _newest_csv()
+    df = load(csv_path)
+    ylim = tuple(a.ylim) if a.ylim else None
 
-    csv_path = _resolve_csv(args.csv, args.config)
-    out_dir = args.output_dir or os.path.join(
-        _PROJECT_ROOT, "output", "forecast_realtime", "figures", args.config
-    )
+    if a.window:
+        df = layout.slice_window(df, a.window)
+        if df.empty:
+            raise SystemExit(
+                f"Nessuna riga di {csv_path} cade nella finestra {a.window} "
+                f"{layout.window(a.window)}.")
 
-    print(f"reading: {csv_path}")
-    df_preview = pd.read_csv(csv_path)
-    n_q = df_preview["target_quarter"].nunique()
-    print(f"  {len(df_preview)} rows, {n_q} quarters, "
-          f"methods: {_methods_present(df_preview)}")
+    # Default: il nuovo albero (dfm/<spec>/<variant>), non piu' figures/<spec>.
+    out_dir = a.output_dir or layout.OUTPUT_ROOT
+    dir_for_cell = None if a.output_dir else _dfm_dir_for_cell
 
-    if args.style == "cg":
-        written = make_figures_cg(csv_path, out_dir, args.config)
+    print(f"leggo: {csv_path}")
+    print(f"  {len(df)} righe, {df['target_quarter'].nunique()} trimestri, "
+          f"celle: {sorted(df['cella'].unique())}")
+
+    if a.style == "cg8a":
+        written = make_cg8a(df, out_dir, ylim=ylim, cells=a.cell,
+                            nascondi_backcast=a.nascondi_backcast,
+                            dir_for_cell=dir_for_cell, window_label=a.window)
     else:
-        written = make_figures_compare(csv_path, out_dir, args.config, args.target)
+        if not a.target:
+            raise SystemExit("lo stile compare richiede --target YYYYQn.")
+        written = make_compare(df, layout.comparison_dir(), a.target, ylim=ylim,
+                               nascondi_backcast=a.nascondi_backcast,
+                               window_label=a.window)
 
-    print(f"\nwrote {len(written)} figure(s):")
-    for p in written:
-        print(f"  {p}")
+    print(f"\n{len(written)} figura/e scritte.")
 
 
 if __name__ == "__main__":

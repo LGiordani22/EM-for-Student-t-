@@ -1,0 +1,53 @@
+==============================================================================
+  RECOVERY TABLE  —  T = 2000
+  Generated 2026-07-25 11:36:21
+==============================================================================
+
+  SCALAR PARAMETERS
+  parameter                     theta_star     theta_hat          bias   rel.err
+  --------------------------------------------------------------------------
+  nu_u                              3.8713        4.3802        +0.5089    13.15%
+  nu_eps                            6.7198        6.7295        +0.0096     0.14%
+  spectral_radius(A)                0.9495        0.9434        -0.0061     0.64%
+
+  EIGENVALUES OF A  (sorted by descending |w|)
+     #              theta_star                 theta_hat
+    ----------------------------------------------------
+     0                +0.94950                  +0.94344
+     1                +0.61512                  +0.60930
+     2                +0.48521                  +0.49308
+     3                -0.08789                  -0.08980
+
+  DIAGONAL OF Q
+  block           theta_star     theta_hat          bias   rel.err
+  ------------------------------------------------------------
+  S                   0.0659        0.0692       +0.0033     5.01%
+  R                   0.1847        0.4206       +0.2360   127.75%
+  L                   0.0110        0.2223       +0.2113  1929.84%
+  N                   0.4179        0.3196       -0.0982    23.51%
+
+  LAMBDA — REFERENCE SERIES  (after sign alignment)
+  series          block        j   Lambda_star    Lambda_hat          bias   rel.err
+  ------------------------------------------------------------------------------
+  INDPRO          R           -1          +nan          +nan          +nan      nan%
+  PAYEMS          L           -1          +nan          +nan          +nan      nan%
+  CPIAUCSL        N           -1          +nan          +nan          +nan      nan%
+  GDPC1           R           -1          +nan          +nan          +nan      nan%
+
+  PROCRUSTES ALIGNMENT  (||Lambda_hat H - Lambda_star||_F / ||Lambda_star||_F)
+  normalised-only (sign+Conv1)           41.758%
+  Procrustes (free 3x3 ortho)            41.758%
+  Procrustes (block-diagonal)             4.992%
+
+  R (IDIOSYNCRATIC VARIANCES)
+  median rel.err = 2.37%   max rel.err = 32.82%
+
+  LATENT-PATH RECOVERY
+  |corr(f_hat_0, F_true_0)|  [S         ]  = 0.9928
+  |corr(f_hat_1, F_true_1)|  [R         ]  = 0.9964
+  |corr(f_hat_2, F_true_2)|  [L         ]  = 0.9960
+  |corr(f_hat_3, F_true_3)|  [N         ]  = 0.9934
+  corr(w_u_hat,   w_u_true)                       = +0.6149
+  corr(w_eps_hat, w_eps_true)                     = +0.8848
+
+==============================================================================

@@ -46,12 +46,14 @@ mixing weights) are deferred to later modules.
 
 Notation
 --------
-r   : number of monthly latent factors (r = r_R + r_F + r_X = 3 here).
+r   : number of monthly latent factors (r, depends on the config).
 5r  : dimension of the augmented state tilde_f_t = (f_t, f_{t-1}, ..., f_{t-4}).
-M   : number of observed series (= 20 here, 19 monthly + 1 quarterly).
+M   : number of observed series in the panel (some monthly, some quarterly).
 """
 
 import numpy as np
+from numpy.linalg import LinAlgError
+from scipy.linalg import cho_factor, cho_solve, pinvh
 
 
 # ─── Default Mariano-Murasawa aggregation weights ─────────────────────────────
@@ -62,6 +64,13 @@ import numpy as np
 # they are a structural restriction implied by the log-difference aggregation of
 # a chain-weighted quarterly index, not free parameters.
 MM_WEIGHTS_DEFAULT: list[float] = [1.0 / 3.0, 2.0 / 3.0, 1.0, 2.0 / 3.0, 1.0 / 3.0]
+
+# Asse B: con l'idiosincratico nello stato l'equazione di osservazione e'
+# deterministica (R_tilde = 0).  Si tiene un epsilon minimo sulla diagonale
+# perche' la S = W (Lambda P Lambda' + R) W' del guadagno di Kalman non sia
+# numericamente singolare.  Va tenuto molto sotto la scala dei dati
+# standardizzati (~1) per non introdurre rumore di misura spurio.
+_NOISELESS_OBS_EPS: float = 1e-8
 
 
 # ─── 1. Augmented transition matrix A_tilde ───────────────────────────────────
@@ -481,11 +490,11 @@ def build_all_selection_matrices(Y: np.ndarray) -> list[np.ndarray]:
         H_t     = W_t @ Lambda_tilde           (m_t x 5r effective loading)
         S_t     = H_t @ P_{t|t-1} @ H_t.T + W_t @ R_tilde @ W_t.T   (m_t x m_t)
 
-    **Characteristic m_t values (small-config example, M=20: 19 monthly + 1 quarterly).**
-    m_t=20: quarter-end month, all series observed (richest information set).
-    m_t=19: non-quarter-end month, GDP structurally absent (quarterly mask).
-    m_t<19: ragged edge near sample end, one or more monthly series not yet released.
-    m_t=1:  extreme ragged edge (Apr–May 2026), only NFCI available.
+    **Characteristic m_t values (for a panel of M series, some monthly, some quarterly).**
+    m_t = M:      quarter-end month, all series observed (richest information set).
+    m_t = M minus the quarterly series: non-quarter-end month, quarterly series structurally absent (quarterly mask).
+    m_t smaller:  ragged edge near the sample end, one or more monthly series not yet released.
+    m_t = 1:      extreme ragged edge, only the single most timely series available.
     The quarterly mask and the ragged edge are handled by the SAME W_t mechanism —
     no special-case code is needed for quarterly vs. ragged missingness.
     """
@@ -826,10 +835,29 @@ def kalman_filter(
     Q       = theta["Q"]        # (r, r)
     Lambda  = theta["Lambda"]   # (M, r)
     R       = theta["R"]        # (M,)
-    Sigma_0 = theta["Sigma_0"]  # (5r, 5r)
+    Sigma_0 = theta["Sigma_0"]  # (5r, 5r)  oppure (5r + n_e, 5r + n_e)
 
     r   = A.shape[0]
-    dim = 5 * r
+    d_f = 5 * r                 # dimensione del blocco fattori (sempre)
+
+    # ── ASSE B: idiosincratico AR(1) nello stato (opzionale) ─────────────────
+    # Attivo se e solo se theta porta 'rho'.  Con rho assente il percorso e'
+    # BIT-IDENTICO al baseline: nessun ramo aggiuntivo viene toccato.
+    idio_ar1 = ("rho" in theta) and (theta["rho"] is not None)
+    if idio_ar1:
+        from em.idio_ar1 import (  # noqa: PLC0415
+            build_idio_layout, build_augmented_A, build_augmented_Q,
+            build_augmented_Lambda, build_augmented_Sigma0,
+        )
+        layout = build_idio_layout(freq_list)
+        rho = np.asarray(theta["rho"], float).ravel()
+        # sigma^2 dell'innovazione fresca: nel modello esteso e' cio' che
+        # 'R' rappresenta (la scala idiosincratica migra nello stato).
+        sigma2 = np.asarray(theta.get("sigma2", R), float).ravel()
+        dim = d_f + layout.n_e
+    else:
+        layout = None
+        dim = d_f
 
     if w_u is None:
         w_u = np.ones(T)
@@ -839,6 +867,20 @@ def kalman_filter(
     # ── Build time-invariant matrices once ────────────────────────────────────
     A_tilde      = build_A_tilde(A)
     Lambda_tilde = build_Lambda_tilde(Lambda, freq_list)
+
+    if idio_ar1:
+        A_tilde      = build_augmented_A(A_tilde, rho, layout)
+        Lambda_tilde = build_augmented_Lambda(Lambda_tilde, layout)
+        # Sigma_0 puo' arrivare gia' esteso (da compute_theta_initial) o solo
+        # per il blocco fattori: in quel caso lo si completa con la stazionaria
+        # dell'AR(1).
+        if Sigma_0.shape[0] == d_f:
+            Sigma_0 = build_augmented_Sigma0(Sigma_0, rho, sigma2, layout)
+        elif Sigma_0.shape[0] != dim:
+            raise ValueError(
+                f"Sigma_0 ha dimensione {Sigma_0.shape[0]}: attesa {d_f} "
+                f"(solo fattori) o {dim} (stato aumentato con idio AR(1))."
+            )
 
     # ── Selection matrices for all T time steps ───────────────────────────────
     W_list = build_all_selection_matrices(Y)
@@ -861,7 +903,18 @@ def kalman_filter(
     for t in range(T):
         # Rebuild noise matrices at every t (handles Student-t weight variation)
         Q_tilde_t = build_Q_tilde(Q, float(w_u[t]))
-        R_tilde_t = build_R_tilde(R, float(w_eps[t]))
+        if idio_ar1:
+            # La scala idiosincratica vive ora nell'innovazione di STATO, e i
+            # pesi w_eps la scalano li'.  L'osservazione diventa (quasi)
+            # deterministica: R_tilde -> 0, con un epsilon solo per non
+            # rendere singolare la S = W(Lambda P Lambda' + R)W' del guadagno.
+            # w_eps[t] puo' essere uno scalare (peso condiviso) o un vettore
+            # (M,) (pesi per-serie): build_Q_idio accetta entrambi.
+            _w_t = w_eps[t] if np.ndim(w_eps) == 2 else float(w_eps[t])
+            Q_tilde_t = build_augmented_Q(Q_tilde_t, sigma2, layout, _w_t)
+            R_tilde_t = np.eye(M) * _NOISELESS_OBS_EPS
+        else:
+            R_tilde_t = build_R_tilde(R, float(w_eps[t]))
 
         # Prediction step: f_{t|t-1}, P_{t|t-1}
         f_p, P_p = kalman_predict(f_prev, P_prev, A_tilde, Q_tilde_t)
@@ -986,18 +1039,38 @@ def kalman_smoother(
     that perfectly replicate earlier filtered components).  Direct
     ``np.linalg.inv`` may either fail or amplify floating-point noise.
 
-    We offer two safe options:
+    Quel timore, **misurato, non si avvera**.  ``P_pred`` accumula rango dal
+    filtro: il blocco di lag di ``P_pred`` non e' una copia esatta di componenti
+    filtrate precedenti, perche' l'update di osservazione al tempo t le ha gia'
+    ricorrelate.  Sul pannello `final` (diag3, theta^(0)) il minimo autovalore
+    su TUTTI i t e' 3.2e-02 con `student_t` (d=15) e 7.2e-03 con
+    `student_t_ar1` (d=64), e il numero di condizionamento massimo e' 1.8e+02 e
+    7.8e+02 rispettivamente.  Non c'e' nessuna singolarita' da difendere: la
+    SVD paga un prezzo per un rischio che non si materializza, e il prezzo
+    cresce con d.
 
-    * **Default (jitter = 0)**: invert with ``np.linalg.pinv`` (Moore-Penrose
-      pseudo-inverse via SVD).  Numerically robust to exact singularity; SVD
-      of a 15 x 15 matrix done T times costs a few milliseconds.
+    Percio' la strada di default e' la **fattorizzazione di Cholesky**, che non
+    forma affatto l'inversa:
+
+        J_t.T = solve(P_pred[t+1], A_tilde @ P_filt[t])
+
+    * **Default (jitter = 0)**: ``cho_factor`` / ``cho_solve``.  Se la Cholesky
+      fallisce — ``P_pred`` non definita positiva a un theta lontano o sotto
+      pesi estremi — si ricade automaticamente su ``scipy.linalg.pinvh``
+      (pseudo-inversa simmetrica via eigh), che e' l'oggetto matematicamente
+      giusto per una matrice simmetrica PSD e resta piu' economico della SVD.
     * **jitter > 0**: invert ``P_pred[t+1] + jitter * I`` with ``np.linalg.inv``.
-      Faster and avoids SVD, at the cost of an O(jitter) bias.  Set jitter =
-      1e-10 if the smoother is to be called many times inside an EM loop.
+      Ramo esplicito alternativo, mantenuto invariato.
 
-    Both are theoretically valid because ``J_t`` only enters multiplicatively
-    against the column space of ``A_tilde.T``, on which ``P_pred[t+1]`` is in
-    fact invertible.
+    Tutte le varianti sono teoricamente valide perche' ``J_t`` entra
+    moltiplicativamente solo contro lo spazio delle colonne di ``A_tilde.T``,
+    su cui ``P_pred[t+1]`` e' comunque invertibile.
+
+    **Costo.**  Su ``student_t_ar1`` (d=64, T=499) il calcolo di tutte le
+    ``J_t`` passa da 0.680 s con ``pinv`` a 0.117 s con la Cholesky (5.8x), e
+    l'accordo sulle ``J_t`` e' 5.9e-14 su una scala di 3.0 — precisione di
+    macchina, non un'approssimazione.  Contava perche' quella SVD era il **73 %**
+    dell'intero ``run_kalman``, e ``run_kalman`` e' praticamente tutto l'E-step.
 
     **Why the lag-one covariance.**
     The M-step needs the second moment
@@ -1053,13 +1126,21 @@ def kalman_smoother(
 
     # ── Backward recursion: t = T-2, T-3, ..., 0 ─────────────────────────────
     for t in range(T - 2, -1, -1):
-        # Invert the (possibly singular) prediction covariance.
         if jitter > 0.0:
-            P_pred_inv = np.linalg.inv(P_pred[t + 1] + jitter * I_dim)
+            J_t = P_filt[t] @ A_tilde.T @ np.linalg.inv(P_pred[t + 1]
+                                                        + jitter * I_dim)
         else:
-            P_pred_inv = np.linalg.pinv(P_pred[t + 1])
+            # J_t = P_filt A' P_pred^{-1}  <==>  P_pred J_t.T = A P_filt
+            # (P_pred e P_filt sono simmetriche, quindi il membro destro e'
+            # A @ P_filt, non A @ P_filt.T).  Nessuna inversa viene formata.
+            rhs = A_tilde @ P_filt[t]
+            try:
+                c = cho_factor(P_pred[t + 1], lower=True, check_finite=False)
+                J_t = cho_solve(c, rhs, check_finite=False).T
+            except LinAlgError:
+                # P_pred non PD: ripiega sulla pseudo-inversa simmetrica.
+                J_t = P_filt[t] @ A_tilde.T @ pinvh(P_pred[t + 1])
 
-        J_t = P_filt[t] @ A_tilde.T @ P_pred_inv      # (5r, 5r)
         J_arr[t] = J_t
 
         # Smoothed mean and covariance.
@@ -1188,15 +1269,15 @@ def run_kalman(
     All algebra lives in :func:`kalman_filter` and :func:`kalman_smoother`;
     this wrapper only orchestrates them and packages the combined output.
     """
-    # ── 1. Resolve freq_list (default: from data_loader) ─────────────────────
+    # ── 1. freq_list e' obbligatoria ──────────────────────────────────────────
+    # Niente fallback su data_loader: la lunghezza di freq_list DEVE essere la M
+    # di Y, e un default preso da un altro pannello darebbe una Lambda_tilde
+    # della forma sbagliata senza alcun errore visibile.
     if freq_list is None:
-        import pathlib as _pathlib  # noqa: PLC0415
-        import sys as _sys          # noqa: PLC0415
-        _src_dir = str(_pathlib.Path(__file__).resolve().parent)
-        if _src_dir not in _sys.path:
-            _sys.path.insert(0, _src_dir)
-        from data_loader import FREQ, ORDERED_COLS  # noqa: PLC0415
-        freq_list = [FREQ[col] for col in ORDERED_COLS]
+        raise ValueError(
+            "freq_list e' obbligatoria: una voce 'monthly'/'quarterly' per "
+            f"ciascuna delle {Y.shape[1]} colonne di Y, nel loro ordine."
+        )
 
     # ── 2. Extract dimensions ─────────────────────────────────────────────────
     T, M = Y.shape
@@ -1211,6 +1292,18 @@ def run_kalman(
     # ── 4. Build augmented matrices (computed once; reused in output dict) ────
     A_tilde      = build_A_tilde(theta["A"])
     Lambda_tilde = build_Lambda_tilde(theta["Lambda"], freq_list)
+
+    # ASSE B: se l'idio e' nello stato, lo smoother deve girare sulla STESSA
+    # transizione usata dal filtro (blocco AR(1) incluso), altrimenti le
+    # dimensioni non tornano e il guadagno RTS sarebbe sbagliato.
+    if ("rho" in theta) and (theta["rho"] is not None):
+        from em.idio_ar1 import (  # noqa: PLC0415
+            build_idio_layout, build_augmented_A, build_augmented_Lambda,
+        )
+        _layout = build_idio_layout(freq_list)
+        A_tilde = build_augmented_A(A_tilde, np.asarray(theta["rho"], float),
+                                    _layout)
+        Lambda_tilde = build_augmented_Lambda(Lambda_tilde, _layout)
 
     # ── 5. Forward Kalman filter ──────────────────────────────────────────────
     filter_out = kalman_filter(
@@ -1258,40 +1351,33 @@ if __name__ == "__main__":
     import pathlib
     import sys
 
-    # ── parse config flag ─────────────────────────────────────────────────────
+    # ── fixture: pannello 'final' + struttura di fattore scelta ───────────────
     _src_dir = str(pathlib.Path(__file__).resolve().parent)
     if _src_dir not in sys.path:
         sys.path.insert(0, _src_dir)
-    from config_utils import parse_config_args, resolve_output_path, get_project_root
+    import pandas as pd
+    from em.selftest_fixture import parse_spec_args, load_fixture, selftest_scratch
 
-    _args = parse_config_args("kalman.py self-test — Kalman filter + smoother.")
-    _cfg  = _args.config
+    _args = parse_spec_args("kalman.py self-test — Kalman filter + smoother.")
+    fx = load_fixture(_args.spec)
 
-    # ── locate project root and resolve config-specific paths ─────────────────
-    project_root = get_project_root()
-    npz_path     = resolve_output_path("processed", "theta_initial.npz", _cfg)
-    csv_path     = resolve_output_path("dataset", "", _cfg)
-
-    # ── load FREQ for this config ─────────────────────────────────────────────
-    from data_loader import load_config as _dl_load_config
-    FREQ = _dl_load_config(_cfg)["FREQ"]
-
-    print(f"Loading theta^(0) from: {npz_path}")
-    theta = np.load(npz_path)
-    A = theta["A"]
-    Q = theta["Q"]
-    Lambda = theta["Lambda"]
-    R = theta["R"]
+    # theta^(0), pannello, freq e date vengono TUTTI dalla fixture (dataset
+    # 'final', struttura `_args.spec`), non piu' da load_config/theta_initial.npz
+    # del mondo small/big. Gli output dei self-test vanno in una temp dir, non
+    # fra gli artefatti veri.
+    _scratch = selftest_scratch("kalman")
+    theta  = fx.theta0
+    A      = np.asarray(theta["A"])
+    Q      = np.asarray(theta["Q"])
+    Lambda = np.asarray(theta["Lambda"])
+    R      = np.asarray(theta["R"])
 
     r = A.shape[0]
     M = Lambda.shape[0]
     print(f"r = {r}  (monthly factors),  5r = {5 * r}  (augmented state),  M = {M}")
 
-    # ── build freq_list in dataset column order ───────────────────────────────
-    import pandas as pd
-
-    series_names = list(pd.read_csv(str(csv_path), index_col=0, nrows=0).columns)
-    freq_list = [FREQ[name] for name in series_names]
+    series_names = list(fx.ordered_cols)
+    freq_list    = list(fx.freq_list)
     n_monthly = sum(f == "monthly" for f in freq_list)
     n_quarterly = sum(f == "quarterly" for f in freq_list)
     print(f"freq_list: {n_monthly} monthly + {n_quarterly} quarterly")
@@ -1408,7 +1494,7 @@ if __name__ == "__main__":
         Lambda_tilde[monthly_mask, :r], Lambda[monthly_mask, :], atol=tol
     ), "block-diagonal structure not preserved in contemporaneous block"
 
-    # show the GDPC1 quarterly row explicitly
+    # show the first quarterly row explicitly (generico: prima serie trimestrale)
     gdp_i = quarterly_idx[0]
     gdp_load = Lambda[gdp_i, :]
     nonzero_col = int(np.argmax(np.abs(gdp_load)))  # its block factor column
@@ -1497,18 +1583,13 @@ if __name__ == "__main__":
     print(f"[OK] (W_t @ y_t).shape = {prod_zero.shape}  (expected (0,))")
 
     # ── 5c. Real data: build W_list for entire panel ──────────────────────────
-    print("\n--- 5c. Real data: dataset_usa.csv (standardised) ---")
-    # Load Y *standardised*, NaN preserved — same representation used by
-    # E-step and M-step.  The selection matrices depend ONLY on the NaN
-    # pattern (preserved by standardisation), so this section is functionally
-    # equivalent to using the raw panel, just consistent with the rest.
-    from em.em_initialization import load_standardized_data  # noqa: PLC0415
-    _meta_path_sel = resolve_output_path("processed", "theta_initial_metadata.json", _cfg)
-    Y_raw, _mean_raw, _std_raw, _series_names_sel = load_standardized_data(
-        dataset_path=str(csv_path),
-        metadata_path=str(_meta_path_sel),
-    )
-    _dates = pd.read_csv(str(csv_path), index_col=0, parse_dates=True).index
+    print(f"\n--- 5c. Real data: dataset 'final' / {_args.spec} (standardised) ---")
+    # Y standardizzato, NaN preservati — dalla fixture (stessa rappresentazione
+    # di E-step/M-step). Le selection matrix dipendono SOLO dal pattern di NaN
+    # (preservato dalla standardizzazione).
+    Y_raw = fx.Y
+    _series_names_sel = list(fx.ordered_cols)
+    _dates = fx.Y_std_df.index
     T_raw, M_raw = Y_raw.shape
     print(f"Dataset shape: T={T_raw}, M={M_raw}")
 
@@ -1520,7 +1601,7 @@ if __name__ == "__main__":
     # distribution of m_t
     mt_array = np.array([W.shape[0] for W in W_list])
     unique_mt, counts_mt = np.unique(mt_array, return_counts=True)
-    print("\nDistribution of m_t across T=497 time steps:")
+    print(f"\nDistribution of m_t across T={len(W_list)} time steps:")
     for mt_val, cnt in zip(unique_mt, counts_mt):
         print(f"  m_t = {mt_val:2d}  :  {cnt:4d} months")
 
@@ -1529,35 +1610,35 @@ if __name__ == "__main__":
 INTERPRETATION OF m_t (number of observed series at time t)
 ============================================================
 
-In the small-config dataset (M = 20 series: 19 monthly + 1
-quarterly GDP), the number of observed series m_t at each month
-takes a small set of characteristic values, each with a clear
-structural meaning:
+In a panel of M series (some monthly, some quarterly), the number
+of observed series m_t at each month takes a small set of
+characteristic values, each with a clear structural meaning:
 
-- m_t = 20: a quarter-end month (March, June, September,
-  December) in the interior of the sample, where all 19 monthly
-  series AND the quarterly GDP are observed. This is the richest
-  information set.
+- m_t = M: a quarter-end month (March, June, September,
+  December) in the interior of the sample, where all monthly
+  series AND the quarterly series are observed. This is the
+  richest information set.
 
-- m_t = 19: a non-quarter-end month in the interior of the
-  sample. All 19 monthly series are observed, but GDP is absent
-  because it is only released at quarter-end. This is the
-  "quarterly mask": GDP is structurally missing 2 out of every
-  3 months by design, not by ragged edge.
+- m_t = M minus the quarterly series: a non-quarter-end month in
+  the interior of the sample. All monthly series are observed,
+  but the quarterly series are absent because they are only
+  released at quarter-end. This is the "quarterly mask": a
+  quarterly series is structurally missing 2 out of every 3
+  months by design, not by ragged edge.
 
-- m_t = 18 (or other intermediate values near the sample end):
-  ragged edge. One or two monthly series with longer publication
-  lags (e.g. CMRMTSPLx, real manufacturing and trade sales) are
-  not yet released for the most recent months, on top of the
-  GDP quarterly mask.
+- intermediate values near the sample end: ragged edge. One or
+  more monthly series with longer publication lags (e.g.
+  CMRMTSPLx, real manufacturing and trade sales) are not yet
+  released for the most recent months, on top of the quarterly
+  mask.
 
-- m_t = 1: the very end of the sample (April-May 2026). Only
-  NFCI is observed, because NFCI is downloaded fresh from FRED
-  (weekly, low publication lag) while all FRED-MD series stop at
-  the vintage cutoff (March 2026) and GDP is absent. This is the
-  extreme ragged-edge typical of real-time nowcasting: near the
-  present, only the most timely, high-frequency indicators are
-  available.
+- m_t = 1: the very end of the sample. Only the single most
+  timely series is observed (e.g. NFCI, downloaded fresh from
+  FRED with a low publication lag) while the FRED-MD series stop
+  at the vintage cutoff and the quarterly series are absent. This
+  is the extreme ragged-edge typical of real-time nowcasting:
+  near the present, only the most timely, high-frequency
+  indicators are available.
 
 ============================================================
 WHY THIS MATTERS FOR THE KALMAN FILTER
@@ -1567,48 +1648,54 @@ The selection matrix W_t handles all these cases uniformly
 (Section 6 of the thesis): at each t, only the m_t observed
 rows of the observation equation are used. Two consequences:
 
-1. The quarterly mask (m_t = 19) and the ragged edge (m_t < 19)
-   are treated by the SAME mechanism — there is no special-case
-   code for quarterly vs. ragged missingness.
+1. The quarterly mask and the ragged edge are treated by the
+   SAME mechanism — there is no special-case code for quarterly
+   vs. ragged missingness.
 
 2. In information-poor months (small m_t, e.g. m_t = 1 at the
    sample end), the filter update relies on very few series.
    The factors of the unobserved blocks are then effectively
    EXTRAPOLATED via the state transition A_tilde, with only
    minimal correction from the few observed series. For example,
-   in April-May 2026 only NFCI (a financial-block series) is
-   observed, so the financial factor receives a small update
-   while the real and other factors are propagated almost purely
-   by the VAR dynamics. This is the expected behaviour of
-   nowcasting at the edge of the sample, not a defect.
+   when only a single financial-block series is observed, the
+   financial factor receives a small update while the real and
+   other factors are propagated almost purely by the VAR
+   dynamics. This is the expected behaviour of nowcasting at the
+   edge of the sample, not a defect.
 ============================================================
 """)
 
-    # verify GDP (quarterly) logic: find GDPC1 column index
-    gdp_col = _series_names_sel.index("GDPC1")
+    # verify quarterly-mask logic per OGNI serie trimestrale (generico: nessuna
+    # serie cablata, nessuna assunzione su quante trimestrali ci siano).
     is_qend = _dates.month.isin([3, 6, 9, 12])
 
-    for t in range(T_raw):
-        gdp_observed = not np.isnan(Y_raw[t, gdp_col])
-        if _dates[t].month in [3, 6, 9, 12]:
-            # GDP is observed at quarter-end only if not ragged-edge missing
-            if gdp_observed:
-                # make sure the selection matrix includes column gdp_col
-                assert gdp_col in np.where(~np.isnan(Y_raw[t, :]))[0], (
-                    f"t={t}: GDP observed but not in W_t"
+    for q_col in quarterly_idx:
+        for t in range(T_raw):
+            q_observed = not np.isnan(Y_raw[t, q_col])
+            if _dates[t].month in [3, 6, 9, 12]:
+                # osservata a fine trimestre solo se non manca per ragged edge
+                if q_observed:
+                    assert q_col in np.where(~np.isnan(Y_raw[t, :]))[0], (
+                        f"t={t}: quarterly col {q_col} observed but not in W_t"
+                    )
+            else:
+                # mese non di fine trimestre: la trimestrale DEVE essere NaN
+                assert np.isnan(Y_raw[t, q_col]), (
+                    f"t={t} ({_dates[t].strftime('%Y-%m')}): quarterly series "
+                    f"'{series_names[q_col]}' should be NaN on non-quarter-end month"
                 )
-        else:
-            # non-quarter-end month: GDP MUST be NaN
-            assert np.isnan(Y_raw[t, gdp_col]), (
-                f"t={t} ({_dates[t].strftime('%Y-%m')}): GDP should be NaN on non-quarter-end month"
-            )
-    print("[OK] GDP quarterly mask respected: GDP present in W_t iff quarter-end month")
+    print(f"[OK] quarterly mask respected for all {n_quarterly} quarterly series: "
+          f"present in W_t iff quarter-end month")
 
-    # quarter-end vs non-quarter-end comparison for interior months (no ragged edge)
+    # quarter-end vs non-quarter-end for interior months (no ragged edge).
+    # A fine trimestre tutte le trimestrali sono presenti (m_t = M); altrimenti
+    # sono TUTTE assenti (m_t = M - n_quarterly), per qualunque n_quarterly.
     interior_qend = [t for t in range(T_raw) if is_qend[t] and mt_array[t] == M_raw]
-    interior_non_qend = [t for t in range(T_raw) if not is_qend[t] and mt_array[t] == M_raw - 1]
+    interior_non_qend = [t for t in range(T_raw)
+                         if not is_qend[t] and mt_array[t] == M_raw - n_quarterly]
     print(f"[OK] Fully-observed quarter-end months (m_t={M_raw}):     {len(interior_qend)}")
-    print(f"[OK] Fully-observed non-quarter-end months (m_t={M_raw-1}): {len(interior_non_qend)}")
+    print(f"[OK] Fully-observed non-quarter-end months "
+          f"(m_t={M_raw - n_quarterly}): {len(interior_non_qend)}")
 
     # ragged edge: last 5 months
     print("\nRagged edge — m_t for the last 5 months:")
@@ -1729,7 +1816,7 @@ rows of the observation equation are used. Two consequences:
     R_tilde_real = build_R_tilde(R)
 
     f0_real = np.zeros(5 * r)
-    if "Sigma_0" in theta.files and theta["Sigma_0"].shape == (5 * r, 5 * r):
+    if "Sigma_0" in theta and theta["Sigma_0"].shape == (5 * r, 5 * r):
         P0_real = theta["Sigma_0"]
         p0_label = "theta['Sigma_0']"
     else:
@@ -1774,16 +1861,11 @@ rows of the observation equation are used. Two consequences:
     print("7. kalman_filter  (Task 4 — full forward filter)")
     print("=" * 64)
 
-    # ── Load full panel (standardised, NaN preserved) ─────────────────────────
-    # The Kalman filter/smoother operate on the *standardised* data — the same
-    # representation against which theta^(0) was calibrated.  See
-    # ``em_initialization.load_standardized_data`` for the rationale.
-    _meta_path = resolve_output_path("processed", "theta_initial_metadata.json", _cfg)
-    Y_full, _, _, _ = load_standardized_data(
-        dataset_path=str(csv_path),
-        metadata_path=str(_meta_path),
-    )
-    dates_idx = pd.read_csv(str(csv_path), index_col=0, parse_dates=True).index
+    # ── Full panel (standardised, NaN preserved) dalla fixture ────────────────
+    # Il filtro/smoother operano sul pannello *standardizzato* — la stessa
+    # rappresentazione su cui e' calibrato theta^(0).
+    Y_full    = fx.Y
+    dates_idx = fx.Y_std_df.index
 
     # ── Run filter (Gaussian: w_u=1, w_eps=1 via None defaults) ──────────────
     print("\nRunning kalman_filter (Gaussian baseline, w_u=1, w_eps=1)...")
@@ -1930,7 +2012,7 @@ to make the factor paths more robust to extreme observations.
         import matplotlib.pyplot as plt
         import matplotlib.dates as mdates
 
-        fig_path = resolve_output_path("figures", "kalman_filtered_factors.png", _cfg)
+        fig_path = os.path.join(_scratch, "kalman_filtered_factors.png")
 
         dates_ts = [pd.Timestamp(d) for d in dates_idx]
         factor_labels = ["Factor 0 (real)", "Factor 1 (financial)", "Factor 2 (other)"]
@@ -2173,7 +2255,7 @@ COVID will be one of the key diagnostics of the robustness gain
         fig.suptitle("Real factor f[0]: filtered vs RTS-smoothed",
                      fontsize=11)
         fig.tight_layout()
-        fig_path = resolve_output_path("figures", "kalman_filtered_vs_smoothed_real.png", _cfg)
+        fig_path = os.path.join(_scratch, "kalman_filtered_vs_smoothed_real.png")
         fig.savefig(fig_path, dpi=150, bbox_inches="tight")
         plt.close(fig)
         print(f"\n[OK] Plot saved to {fig_path}")
@@ -2190,7 +2272,7 @@ COVID will be one of the key diagnostics of the robustness gain
     print("=" * 64)
 
     # ── 9a. Single call: filter + smoother, weights default to 1 ─────────────
-    save_path_test = resolve_output_path("processed", "_kalman_test_output.npz", _cfg)
+    save_path_test = pathlib.Path(_scratch) / "_kalman_test_output.npz"
     print("\nRunning run_kalman (Gaussian baseline, save_path provided)...")
     _t0 = _time.perf_counter()
     rk = run_kalman(Y_full, theta, w_u=None, w_eps=None,

@@ -1,0 +1,38 @@
+series_id,paper_name,source,freq,block_loadings,transform,inverse_fn,publication_delay_days,reference_period,release_name,start_actual,pct_missing,notes
+PAYEMS,All employees: total nonfarm,fred,M,GL,diff_level,inv_diff,7,1m_prior,Employment Situation Report,1985-01-31,0.2,
+CPIAUCSL,CPI-U: all items,fred,M,G,MoM_log,inv_MoM_log,18,1m_prior,Consumer Price Index,1985-01-31,0.6,
+DGORDER,Mfrs new orders: durable goods,fred,M,GR,MoM_log,inv_MoM_log,26,1m_prior,Advance Durable Goods,1992-03-31,17.6,
+RSAFS,Retail sales and food services,fred,M,GR,MoM_log,inv_MoM_log,14,1m_prior,Retail Trade,1992-02-29,17.2,
+HSN1F,New single family houses sold,fred,M,GR,MoM_log,inv_MoM_log,26,1m_prior,New Residential Sales,1985-01-31,0.4,
+HOUST,Housing starts,fred,M,GR,MoM_log,inv_MoM_log,16,1m_prior,New Residential Construction,1985-01-31,0.2,
+UNRATE,Civilian unemployment rate,fred,M,GL,diff_ppt,inv_diff,7,1m_prior,Employment Situation Report,1985-01-31,0.6,
+INDPRO,Industrial production index,fred,M,GR,MoM_log,inv_MoM_log,17,1m_prior,Industrial Production & Capacity Utilization,1985-01-31,0.2,
+PPIFIS,PPI: final demand,fred,M,G,MoM_log,inv_MoM_log,14,1m_prior,Producer Price Index,2009-12-31,60.1,parte 2009-11; buco pre-2009 accettato (NaN)
+USPRIV,ADP nonfarm private payroll (proxy),fred,M,GL,diff_level,inv_diff,5,1m_prior,ADP National Employment,1985-01-31,0.2,"proxy BLS di ADP, non identico"
+GACDISA066MSFRBNY,Empire State Mfg: gen. bus. cond.,fred,M,GS,level,identity,-14,current_month,Empire State Mfg Survey,2001-07-31,39.7,parte 2001-07
+WHLSLRIMSA,Merchant wholesalers: inventories: total,fred,M,GR,MoM_log,inv_MoM_log,37,2m_prior,Wholesale Trade,1992-02-29,17.4,id verificato; parte 1992
+TTLCONS,Value of construction put in place,fred,M,GR,MoM_log,inv_MoM_log,33,2m_prior,Construction Spending,1993-02-28,19.8,id verificato; parte 1993
+GACDFSA066MSFRBPHI,Philly Fed Mfg: current activity,fred,M,GS,level,identity,-11,current_month,Manufacturing Business Outlook (Philly),1985-01-31,0.0,
+IR,Import price index,fred,M,G,MoM_log,inv_MoM_log,13,1m_prior,US Import & Export Price Indexes,1989-01-31,10.2,"id ok (all commodities, 2000=100); TRIMESTRALE pre-1989, mensile dal 1989 -> contribuisce dal 1989"
+PERMIT,Building permits,fred,M,GR,diff_level,inv_diff,16,1m_prior,New Residential Construction,1985-01-31,0.2,
+TCU,Capacity utilization,fred,M,GR,diff_ppt,inv_diff,17,1m_prior,Industrial Production & Capacity Utilization,1985-01-31,0.2,
+PCEPILFE,Core PCE: chain price index,fred,M,G,MoM_log,inv_MoM_log,30,1m_prior,Personal Income and Outlays,1985-01-31,0.4,
+CPILFESL,Core CPI: all items less food & energy,fred,M,G,MoM_log,inv_MoM_log,18,1m_prior,Consumer Price Index,1985-01-31,0.6,
+BUSINV,Inventories: total business,fred,M,GR,MoM_log,inv_MoM_log,44,1m_prior,Manufacturing and Trade Inventories,1992-02-29,17.4,"delay 44 + 1m_prior = valori del paper (Tab.2), non refuso; parte 1992"
+JTSJOL,JOLTS: job openings: total,fred,M,GL,diff_level,inv_diff,42,2m_prior,Job Openings and Labor Turnover (JOLTS),2001-01-31,38.9,parte 2000-12
+PCEC96,Real personal consumption expenditures,fred,M,GR,MoM_log,inv_MoM_log,30,1m_prior,Personal Income and Outlays,2007-02-28,53.5,serie mensile FRED parte 2007-02 -> buco pre-2007 (NaN via W_t)
+PCEPI,PCE: chain price index,fred,M,G,MoM_log,inv_MoM_log,30,1m_prior,Personal Income and Outlays,1985-01-31,0.4,
+IQ,Export price index,fred,M,G,MoM_log,inv_MoM_log,13,1m_prior,US Import & Export Price Indexes,1989-01-31,10.2,"verificare id (all commodities, 2000=100)"
+AMDMVS,Mfrs shipments: durable goods,fred,M,GR,MoM_log,inv_MoM_log,26,1m_prior,Advance Durable Goods,1992-02-29,17.4,
+AMTMUO,Mfrs unfilled orders: all mfg,fred,M,GR,MoM_log,inv_MoM_log,35,2m_prior,"Manufacturers' Shipments, Inventories, Orders (M3)",1992-02-29,17.4,
+AMDMTI,Mfrs inventories: durable goods,fred,M,GR,MoM_log,inv_MoM_log,26,1m_prior,Advance Durable Goods,1992-02-29,17.4,
+DSPIC96,Real disposable personal income,fred,M,GR,MoM_log,inv_MoM_log,30,1m_prior,Personal Income and Outlays,1985-01-31,0.4,
+BOPTEXP,Exports: goods and services,fred,M,GR,MoM_log,inv_MoM_log,35,2m_prior,US International Trade in Goods & Services,1992-02-29,17.4,parte 1992
+BOPTIMP,Imports: goods and services,fred,M,GR,MoM_log,inv_MoM_log,35,2m_prior,US International Trade in Goods & Services,1992-02-29,17.4,parte 1994
+ISM_PMI,ISM mfg.: PMI composite,manual_xlsx,M,GS,level,identity,3,1m_prior,ISM Manufacturing Report,1985-01-31,0.2,da xlsx panel; release date reale disponibile
+ISM_PRICES,ISM mfg.: prices index,manual_xlsx,M,GS,level,identity,3,1m_prior,ISM Manufacturing Report,1985-01-31,0.2,da xlsx panel; release date reale disponibile
+ISM_EMP,ISM mfg.: employment index,manual_xlsx,M,GS,level,identity,3,1m_prior,ISM Manufacturing Report,1985-01-31,0.2,da xlsx panel; release date reale disponibile
+ISM_NMI,ISM nonmanufacturing: NMI composite,manual_xlsx,M,GS,level,identity,5,1m_prior,ISM Non-Manufacturing Report,1997-07-31,30.3,da xlsx panel; parte 1997-07
+ULCNFB,Nonfarm business: unit labor cost,fred,Q,GL,QoQ_log_ar,inv_QoQ_log_ar,34,prior_quarter,Productivity and Costs,1985-03-31,66.9,
+A261RX1Q020SBEA,Real gross domestic income,fred,Q,GR,QoQ_log_ar,inv_QoQ_log_ar,28,prior_quarter,Gross Domestic Product,1985-03-31,66.9,id verificato = Real gross domestic income
+GDPC1,Real GDP (target),fred,Q,GR,QoQ_log_ar,inv_QoQ_log_ar,28,prior_quarter,Gross Domestic Product,1985-03-31,66.9,TARGET — ultima colonna

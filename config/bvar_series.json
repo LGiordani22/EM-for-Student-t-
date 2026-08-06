@@ -1,0 +1,721 @@
+{
+  "name": "bvar",
+  "schema": "bvar-v1",
+  "description": "Configurazione dati del BVAR per il nowcasting del PIL USA, replica di Cimadomo, Giannone, Lenza, Monti & Sokol (2022), 'Nowcasting with large Bayesian vector autoregressions', Journal of Econometrics 231, 500-519. Le 37 serie sono le NOSTRE (replica NY Fed, Bok et al. 2018 Tab. 3): dal paper prendiamo il METODO, non il dataset. Questo file dice tre cose e solo tre: (1) quali serie entrano in quale modello, (2) come si trasformano (log-livello vs livello), (3) su cosa si centra il prior Minnesota (random walk vs white noise). E' letto da src/bvar/spec.py; nessuna di queste scelte e' cablata nel codice del modello.",
+  "paper": "Cimadomo, Giannone, Lenza, Monti & Sokol (2022), J. Econometrics 231, 500-519",
+  "source_panel": "data/processed/final/raw_levels_final.csv",
+  "source_calendar": "data/processed/final/metadata_final.csv",
+  "upstream_config": "config/series_final.json",
+  "profiles": {
+    "q_b": {
+      "models": [
+        "Q-BVAR",
+        "C-BVAR",
+        "B-BVAR"
+      ],
+      "n_series": 30,
+      "sample_start": "1992-01-31",
+      "sample_start_status": "DECISO",
+      "rationale": "30 serie perche' e' l'insieme che esiste gia' al 1992-01; 1992 perche' e' il compromesso che ci tiene vicini al regime dimensionale del paper (loro n=18, T~130 trimestri; noi n=30, 138 trimestri di cui 133 usabili con p=5). Questo rende la loro Tabella B.1 (lambda 0.59-0.75, mu 0.97-1.72) un sanity check VALIDO per i nostri iperparametri. L'alternativa - tenere tutte e 37 partendo dal 2009-11, T~66 - ci butterebbe in un regime large-n-small-T molto piu' estremo del paper, dove non si distingue un bug da un artefatto del regime.",
+      "excluded_series": [
+        {
+          "series_id": "DGORDER",
+          "first_obs": "1992-02-29"
+        },
+        {
+          "series_id": "TTLCONS",
+          "first_obs": "1993-01-31"
+        },
+        {
+          "series_id": "ISM_NMI",
+          "first_obs": "1997-07-31"
+        },
+        {
+          "series_id": "JTSJOL",
+          "first_obs": "2000-12-31"
+        },
+        {
+          "series_id": "GACDISA066MSFRBNY",
+          "first_obs": "2001-07-31"
+        },
+        {
+          "series_id": "PCEC96",
+          "first_obs": "2007-01-31"
+        },
+        {
+          "series_id": "PPIFIS",
+          "first_obs": "2009-11-30"
+        }
+      ],
+      "series_ids": [
+        "PAYEMS",
+        "CPIAUCSL",
+        "RSAFS",
+        "HSN1F",
+        "HOUST",
+        "UNRATE",
+        "INDPRO",
+        "USPRIV",
+        "WHLSLRIMSA",
+        "GACDFSA066MSFRBPHI",
+        "IR",
+        "PERMIT",
+        "TCU",
+        "PCEPILFE",
+        "CPILFESL",
+        "BUSINV",
+        "PCEPI",
+        "IQ",
+        "AMDMVS",
+        "AMTMUO",
+        "AMDMTI",
+        "DSPIC96",
+        "BOPTEXP",
+        "BOPTIMP",
+        "ISM_PMI",
+        "ISM_PRICES",
+        "ISM_EMP",
+        "ULCNFB",
+        "A261RX1Q020SBEA",
+        "GDPC1"
+      ],
+      "estimation_end": "2025-09-30",
+      "estimation_end_status": "DECISO. Il campione di STIMA si chiude al 2025-09-30, l'ultimo month-end prima del buco da shutdown federale di ottobre 2025 (vedi notes.known_data_gaps). Costa quasi nulla — T=135 trimestri, ancora vicino ai ~130 del paper — ed evita di interpolare o inventare un dato per darlo in pasto al posterior coniugato, che non ammette NaN. ATTENZIONE, DISTINZIONE IMPORTANTE: chiudere la STIMA a settembre 2025 non limita il NOWCASTING di trimestri successivi. Sono due cose diverse: i parametri si stimano sulla finestra densa, poi il Kalman a valle proietta in avanti su qualunque orizzonte (e' esattamente il 'Kalman a valle' di notes.perche_due_profili). La finestra di VALUTAZIONE e' una decisione separata, del Gate 6."
+    },
+    "l": {
+      "models": [
+        "L-BVAR"
+      ],
+      "n_series": 37,
+      "sample_start": "1985-01-31",
+      "sample_start_status": "DEFAULT (inizio del pannello), DA CONFERMARE AL GATE 5. Con questo inizio PPIFIS ha 298 mesi latenti su 499: e' il caso limite da guardare quando il simulation smoother girera' davvero.",
+      "rationale": "Tutte e 37 perche' l'L-BVAR ha il simulation smoother DENTRO la stima e puo' quindi trattare le partenze tardive come stati latenti da riempire. Le 7 serie scartate in q_b rientrano qui in modo naturale. Vedi notes.perche_due_profili per il perche' teorico completo.",
+      "series_ids": [
+        "PAYEMS",
+        "CPIAUCSL",
+        "DGORDER",
+        "RSAFS",
+        "HSN1F",
+        "HOUST",
+        "UNRATE",
+        "INDPRO",
+        "PPIFIS",
+        "USPRIV",
+        "GACDISA066MSFRBNY",
+        "WHLSLRIMSA",
+        "TTLCONS",
+        "GACDFSA066MSFRBPHI",
+        "IR",
+        "PERMIT",
+        "TCU",
+        "PCEPILFE",
+        "CPILFESL",
+        "BUSINV",
+        "JTSJOL",
+        "PCEC96",
+        "PCEPI",
+        "IQ",
+        "AMDMVS",
+        "AMTMUO",
+        "AMDMTI",
+        "DSPIC96",
+        "BOPTEXP",
+        "BOPTIMP",
+        "ISM_PMI",
+        "ISM_PRICES",
+        "ISM_EMP",
+        "ISM_NMI",
+        "ULCNFB",
+        "A261RX1Q020SBEA",
+        "GDPC1"
+      ]
+    }
+  },
+  "notes": {
+    "perche_due_profili": "LA DOMANDA: perche' Q-BVAR, C-BVAR e B-BVAR non possono usare tutte e 37 le serie, mentre l'L-BVAR si'?\n\nLA RISPOSTA NON E' 'questi modelli non usano il Kalman'. Il Kalman c'e' in tutti e quattro i modelli. La differenza e' DOVE agisce nella pipeline: a monte (nella stima) o a valle (nella previsione).\n\nQ-BVAR / C-BVAR / B-BVAR - il Kalman agisce A VALLE. La stima dei parametri e' in forma chiusa sul posterior Normal-Inverse-Wishart, e richiede un pannello pieno e rettangolare. Il paper e' esplicito, §2.1: 'When all variables in the vector x_tq are available, the model can be readily estimated with standard Bayesian methods' - la condizione e' 'when all variables are available'. Il B-BVAR (§2.3) stima allo stesso modo, in forma chiusa. In questi modelli il Kalman entra DOPO la stima, solo per produrre i nowcast come previsioni condizionate ai diversi information set, §2.3: 'Given the model parameters, the nowcasts can be viewed as forecasts conditional on different information sets. We compute these using the Kalman filtering techniques.' Due fasi distinte: prima stimi su dati pieni, poi il Kalman gestisce il bordo in previsione.\n\nL-BVAR - il Kalman/smoother agisce A MONTE. Il simulation smoother di Durbin-Koopman opera DENTRO il ciclo MCMC, §2.2: si estrae il dataset mensile completo 'including draws of the latent missing values, conditional on the model parameters'. Qui i dati mancanti vengono riempiti come parte integrante della stima.\n\nLA DISTINZIONE CHE RENDE TUTTO CHIARO: ci sono DUE tipi diversi di dato mancante, e vanno trattati diversamente.\n  * BORDO FRASTAGLIATO (ragged edge) = dati che mancano IN FONDO al campione, perche' non ancora pubblicati. Lo gestisce il Kalman in TUTTI i modelli, Q/B-BVAR inclusi. Nessun problema: e' previsione.\n  * PARTENZE TARDIVE (late starts) = dati che mancano IN CIMA al campione, perche' la serie non esisteva ancora (PPIFIS prima del 2009, ecc.). Questo e' un buco nel CAMPIONE DI STIMA, e solo l'L-BVAR lo puo' riempire, perche' solo lui ha lo smoother dentro la stima.\n\nCONCLUSIONE OPERATIVA: il Q-BVAR e il B-BVAR scartano le 7 serie a storia corta NON perche' 'non sanno usare il Kalman', ma perche' il loro Kalman interviene troppo tardi (in fase di previsione) per salvare i buchi in cima al campione. La stima conjugate a monte vuole un pannello pieno. Ecco perche' l'invariante 'il core non vede mai un NaN' impone n=30 per Q/C/B: le 7 serie tardive porterebbero NaN in cima, e l'unico modo di dare al core una matrice densa e' escluderle. Per l'L-BVAR, invece, il riempimento di quei buchi E' parte della stima, quindi le 37 serie vanno bene.\n\nNon e' un limite arbitrario ne' una scelta di comodo: e' la conseguenza diretta di come il paper struttura i due tipi di stima (conjugate closed-form vs MCMC con stati latenti).",
+    "perche_i_livelli_e_non_le_differenze": "IL CUORE CONCETTUALE. Il BVAR di Cimadomo NON differenzia per rendere stazionario. Tiene i (log-)livelli e lascia che la non-stazionarieta' sia domata dal centraggio random-walk del Minnesota e dal sum-of-coefficients. E' il vantaggio esplicito dei VAR sui DFM che il paper argomenta (§2, p. 502): 'factor models generally require the data to be made stationary, while VARs can be easily estimated also on non-stationary data (Sims et al., 1990)'. Vedi anche la nota 18 sui trend di lungo periodo.\n\nE' PER QUESTO che buttiamo via il livello di trasformazione della pipeline DFM e ripartiamo dai livelli grezzi. La catena DFM ha un DOPPIO mismatch con quello che il BVAR vuole:\n  (1) 31 serie su 37 sono DIFFERENZIATE (22 MoM_log, 3 QoQ_log_ar, 4 diff_level, 2 diff_ppt); il BVAR le vuole in log-livello.\n  (2) c'e' anche la STANDARDIZZAZIONE as-of (src/forecast/scale.py); il BVAR non la vuole, perche' lo scaling fra variabili lo fa il PRIOR via psi. Cimadomo eq. (3): il fattore Sigma/Psi 'accounts for the different scale and variability of the data'; GLP (2015) §III: l'iperprior per psi 'should be loosely related to the scale of the variables in the model'. Standardizzare significherebbe farlo due volte, e romperebbe la banda di plausibilita' della Tabella B.1.\n\nIL WRAPPER (src/bvar/data.py) fa quindi: leggi raw_levels_final.csv -> maschera con release_calendar.known_at -> applica log dove serve, identita' dove serve. NIENTE ri-download, NIENTE modifiche a data_loader_final.py / scale.py / data_loader.py, NIENTE standardizzazione.\n\nPERCHE' E' LECITO USARE LO STESSO CALENDARIO dei dati differenziati: livello e differenza della stessa serie hanno lo stesso periodo di riferimento e lo stesso publication delay, quindi la maschera as-of e' identica. (E il log commuta con la maschera: log(NaN) = NaN.)",
+    "transform_groups": {
+      "positive_quantity": "LOG-LIVELLO. Tutte le quantita' positive: conteggi (PERMIT, HOUST, HSN1F, JTSJOL), aggregati reali e nominali, prezzi, e le tre trimestrali. Il paper entra in log-livello per tutte le quantita' positive (Tabella 1, colonna 'Transformation'). Motivo: il log stabilizza la varianza di serie che crescono in modo MOLTIPLICATIVO e rende additive le relazioni di crescita, senza pero' differenziare - la non-stazionarieta' resta, e la gestisce il prior. VERIFICATO: tutte e 29 le serie di questo gruppo sono strettamente positive su tutto il campione, quindi il log e' sempre definito.",
+      "diffusion_index_signed": "LIVELLO (identita'). Empire State e Philly Fed: indici di diffusione centrati su un valore neutro, che assumono REGOLARMENTE valori negativi (Empire 100 osservazioni negative su 301; Philly 130 su 499). Per queste due il logaritmo e' ARITMETICAMENTE IMPOSSIBILE, non solo inappropriato. Sono inoltre stazionarie per costruzione (mean-reverting attorno alla soglia neutra).",
+      "diffusion_index_positive": "LIVELLO (identita'). Le quattro ISM. Sono anch'esse indici di diffusione mean-reverting attorno alla soglia neutra (50), ma - a differenza di Empire e Philly - restano di fatto positive sul nostro campione (minimo osservato 18.0). Quindi qui il log sarebbe tecnicamente CALCOLABILE ma concettualmente sbagliato: non sono quantita' che crescono moltiplicativamente. Il paper mette il PMI in 'Level' (Tabella 1). La distinzione con il gruppo precedente e' tenuta esplicita per onesta': li' il log e' impossibile, qui e' inappropriato.",
+      "rate_in_percent": "LIVELLO (identita'). UNRATE e TCU: sono percentuali/tassi, gia' in scala interpretabile. Il paper tratta i tassi in livello - Tabella 1: UNRATE, FEDFUNDS e il credit spread sono tutti 'Level'."
+    },
+    "minnesota_groups": {
+      "_principio": "Il Minnesota centra il coefficiente del PRIMO LAG su 1 (random walk) per le serie persistenti o con trend, su 0 (white noise) per le mean-reverting. Cimadomo eq. (2): E(A1) = diag(d), E(A2)=...=E(Ap)=0, dove d ha 'elements ... either ones, to centre the prior on a random walk, or zeros, to centre the prior on a white noise. The former is appropriate for variables that are likely to be persistent or show trends, the latter for time series that are more likely to be mean-reverting.'\n\nATTENZIONE - LIVELLO E WHITE-NOISE SONO DUE ASSI INDIPENDENTI. Non confondere la colonna 'Transformation' con la colonna 'Prior' della Tabella 1. Nel paper UNRATE, FEDFUNDS e il credit spread entrano in LIVELLO ma sono centrati su RANDOM WALK. Delle loro 18 serie solo DUE prendono wn: l'indice di incertezza (EPU) e il PMI.",
+      "survey_mean_reverting": "WHITE NOISE (d=0). Le 6 survey / indici di diffusione: le 4 ISM, Empire, Philly. Applichiamo LETTERALMENTE la regola dichiarata dal paper in §3.1: 'For the sake of parameterizing the Minnesota prior, the uncertainty indicator and the PMI are assumed to be stationary and hence the coefficient on their first lag is centred around zero rather than unity.' E' l'analogo, per il nostro dataset, di cio' che il paper fa con PMI ed EPU.",
+      "persistent_or_trending": "RANDOM WALK (d=1). Le tre trimestrali, gli aggregati, i prezzi, i conteggi: tutte serie persistenti o con trend. E' il default del Minnesota (Litterman 1979), che GLP (2015) §III descrive come centrato 'on the assumption that each variable follows a random walk process, possibly with drift'.",
+      "bounded_rate_follows_paper": "RANDOM WALK (d=1) - UNRATE e TCU. Caso da leggere con attenzione: sono variabili LIMITATE (UNRATE >= 0; TCU in [0,100]), e l'intuizione 'e' bounded quindi non puo' essere un random walk' e' TEORICAMENTE VERA. Il paper la scavalca deliberatamente: in Tabella 1 UNRATE e' 'Level' + 'rw'. Seguiamo la fonte-verita'. La ragione pratica e' che su campioni macro finiti la disoccupazione e' fortemente persistente, e centrare su 0 imporrebbe un ritorno alla media molto piu' rapido di quello che si osserva."
+    },
+    "known_data_gaps": "TRE IRREGOLARITA' TROVATE ISPEZIONANDO raw_levels_final.csv. Sono documentate qui perche' il core non deve MAI vedere un NaN, quindi vanno viste adesso e non al primo crash del Gate 1.\n\n1. SHUTDOWN FEDERALE 2025-10 - BUCO INTERNO, RILEVANTE PER q_b. Cinque serie (CPIAUCSL, UNRATE, CPILFESL, IR, IQ) non hanno l'osservazione di ottobre 2025: non furono raccolte/pubblicate durante lo shutdown del governo USA. E' un buco PERMANENTE e INTERNO al campione, non un bordo frastagliato: non si riempira' mai. Tutte e cinque stanno nel profilo q_b.\n   >>> DECISIONE PRESA: si chiude il campione di stima al 2025-09-30. Vedi profiles.q_b.estimation_end e la funzione `estimation_end()` in src/bvar/data.py. Nessuna interpolazione, nessun dato inventato. <<<\n\n2. IR e IQ TRIMESTRALI FINO A 1988-11. Gli indici di prezzo import/export sono pubblicati solo nei mesi 3/6/9/12 fino a novembre 1988, poi mensili. Irrilevante per q_b (parte 1992). Nel profilo l sono 30 buchi per serie, latenti, che riempie lo smoother.\n\n3. DGORDER MANCA IL TAGLIO PER UN MESE. Prima osservazione 1992-02-29 contro un taglio a 1992-01-31. Spostare l'inizio a 1992Q2 la farebbe rientrare (n=31). Non e' stato fatto: la decisione presa e' 1992-01 + 30 serie.",
+    "pseudo_real_time": "Convenzione ereditata dal lavoro DFM e CONFERMATA per il BVAR: si maschera un unico file corrente con il calendario di pubblicazione. Si riproduce la TEMPISTICA dei rilasci, non le REVISIONI dei dati. Un nowcast del 2008 vede quindi i dati del 2008 nella loro versione di oggi. E' una semplificazione DICHIARATA, non un difetto nascosto, e va scritta come tale in tesi. Il paper invece ricostruisce vintage settimanali veri (§3.1).",
+    "dimensionamento": "DA TENERE PRESENTE AL GATE 4 E AL GATE 5 - i recovery test vanno dimensionati sui NOSTRI numeri, non su quelli del paper.\n  * Q-BVAR / C-BVAR: n=30, p=5 -> k = n*p+1 = 151 coefficienti per equazione, T=133 trimestri usabili. (Paper: n=18, k=91, T~130.)\n  * B-BVAR: il blocking TRIPLICA i mensili. Con 27 mensili e 3 trimestrali nel profilo q_b: n_B = q + 3m = 3 + 81 = 84 variabili, p=5 -> k = 421 coefficienti per equazione, sempre con T=133. (Paper: n_B = 4 + 3*14 = 46.)\n  * L-BVAR: n=37, p=17 -> stato companion di 37*17 = 629 dimensioni, e lo smoother ci gira dentro a ogni iterazione MCMC. (Paper: 18*17 = 306.) E' il modello piu' pesante, ed e' per questo che sta al Gate 5.",
+    "iperparametri_sanity_check": "Tabella B.1 del paper (medie dei modi a posteriori sui vintage): lambda 0.59-0.75, mu 0.97-1.72 a seconda del modello. NON e' un target - il nostro dataset e' diverso - ma una banda di plausibilita' grossolana. Vale come sanity check proprio perche' il profilo q_b ci tiene in un regime dimensionale simile al loro.",
+    "dummy_initial_observation": "IL dummy-initial-observation (delta) NON ENTRA NEL DEFAULT. Cimadomo §2.1 usa solo Minnesota + sum-of-coefficients ed elenca TRE iperparametri (lambda, psi, mu), non quattro; la Tabella B.1 riporta solo lambda e mu. Restiamo fedeli alla fonte-verita'. GLP (2015) §III lo include (iperprior Gamma, moda 1, sd 1) e la porta resta aperta a costo zero: MinnesotaSpec.use_dio = False di default, Hyper.delta = None. Se un giorno lo vogliamo testare come esperimento DICHIARATO si accende senza cambiare firma. NOTA: questo corregge docs/BVARs/BVAR_CONTEXT.md §3, che lo includeva erroneamente nel core condiviso.",
+    "campi_per_serie": "first_obs = prima osservazione non-NaN in raw_levels_final.csv; e' il campo che spiega perche' una serie sta in un profilo e non nell'altro. transform = 'log' | 'level'; transform_rationale rimanda a notes.transform_groups. minnesota_centre = 'rw' | 'wn' -> diventa il vettore d_centre di MinnesotaSpec (1=rw, 0=wn), costruito da QUI e non cablato nel modello; minnesota_rationale rimanda a notes.minnesota_groups. dfm_transform = che cosa ne faceva la pipeline DFM, tenuto per far vedere a colpo d'occhio il mismatch di cui a notes.perche_i_livelli_e_non_le_differenze."
+  },
+  "series": [
+    {
+      "series_id": "PAYEMS",
+      "paper_name": "All employees: total nonfarm",
+      "freq": "M",
+      "first_obs": "1985-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "diff_level"
+    },
+    {
+      "series_id": "CPIAUCSL",
+      "paper_name": "CPI-U: all items",
+      "freq": "M",
+      "first_obs": "1985-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "MoM_log",
+      "note": "BUCO INTERNO 2025-10: la serie non e' stata pubblicata per lo shutdown federale USA di ottobre-novembre 2025. E' un buco PERMANENTE, non un bordo frastagliato: non si riempira' mai. DECISO: campione di stima chiuso al 2025-09-30. Vedi notes.known_data_gaps e profiles.q_b.estimation_end."
+    },
+    {
+      "series_id": "DGORDER",
+      "paper_name": "Mfrs new orders: durable goods",
+      "freq": "M",
+      "first_obs": "1992-02-29",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l"
+      ],
+      "dfm_transform": "MoM_log",
+      "note": "ESCLUSA DA q_b PER UN MESE: prima osservazione 1992-02-29, il taglio e' 1992-01-31. Spostando l'inizio campione a 1992Q2 rientrerebbe (n=31). Non e' stato fatto: la decisione presa e' 1992-01 + 30 serie. Annotato perche' e' il tipo di scelta che in tesi bisogna poter giustificare."
+    },
+    {
+      "series_id": "RSAFS",
+      "paper_name": "Retail sales and food services",
+      "freq": "M",
+      "first_obs": "1992-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "MoM_log"
+    },
+    {
+      "series_id": "HSN1F",
+      "paper_name": "New single family houses sold",
+      "freq": "M",
+      "first_obs": "1985-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "MoM_log"
+    },
+    {
+      "series_id": "HOUST",
+      "paper_name": "Housing starts",
+      "freq": "M",
+      "first_obs": "1985-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "MoM_log"
+    },
+    {
+      "series_id": "UNRATE",
+      "paper_name": "Civilian unemployment rate",
+      "freq": "M",
+      "first_obs": "1985-01-31",
+      "transform": "level",
+      "transform_rationale": "rate_in_percent",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "bounded_rate_follows_paper",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "diff_ppt",
+      "note": "BUCO INTERNO 2025-10: la serie non e' stata pubblicata per lo shutdown federale USA di ottobre-novembre 2025. E' un buco PERMANENTE, non un bordo frastagliato: non si riempira' mai. DECISO: campione di stima chiuso al 2025-09-30. Vedi notes.known_data_gaps e profiles.q_b.estimation_end."
+    },
+    {
+      "series_id": "INDPRO",
+      "paper_name": "Industrial production index",
+      "freq": "M",
+      "first_obs": "1985-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "MoM_log"
+    },
+    {
+      "series_id": "PPIFIS",
+      "paper_name": "PPI: final demand",
+      "freq": "M",
+      "first_obs": "2009-11-30",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l"
+      ],
+      "dfm_transform": "MoM_log",
+      "note": "La serie a storia piu' corta: parte 2009-11 (il concetto BLS 'final demand' nasce nel 2009). Nel profilo l restano 298 mesi latenti su 499 da riempire allo smoother: e' il caso limite da guardare al Gate 5."
+    },
+    {
+      "series_id": "USPRIV",
+      "paper_name": "ADP nonfarm private payroll (proxy)",
+      "freq": "M",
+      "first_obs": "1985-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "diff_level",
+      "note": "PROXY: USPRIV (BLS All Employees Total Private) sta al posto della serie ADP proprietaria della Tabella 3 NY Fed. Non identica. Ereditato da series_final.json."
+    },
+    {
+      "series_id": "GACDISA066MSFRBNY",
+      "paper_name": "Empire State Mfg: gen. bus. cond.",
+      "freq": "M",
+      "first_obs": "2001-07-31",
+      "transform": "level",
+      "transform_rationale": "diffusion_index_signed",
+      "minnesota_centre": "wn",
+      "minnesota_rationale": "survey_mean_reverting",
+      "profiles": [
+        "l"
+      ],
+      "dfm_transform": "level",
+      "note": "100 osservazioni NEGATIVE su 301: il log e' aritmeticamente impossibile, non solo inappropriato. Entra nel profilo l ma non in q_b (parte 2001-07)."
+    },
+    {
+      "series_id": "WHLSLRIMSA",
+      "paper_name": "Merchant wholesalers: inventories: total",
+      "freq": "M",
+      "first_obs": "1992-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "MoM_log"
+    },
+    {
+      "series_id": "TTLCONS",
+      "paper_name": "Value of construction put in place",
+      "freq": "M",
+      "first_obs": "1993-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l"
+      ],
+      "dfm_transform": "MoM_log",
+      "note": "Parte 1993-01: esclusa da q_b."
+    },
+    {
+      "series_id": "GACDFSA066MSFRBPHI",
+      "paper_name": "Philly Fed Mfg: current activity",
+      "freq": "M",
+      "first_obs": "1985-01-31",
+      "transform": "level",
+      "transform_rationale": "diffusion_index_signed",
+      "minnesota_centre": "wn",
+      "minnesota_rationale": "survey_mean_reverting",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "level",
+      "note": "130 osservazioni NEGATIVE su 499: il log e' aritmeticamente impossibile, non solo inappropriato."
+    },
+    {
+      "series_id": "IR",
+      "paper_name": "Import price index",
+      "freq": "M",
+      "first_obs": "1985-03-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "MoM_log",
+      "note": "CAMBIO DI FREQUENZA: trimestrale (solo mesi 3/6/9/12) fino a 1988-11, mensile da 1988-12. Irrilevante per q_b (parte 1992); nel profilo l i 30 buchi 1985-1988 sono latenti e li riempie lo smoother. BUCO INTERNO 2025-10: la serie non e' stata pubblicata per lo shutdown federale USA di ottobre-novembre 2025. E' un buco PERMANENTE, non un bordo frastagliato: non si riempira' mai. DECISO: campione di stima chiuso al 2025-09-30. Vedi notes.known_data_gaps e profiles.q_b.estimation_end."
+    },
+    {
+      "series_id": "PERMIT",
+      "paper_name": "Building permits",
+      "freq": "M",
+      "first_obs": "1985-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "diff_level"
+    },
+    {
+      "series_id": "TCU",
+      "paper_name": "Capacity utilization",
+      "freq": "M",
+      "first_obs": "1985-01-31",
+      "transform": "level",
+      "transform_rationale": "rate_in_percent",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "bounded_rate_follows_paper",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "diff_ppt"
+    },
+    {
+      "series_id": "PCEPILFE",
+      "paper_name": "Core PCE: chain price index",
+      "freq": "M",
+      "first_obs": "1985-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "MoM_log"
+    },
+    {
+      "series_id": "CPILFESL",
+      "paper_name": "Core CPI: all items less food & energy",
+      "freq": "M",
+      "first_obs": "1985-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "MoM_log",
+      "note": "BUCO INTERNO 2025-10: la serie non e' stata pubblicata per lo shutdown federale USA di ottobre-novembre 2025. E' un buco PERMANENTE, non un bordo frastagliato: non si riempira' mai. DECISO: campione di stima chiuso al 2025-09-30. Vedi notes.known_data_gaps e profiles.q_b.estimation_end."
+    },
+    {
+      "series_id": "BUSINV",
+      "paper_name": "Inventories: total business",
+      "freq": "M",
+      "first_obs": "1992-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "MoM_log"
+    },
+    {
+      "series_id": "JTSJOL",
+      "paper_name": "JOLTS: job openings: total",
+      "freq": "M",
+      "first_obs": "2000-12-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l"
+      ],
+      "dfm_transform": "diff_level",
+      "note": "Parte 2000-12: esclusa da q_b."
+    },
+    {
+      "series_id": "PCEC96",
+      "paper_name": "Real personal consumption expenditures",
+      "freq": "M",
+      "first_obs": "2007-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l"
+      ],
+      "dfm_transform": "MoM_log",
+      "note": "Parte 2007-01: esclusa da q_b."
+    },
+    {
+      "series_id": "PCEPI",
+      "paper_name": "PCE: chain price index",
+      "freq": "M",
+      "first_obs": "1985-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "MoM_log"
+    },
+    {
+      "series_id": "IQ",
+      "paper_name": "Export price index",
+      "freq": "M",
+      "first_obs": "1985-03-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "MoM_log",
+      "note": "CAMBIO DI FREQUENZA: trimestrale (solo mesi 3/6/9/12) fino a 1988-11, mensile da 1988-12. Stesso trattamento di IR. BUCO INTERNO 2025-10: la serie non e' stata pubblicata per lo shutdown federale USA di ottobre-novembre 2025. E' un buco PERMANENTE, non un bordo frastagliato: non si riempira' mai. DECISO: campione di stima chiuso al 2025-09-30. Vedi notes.known_data_gaps e profiles.q_b.estimation_end."
+    },
+    {
+      "series_id": "AMDMVS",
+      "paper_name": "Mfrs shipments: durable goods",
+      "freq": "M",
+      "first_obs": "1992-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "MoM_log"
+    },
+    {
+      "series_id": "AMTMUO",
+      "paper_name": "Mfrs unfilled orders: all mfg",
+      "freq": "M",
+      "first_obs": "1992-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "MoM_log"
+    },
+    {
+      "series_id": "AMDMTI",
+      "paper_name": "Mfrs inventories: durable goods",
+      "freq": "M",
+      "first_obs": "1992-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "MoM_log"
+    },
+    {
+      "series_id": "DSPIC96",
+      "paper_name": "Real disposable personal income",
+      "freq": "M",
+      "first_obs": "1985-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "MoM_log"
+    },
+    {
+      "series_id": "BOPTEXP",
+      "paper_name": "Exports: goods and services",
+      "freq": "M",
+      "first_obs": "1992-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "MoM_log"
+    },
+    {
+      "series_id": "BOPTIMP",
+      "paper_name": "Imports: goods and services",
+      "freq": "M",
+      "first_obs": "1992-01-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "MoM_log"
+    },
+    {
+      "series_id": "ISM_PMI",
+      "paper_name": "ISM mfg.: PMI composite",
+      "freq": "M",
+      "first_obs": "1985-01-31",
+      "transform": "level",
+      "transform_rationale": "diffusion_index_positive",
+      "minnesota_centre": "wn",
+      "minnesota_rationale": "survey_mean_reverting",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "level"
+    },
+    {
+      "series_id": "ISM_PRICES",
+      "paper_name": "ISM mfg.: prices index",
+      "freq": "M",
+      "first_obs": "1985-01-31",
+      "transform": "level",
+      "transform_rationale": "diffusion_index_positive",
+      "minnesota_centre": "wn",
+      "minnesota_rationale": "survey_mean_reverting",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "level",
+      "note": "DECISIONE PRESA: wn, con le altre ISM. DA VALIDARE CON CIGANOVIC. E' un indice di prezzi vestito da survey e ha due nature: la forma del dato (indice di diffusione mean-reverting, che entra in livello) prevale sulla materia (prezzi, che altrove prendono rw). Se il relatore preferisce rw, questo e' il punto da cambiare: basta mettere minnesota_centre = 'rw' qui."
+    },
+    {
+      "series_id": "ISM_EMP",
+      "paper_name": "ISM mfg.: employment index",
+      "freq": "M",
+      "first_obs": "1985-01-31",
+      "transform": "level",
+      "transform_rationale": "diffusion_index_positive",
+      "minnesota_centre": "wn",
+      "minnesota_rationale": "survey_mean_reverting",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "level"
+    },
+    {
+      "series_id": "ISM_NMI",
+      "paper_name": "ISM nonmanufacturing: NMI composite",
+      "freq": "M",
+      "first_obs": "1997-07-31",
+      "transform": "level",
+      "transform_rationale": "diffusion_index_positive",
+      "minnesota_centre": "wn",
+      "minnesota_rationale": "survey_mean_reverting",
+      "profiles": [
+        "l"
+      ],
+      "dfm_transform": "level",
+      "note": "Parte 1997-07: esclusa da q_b."
+    },
+    {
+      "series_id": "ULCNFB",
+      "paper_name": "Nonfarm business: unit labor cost",
+      "freq": "Q",
+      "first_obs": "1985-03-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "QoQ_log_ar"
+    },
+    {
+      "series_id": "A261RX1Q020SBEA",
+      "paper_name": "Real gross domestic income",
+      "freq": "Q",
+      "first_obs": "1985-03-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "QoQ_log_ar"
+    },
+    {
+      "series_id": "GDPC1",
+      "paper_name": "Real GDP (target)",
+      "freq": "Q",
+      "first_obs": "1985-03-31",
+      "transform": "log",
+      "transform_rationale": "positive_quantity",
+      "minnesota_centre": "rw",
+      "minnesota_rationale": "persistent_or_trending",
+      "profiles": [
+        "l",
+        "q_b"
+      ],
+      "dfm_transform": "QoQ_log_ar"
+    }
+  ]
+}

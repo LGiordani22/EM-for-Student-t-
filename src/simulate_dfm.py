@@ -424,6 +424,8 @@ def simulate_observations(
     nu_contam: float = 3.0,
     kappa: float = 5.0,
     contam_seed: int | None = None,
+    rho: np.ndarray | None = None,
+    per_series_weights: bool = False,
 ) -> dict:
     r"""
     Simulate the *complete* (no missing) observation panel
@@ -513,6 +515,36 @@ def simulate_observations(
         guarantees the bit-identity at ``pi = 0``).  ``None`` defaults
         to ``seed + 1`` — disjoint from the baseline stream seeded at
         ``seed``.  :func:`simulate_dfm` passes an explicit value.
+    rho : np.ndarray, shape (M,), optional
+        Persistenze idiosincratiche per serie (Asse B).  ``None`` (default)
+        = idiosincratico i.i.d., il comportamento baseline, **bit-identico**
+        a prima di questa estensione.  Se fornito, ciascuna serie segue
+
+        .. math::
+
+            \varepsilon_{i,t} = \rho_i \varepsilon_{i,t-1} + u_{i,t},
+            \qquad u_{i,t} \sim \mathcal{N}(0,\, R_i / w^\varepsilon_{i,t}),
+
+        con :math:`|\rho_i| < 1` richiesto (stazionarieta').
+
+        **Attenzione al significato di R.**  Sotto AR(1) ``R_i`` e' la
+        varianza dell'innovazione *fresca* :math:`u`, non la varianza
+        marginale di :math:`\varepsilon`, che vale :math:`R_i/(1-\rho_i^2)`.
+        E' la stessa convenzione di ``em/idio_ar1.update_sigma2``: il
+        simulatore e lo stimatore devono parlare della stessa quantita',
+        altrimenti la recovery misurerebbe uno scarto che e' solo di
+        definizione.  Lo stato iniziale :math:`\varepsilon_{i,0}` e' estratto
+        dalla **stazionaria** :math:`\mathcal{N}(0, R_i/(1-\rho_i^2))`, cosi'
+        che non ci sia transitorio di burn-in (mirror di
+        ``em/idio_ar1.build_Sigma0_idio``).
+    per_series_weights : bool, default False
+        Se True i pesi Student-t idiosincratici sono **per serie**,
+        :math:`w^\varepsilon_{i,t}`, estratti indipendentemente su
+        ``(T, M)``; ``w_eps_true`` esce di forma ``(T, M)``.  Se False
+        (default) c'e' un solo peso condiviso per periodo, forma ``(T,)``,
+        il comportamento baseline.  Mirror del flag omonimo di
+        ``em_e_step``.  Con ``nu_eps`` nel limite gaussiano i due casi
+        coincidono (pesi tutti 1) e la forma resta comunque quella richiesta.
 
     Returns
     -------
@@ -744,6 +776,22 @@ def simulate_observations(
             f"Expected one of {valid_freq}."
         )
 
+    # Asse B: persistenze idiosincratiche.
+    _idio_ar1 = rho is not None
+    if _idio_ar1:
+        rho = np.asarray(rho, dtype=float).ravel()
+        if rho.shape != (M,):
+            raise ValueError(
+                f"rho shape {rho.shape} does not match Lambda's M = {M}."
+            )
+        if not np.all(np.isfinite(rho)):
+            raise ValueError("rho must be finite component-wise.")
+        if np.any(np.abs(rho) >= 1.0):
+            raise ValueError(
+                f"rho must satisfy |rho_i| < 1 for stationarity; "
+                f"max|rho| = {np.max(np.abs(rho))}."
+            )
+
     # ── 2. RNG ───────────────────────────────────────────────────────────────
     rng = np.random.default_rng(seed)
 
@@ -751,14 +799,18 @@ def simulate_observations(
     # Gamma(shape = nu_eps/2, scale = 2/nu_eps)  =>  mean = 1, var = 2/nu_eps.
     # ONE scalar per t, SHARED across the M series at that t.
     # Gaussian limit (nu_eps = inf): weights are identically 1; no Gamma draws.
+    # Con `per_series_weights` la forma diventa (T, M): un peso per ogni
+    # coppia (periodo, serie), estratti indipendentemente.  E' il DGP che
+    # corrisponde al default di `student_t_ar1` lato stima.
+    _w_shape: tuple[int, ...] = (T, M) if per_series_weights else (T,)
     if _gaussian_obs:
-        w_eps_true = np.ones(T)                    # (T,), exactly 1.0
+        w_eps_true = np.ones(_w_shape)             # esattamente 1.0
     else:
         w_eps_true = rng.gamma(
             shape=nu_eps / 2.0,
             scale=2.0 / nu_eps,
-            size=T,
-        )                                          # (T,), strictly > 0
+            size=_w_shape,
+        )                                          # strictly > 0
 
     # ── 4. Build the noiseless signal mu_t,i = Lambda^eff(t) @ tilde_f_t ─────
     # Monthly: contemporaneous-factor signal,  mu = F @ Lambda_M.T, where
@@ -797,7 +849,44 @@ def simulate_observations(
     # Scale factor sqrt(R_i) is series-specific; sqrt(1/w_eps_t) is t-specific
     # and shared across series.
     Z = rng.standard_normal(size=(T, M))           # (T, M) iid N(0,1)
-    eps = Z * np.sqrt(R)[np.newaxis, :] / np.sqrt(w_eps_true)[:, np.newaxis]
+    # sd dell'innovazione: (T, M) sia col peso condiviso sia con quelli
+    # per-serie — nel primo caso il broadcast replica la colonna.
+    _w2d = w_eps_true if per_series_weights else w_eps_true[:, np.newaxis]
+    _sd = np.sqrt(R)[np.newaxis, :] / np.sqrt(_w2d)
+
+    if not _idio_ar1:
+        # ── Percorso baseline: idiosincratico i.i.d. nel tempo ───────────────
+        # Con `per_series_weights=False` questo e' esattamente il calcolo di
+        # prima dell'estensione, sugli stessi draw: bit-identico.
+        eps = Z * _sd
+        eps_obs = None                             # nessuna aggregazione MM
+    else:
+        # ── Asse B: AR(1) per serie sull'idiosincratico LATENTE MENSILE ─────
+        # eps_{i,t} = rho_i eps_{i,t-1} + u_{i,t},  u ~ N(0, R_i / w_{i,t}).
+        # `eps` resta l'innovazione fresca u (e' quello che la contaminazione
+        # e le diagnostiche chiamano "shock"); `eps_lat` e' il processo.
+        eps = Z * _sd                              # = u, innovazione fresca
+        eps_lat = np.empty((T, M), dtype=float)
+        # t = 0 dalla STAZIONARIA, non da zero: altrimenti le prime decine di
+        # periodi avrebbero varianza sotto-dimensionata e la stima di rho
+        # partirebbe da un transitorio che il modello non prevede.
+        eps_lat[0] = (rng.standard_normal(M) * np.sqrt(R / (1.0 - rho ** 2)))
+        for t in range(1, T):
+            eps_lat[t] = rho * eps_lat[t - 1] + eps[t]
+
+        # L'idiosincratico va aggregato ESATTAMENTE come la parte comune:
+        # per una trimestrale y^Q = Lambda_i . Phi_t + sum_l c_l eps_{i,t-l}.
+        # Trattare le due meta' della stessa equazione in modo diverso
+        # concentrerebbe la distorsione proprio sul target trimestrale.
+        # (Mirror di `em/idio_ar1.build_C_idio`.)
+        eps_obs = eps_lat.copy()
+        if is_quart.any():
+            agg = np.full((T, M), np.nan, dtype=float)
+            for t in range(4, T):
+                agg[t] = (mm[0] * eps_lat[t]     + mm[1] * eps_lat[t - 1]
+                          + mm[2] * eps_lat[t - 2] + mm[3] * eps_lat[t - 3]
+                          + mm[4] * eps_lat[t - 4])
+            eps_obs[:, is_quart] = agg[:, is_quart]
 
     # ── 6. Contamination overlay (Experiment C) ──────────────────────────────
     # Substitute the idiosyncratic shock at outlier periods by an inflated
@@ -806,12 +895,28 @@ def simulate_observations(
     # and the output is bit-identical to the contamination-free simulator.
     _contam_seed = contam_seed if contam_seed is not None else seed + 1
     contam_rng = np.random.default_rng(_contam_seed)
+    if _idio_ar1 and pi > 0.0:
+        # NON si combina alla cieca. Sotto AR(1) un outlier additivo puo'
+        # colpire l'INNOVAZIONE u (e allora persiste, decadendo come rho^k) o
+        # il livello eps_t (e allora e' davvero un one-off, ma rompe la
+        # ricorsione). Sono due esperimenti diversi e l'Esperimento C, scritto
+        # per l'idiosincratico i.i.d., non dice quale sia. Sceglierne uno in
+        # silenzio produrrebbe risultati di contaminazione non interpretabili.
+        raise NotImplementedError(
+            "Contaminazione (pi > 0) e idiosincratico AR(1) (rho non None) "
+            "insieme non sono definiti: sotto AR(1) un outlier additivo puo' "
+            "colpire l'innovazione fresca (e persistere) o il livello di "
+            "eps_t (one-off), e l'Esperimento C non specifica quale. "
+            "Decidi la semantica prima di combinarli."
+        )
     eps, contam_mask = apply_contamination(
         eps, R, pi=pi, rng=contam_rng,
         nu_contam=nu_contam, kappa=kappa,
     )
 
-    Y_complete = mu + eps
+    # Sotto AR(1) cio' che entra nell'osservazione e' il processo (aggregato MM
+    # per le trimestrali), non l'innovazione fresca.
+    Y_complete = mu + (eps if eps_obs is None else eps_obs)
     # Quarterly rows at t < 4 inherit NaN from mu (eps is finite, but NaN+x=NaN
     # propagates).  This is intentional — see "five-lag boundary" in Notes.
 
@@ -819,6 +924,10 @@ def simulate_observations(
         "Y_complete": Y_complete,
         "w_eps_true": w_eps_true,
         "contam_mask": contam_mask,
+        # Il processo idiosincratico latente MENSILE (pre-aggregazione MM),
+        # None senza AR(1). Serve alla recovery per confrontare rho_hat contro
+        # il vero eps, non contro una sua proiezione.
+        "eps_latent": None if not _idio_ar1 else eps_lat,
     }
 
 
@@ -1289,6 +1398,7 @@ def simulate_dfm(
     pi: float = 0.0,
     nu_contam: float = 3.0,
     kappa: float = 5.0,
+    per_series_weights: bool = False,
 ) -> dict:
     r"""
     End-to-end Student-t DFM simulator: chain the three building
@@ -1434,10 +1544,21 @@ def simulate_dfm(
     w_u_true = factors["w_u_true"]
 
     # ── 2. Observation equation ──────────────────────────────────────────────
+    # Asse B: la variante e' letta DA theta, non da un flag a parte. Se theta
+    # porta `rho`, il DGP e' idio-AR(1) e il simulatore rispecchia lo stimatore
+    # che ha prodotto quel theta — non c'e' modo di disallinearli per sbaglio.
+    _theta_keys = set(theta.keys())
+    _rho = np.asarray(theta["rho"]).ravel() if "rho" in _theta_keys else None
+    # Sotto AR(1) la varianza dell'innovazione fresca sta in `sigma2` (che e'
+    # cio' che stima update_sigma2); `R` sarebbe la varianza marginale.
+    _R_innov = np.asarray(theta["sigma2"] if ("sigma2" in _theta_keys
+                                              and _rho is not None)
+                          else theta["R"])
+
     obs = simulate_observations(
         F=F,
         Lambda=np.asarray(theta["Lambda"]),
-        R=np.asarray(theta["R"]),
+        R=_R_innov,
         nu_eps=float(np.asarray(theta["nu_eps"])),
         freq_list=freq_list,
         block_map=block_map,
@@ -1449,6 +1570,8 @@ def simulate_dfm(
         nu_contam=nu_contam,
         kappa=kappa,
         contam_seed=seed + 2,         # third disjoint stream: contamination only
+        rho=_rho,
+        per_series_weights=per_series_weights,
     )
     Y_complete  = obs["Y_complete"]
     w_eps_true  = obs["w_eps_true"]
@@ -1478,6 +1601,7 @@ def simulate_dfm(
         "Y_complete":  Y_complete,
         "contam_mask": contam_mask,
         "theta_used":  theta_used,
+        "eps_latent":  obs["eps_latent"],
     }
 
 
@@ -1493,25 +1617,42 @@ if __name__ == "__main__":
     if str(src_dir) not in sys.path:
         sys.path.insert(0, str(src_dir))
 
-    from config_utils import parse_config_args, resolve_output_path
-    args = parse_config_args("simulate_dfm self-test")
-    cfg  = args.config
-    print(f"Config: {cfg!r}")
+    from config_utils import parse_spec_variant_args
+    from em.selftest_fixture import load_fixture, selftest_scratch
+    from run_final_artifacts import load_final_fit
+    from kalman import MM_WEIGHTS_DEFAULT, build_Lambda_tilde   # per Task 2/13
 
-    # ── 1. Load theta_star from the cached EM result ─────────────────────────
-    fit_path = resolve_output_path("processed", "fit_dfm_result.npz", cfg)
-    print(f"Loading theta_star from: {fit_path}")
-    archive = np.load(fit_path)
-    A_star    = np.asarray(archive["theta__A"])
-    Q_star    = np.asarray(archive["theta__Q"])
-    nu_u_star = float(archive["theta__nu_u"])
-    r         = int(archive["r"])
+    args = parse_spec_variant_args("simulate_dfm self-test")
+    spec, variant = args.spec, args.variant
+    print(f"Config: dataset 'final' | spec={spec} | variante={variant}")
+
+    # Metadati del pannello + struttura di fattore dalla fixture; theta_star dal
+    # fit della cella (spec, variante). Niente load_config/archive del mondo
+    # small/big, niente nomi di serie o r cablati. Output in una temp dir.
+    fx           = load_fixture(spec)
+    _scratch     = selftest_scratch("simulate_dfm")
+    ORDERED_COLS = list(fx.ordered_cols)
+    structure    = fx.structure
+    factor_names = list(structure.factor_names)
+    freq_list    = list(fx.freq_list)
+    M_panel      = len(ORDERED_COLS)
+    BLOCK        = structure.display_block_map()   # solo decorativo (etichette)
+
+    # ── 1. theta_star dal fit della cella ────────────────────────────────────
+    theta_star  = load_final_fit(spec, variant)["theta"]
+    A_star      = np.asarray(theta_star["A"])
+    Q_star      = np.asarray(theta_star["Q"])
+    nu_u_star   = float(theta_star["nu_u"])
+    Lambda_star = np.asarray(theta_star["Lambda"])
+    R_star      = np.asarray(theta_star["R"])
+    nu_eps_star = float(theta_star["nu_eps"])
+    r           = A_star.shape[0]
     print(f"  A     shape {A_star.shape},  spectral radius "
           f"rho(A) = {max(abs(np.linalg.eigvals(A_star))):.6f}")
     print(f"  Q     shape {Q_star.shape},  diag(Q) = "
           f"{np.array2string(np.diag(Q_star), precision=4)}")
     print(f"  nu_u  = {nu_u_star:.4f}")
-    print(f"  r     = {r}")
+    print(f"  r     = {r},  M = {M_panel},  fattori = {factor_names}")
 
     # ── 2. Simulate ───────────────────────────────────────────────────────────
     T_sim       = 2000
@@ -1550,11 +1691,14 @@ if __name__ == "__main__":
     print(f"  mean(w_u_true) = {mean_w:.6f}   (theoretical 1.0, "
           f"sample SE ~ {theo_se:.4f})")
     print(f"  var (w_u_true) = {var_w:.6f}    (theoretical {2.0 / nu_u_star:.4f})")
-    assert abs(mean_w - 1.0) < 6.0 * theo_se, (
-        f"sample mean of w_u_true ({mean_w:.4f}) is more than 6 SE from 1; "
-        f"check the Gamma parametrisation."
-    )
-    print(f"[OK] mean(w_u_true) within 6 SE of 1")
+    if np.isfinite(nu_u_star):
+        assert abs(mean_w - 1.0) < 6.0 * theo_se, (
+            f"sample mean of w_u_true ({mean_w:.4f}) is more than 6 SE from 1; "
+            f"check the Gamma parametrisation."
+        )
+        print(f"[OK] mean(w_u_true) within 6 SE of 1")
+    else:
+        print(f"[skip] variante gaussiana (nu_u=inf): w_u==1, niente scale-mixture")
 
     # ── 4. VAR(1) recovery via OLS — verifies the simulator's dynamics ───────
     # F_t = A F_{t-1} + u_t  =>  let X = F[:-1], Y = F[1:].
@@ -1602,31 +1746,39 @@ if __name__ == "__main__":
           + (f"3*(nu-2)/(nu-4) = {3*(nu_u_star-2)/(nu_u_star-4):.2f}"
              if nu_u_star > 4 else
              "undefined (nu_u <= 4; expect *very* large sample kurtosis)"))
-    assert np.all(kurt > 3.0), (
-        f"At least one per-factor kurtosis is <= 3 "
-        f"({kurt.tolist()}); heavy tails not observed."
-    )
-    print(f"[OK] every per-factor kurtosis > 3")
+    if np.isfinite(nu_u_star):
+        assert np.all(kurt > 3.0), (
+            f"At least one per-factor kurtosis is <= 3 "
+            f"({kurt.tolist()}); heavy tails not observed."
+        )
+        print(f"[OK] every per-factor kurtosis > 3")
+    else:
+        print(f"[skip] variante gaussiana (nu_u=inf): innovazioni gaussiane, "
+              f"kurtosi ~3 attesa")
 
     # ── 6. Outlier alignment — low w_u_true should coincide with large |u| ───
     # Use the threshold 5th percentile of w_u_true as the "outlier" set.
     # Periods t in 1..T-1 indexed in U_implied as t-1.
-    w_post = w_u_true[1:]                          # aligned with U_implied
-    thr    = np.percentile(w_post, 5.0)
-    mask_outlier = w_post < thr
-    norm_U = np.linalg.norm(U_implied, axis=1)
-    print(f"\nOutlier alignment (low w_u_true <-> large ||u_t||):")
-    print(f"  5th-pctl threshold of w_u_true = {thr:.4f}")
-    print(f"  mean ||u_t||  on outlier set   = "
-          f"{norm_U[mask_outlier].mean():.4f}")
-    print(f"  mean ||u_t||  on rest          = "
-          f"{norm_U[~mask_outlier].mean():.4f}")
-    print(f"  ratio (outlier / rest)         = "
-          f"{norm_U[mask_outlier].mean() / norm_U[~mask_outlier].mean():.2f}x")
-    assert (
-        norm_U[mask_outlier].mean() > 1.5 * norm_U[~mask_outlier].mean()
-    ), "Low-w_u_true periods do NOT show larger |u_t| — simulator bug?"
-    print(f"[OK] low-w periods have substantially larger ||u_t||")
+    if np.isfinite(nu_u_star):
+        w_post = w_u_true[1:]                      # aligned with U_implied
+        thr    = np.percentile(w_post, 5.0)
+        mask_outlier = w_post < thr
+        norm_U = np.linalg.norm(U_implied, axis=1)
+        print(f"\nOutlier alignment (low w_u_true <-> large ||u_t||):")
+        print(f"  5th-pctl threshold of w_u_true = {thr:.4f}")
+        print(f"  mean ||u_t||  on outlier set   = "
+              f"{norm_U[mask_outlier].mean():.4f}")
+        print(f"  mean ||u_t||  on rest          = "
+              f"{norm_U[~mask_outlier].mean():.4f}")
+        print(f"  ratio (outlier / rest)         = "
+              f"{norm_U[mask_outlier].mean() / norm_U[~mask_outlier].mean():.2f}x")
+        assert (
+            norm_U[mask_outlier].mean() > 1.5 * norm_U[~mask_outlier].mean()
+        ), "Low-w_u_true periods do NOT show larger |u_t| — simulator bug?"
+        print(f"[OK] low-w periods have substantially larger ||u_t||")
+    else:
+        print(f"\n[skip] variante gaussiana (nu_u=inf): nessun outlier di peso "
+              f"da allineare a ||u_t||")
 
     # ── 7. Plot the simulated factors and highlight outlier periods ──────────
     try:
@@ -1634,12 +1786,12 @@ if __name__ == "__main__":
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        fig_path = resolve_output_path("figures", "sim_factors.png", cfg)
+        fig_path = pathlib.Path(_scratch) / "sim_factors.png"
 
         # Outlier periods on the *full* T_sim grid (not the t-1 shifted one).
         thr_full     = np.percentile(w_u_true, 5.0)
         mask_full    = w_u_true < thr_full
-        block_labels = ["real (f^R)", "financial (f^F)", "other (f^X)"]
+        block_labels = factor_names
 
         fig, axes = plt.subplots(r, 1, figsize=(11, 7), sharex=True)
         for j in range(r):
@@ -1679,19 +1831,9 @@ if __name__ == "__main__":
     # ╔══════════════════════════════════════════════════════════════════════╗
     # ║   TASK 2 — observation-equation self-test                            ║
     # ╚══════════════════════════════════════════════════════════════════════╝
-    from data_loader import load_config                               # noqa: E402
-    from kalman      import MM_WEIGHTS_DEFAULT, build_Lambda_tilde   # noqa: E402
-    _cfg_dict   = load_config(cfg)
-    ORDERED_COLS = _cfg_dict["ORDERED_COLS"]
-    BLOCK        = _cfg_dict["BLOCK"]
-    FREQ         = _cfg_dict["FREQ"]
-
-    # ── 8. Load Lambda, R, nu_eps from theta_star ────────────────────────────
-    Lambda_star  = np.asarray(archive["theta__Lambda"])
-    R_star       = np.asarray(archive["theta__R"])
-    nu_eps_star  = float(archive["theta__nu_eps"])
-    freq_list    = [FREQ[c] for c in ORDERED_COLS]
-    M_panel      = len(ORDERED_COLS)
+    # Metadati pannello (ORDERED_COLS, BLOCK, freq_list, M_panel) e Lambda/R/
+    # nu_eps sono gia' caricati in cima dal setup (fixture + load_final_fit);
+    # MM_WEIGHTS_DEFAULT / build_Lambda_tilde importati la'.
     print("\n" + "=" * 64)
     print("Task 2 — simulate_observations")
     print("=" * 64)
@@ -1722,12 +1864,13 @@ if __name__ == "__main__":
     Y_complete  = obs["Y_complete"]
     w_eps_true  = obs["w_eps_true"]
 
-    # Identify the quarterly column(s) for the boundary check.
+    # Identify the quarterly column(s) for the boundary checks (qualunque numero).
     q_idx = [i for i, f in enumerate(freq_list) if f == "quarterly"]
     m_idx = [i for i, f in enumerate(freq_list) if f == "monthly"]
-    assert len(q_idx) == 1, f"expected 1 quarterly series, found {len(q_idx)}"
-    q   = q_idx[0]
-    print(f"  quarterly series:  {ORDERED_COLS[q]}  (column {q})")
+    n_quarterly = len(q_idx)
+    _q0 = q_idx[0]                          # una trimestrale di riferimento
+    print(f"  quarterly series ({n_quarterly}): "
+          f"{[ORDERED_COLS[i] for i in q_idx]}  (columns {q_idx})")
 
     # ── 10. Shape, finiteness, boundary checks ───────────────────────────────
     print("\n" + "-" * 64)
@@ -1739,10 +1882,10 @@ if __name__ == "__main__":
     # Monthly rows must be fully finite everywhere.
     assert np.all(np.isfinite(Y_complete[:, m_idx])), \
         "monthly rows of Y_complete contain NaN/inf — should be impossible"
-    # Quarterly row must be NaN at t < 4 and finite at t >= 4.
-    assert np.all(np.isnan(Y_complete[:4, q])), \
-        f"quarterly rows for t<4 should be NaN, got {Y_complete[:4, q]}"
-    assert np.all(np.isfinite(Y_complete[4:, q])), \
+    # Quarterly rows must be NaN at t < 4 and finite at t >= 4 (ogni trimestrale).
+    assert np.all(np.isnan(Y_complete[:4][:, q_idx])), \
+        f"quarterly rows for t<4 should be NaN, got {Y_complete[:4][:, q_idx]}"
+    assert np.all(np.isfinite(Y_complete[4:][:, q_idx])), \
         "quarterly rows for t>=4 should be finite"
     assert np.all(np.isfinite(w_eps_true)) and np.all(w_eps_true > 0)
     print(f"[OK] Y_complete shape {Y_complete.shape}")
@@ -1757,76 +1900,78 @@ if __name__ == "__main__":
     print(f"\nGround-truth weights w_eps_true:")
     print(f"  mean = {mean_we:.6f}   (theoretical 1.0, sample SE ~ {theo_se_e:.4f})")
     print(f"  var  = {var_we:.6f}    (theoretical {2.0 / nu_eps_star:.4f})")
-    assert abs(mean_we - 1.0) < 6.0 * theo_se_e
-    print(f"[OK] mean(w_eps_true) within 6 SE of 1")
+    if np.isfinite(nu_eps_star):
+        assert abs(mean_we - 1.0) < 6.0 * theo_se_e
+        print(f"[OK] mean(w_eps_true) within 6 SE of 1")
+    else:
+        print(f"[skip] variante gaussiana (nu_eps=inf): w_eps==1")
 
     # ── 12. Loading recovery via OLS on a few monthly series ─────────────────
-    # For a monthly series i in block j(i): y_{i,t} = Lambda[i, j] * F[t, j] + eps.
-    # OLS of y on F[:, j] should recover Lambda[i, j] within O(sqrt(R_i/T)).
+    # Ogni serie carica sui fattori della sua riga di mask (1 sotto le spec
+    # diagonali, >1 sotto fed_overlap). OLS MULTIVARIATO di y sui SOLI fattori
+    # caricati recupera i coefficienti veri di Lambda[i, cols]. Serie campionate
+    # genericamente (prime monthly della spec), niente nomi/blocchi cablati.
     print("\n" + "-" * 64)
-    print("Loading recovery via OLS  (monthly series)")
+    print("Loading recovery via OLS  (monthly series, multivariate)")
     print("-" * 64)
-    print(f"  {'series':<14s}  {'block':<10s}  {'j':>2s}  "
-          f"{'Lambda_true':>12s}  {'Lambda_OLS':>12s}  {'rel.err':>8s}")
-    print("  " + "-" * 64)
-    pick = ["PAYEMS", "S&P 500", "UMCSENTx", "INDPRO"]
-    block_to_col = {"real": 0, "financial": 1, "other": 2}
-    for name in pick:
+    print(f"  {'series':<14s}  {'factors':<12s}  {'Lambda_true':>18s}  "
+          f"{'Lambda_OLS':>18s}  {'max rel.err':>11s}")
+    print("  " + "-" * 74)
+    _monthly_names = [ORDERED_COLS[i] for i in m_idx]
+    for name in _monthly_names[:4]:
         i_row = ORDERED_COLS.index(name)
-        b     = BLOCK[name]
-        j_col = block_to_col[b]
-        # Univariate OLS of Y[:, i_row] on F[:, j_col] (no intercept — both
-        # have zero population mean by construction).
-        x      = F[:, j_col]
-        y      = Y_complete[:, i_row]
-        lam_ols = float((x @ y) / (x @ x))
-        lam_t   = float(Lambda_star[i_row, j_col])
-        relerr  = abs(lam_ols - lam_t) / max(abs(lam_t), 1e-12)
-        print(f"  {name:<14s}  {b:<10s}  {j_col:>2d}  "
-              f"{lam_t:>+12.4f}  {lam_ols:>+12.4f}  {relerr:>8.3%}")
+        cols  = [int(j) for j in structure.factors_of_series(i_row)]
+        Xf    = F[:, cols]                              # (T, len(cols))
+        y     = Y_complete[:, i_row]
+        # OLS senza intercetta (media di popolazione nulla per costruzione).
+        coef, *_ = np.linalg.lstsq(Xf, y, rcond=None)  # (len(cols),)
+        lam_t  = Lambda_star[i_row, cols]
+        relerr = float((np.abs(coef - lam_t)
+                        / np.maximum(np.abs(lam_t), 1e-12)).max())
+        fac    = ",".join(factor_names[j] for j in cols)
+        print(f"  {name:<14s}  {fac:<12s}  "
+              f"{np.array2string(lam_t, precision=3):>18s}  "
+              f"{np.array2string(coef, precision=3):>18s}  {relerr:>10.3%}")
 
-    # ── 13. MM aggregation verification on the quarterly series ──────────────
-    # Rebuild Phi_t = sum_l c_l F[t-l, j_real] and check
-    #   Y[GDP, t] ~ Lambda[GDP, j_real] * Phi[t] + noise.
-    j_real = block_to_col[BLOCK[ORDERED_COLS[q]]]   # = 0 for GDPC1
-    Phi    = np.full(T_sim, np.nan)
+    # ── 13. MM aggregation verification on EVERY quarterly series ─────────────
+    # Per una trimestrale y^Q_t = Lambda[q, :] . Phi_t, con Phi_t[j] la
+    # MM-aggregazione del fattore j. Multivariato: vale anche sotto fed_overlap,
+    # dove una trimestrale carica su piu' fattori.
+    Phi_all = np.full((T_sim, r), np.nan)
     for t in range(4, T_sim):
-        Phi[t] = sum(
-            _MM_WEIGHTS_DEFAULT[k] * F[t - k, j_real] for k in range(5)
-        )
-    y_q    = Y_complete[4:, q]                     # (T-4,)
-    phi_q  = Phi[4:]                               # (T-4,)
-    lam_q_true = float(Lambda_star[q, j_real])
-    lam_q_ols  = float((phi_q @ y_q) / (phi_q @ phi_q))
-    relerr_q   = abs(lam_q_ols - lam_q_true) / max(abs(lam_q_true), 1e-12)
-    print("\n" + "-" * 64)
-    print("MM aggregation verification (quarterly series)")
-    print("-" * 64)
-    print(f"  {'series':<10s}  {'j':>2s}  {'Lambda_true':>12s}  "
-          f"{'Lambda_OLS(phi)':>16s}  {'rel.err':>8s}")
-    print("  " + "-" * 52)
-    print(f"  {ORDERED_COLS[q]:<10s}  {j_real:>2d}  "
-          f"{lam_q_true:>+12.4f}  {lam_q_ols:>+16.4f}  {relerr_q:>8.3%}")
-    # Also a direct numerical cross-check that Lambda @ Phi_t = Lambda_tilde @
-    # tilde_f_t for ONE quarterly row at one t.  This pins down the simulator
-    # as a bit-exact mirror of build_Lambda_tilde.
+        for j in range(r):
+            Phi_all[t, j] = sum(_MM_WEIGHTS_DEFAULT[k] * F[t - k, j]
+                                for k in range(5))
     Lambda_tilde = build_Lambda_tilde(Lambda_star, freq_list)
-    t_check      = 100
-    # Build tilde_f_t = (f_t, f_{t-1}, ..., f_{t-4})  -- shape (5r,)
-    tilde_ft = np.concatenate([F[t_check - k] for k in range(5)])
-    mu_via_tilde = float(Lambda_tilde[q] @ tilde_ft)
-    mu_via_phi   = lam_q_true * float(Phi[t_check])
-    diff         = abs(mu_via_tilde - mu_via_phi)
-    print(f"\n  cross-check at t={t_check}:")
-    print(f"    Lambda_tilde[q] @ tilde_f_t = {mu_via_tilde:+.10f}")
-    print(f"    Lambda[q, j_real] * Phi[t]  = {mu_via_phi:+.10f}")
-    print(f"    |diff|                      = {diff:.2e}")
-    assert diff < 1e-12, (
-        f"simulator's MM aggregation disagrees with build_Lambda_tilde "
-        f"at t={t_check}: diff = {diff:.3e}"
-    )
-    print(f"  [OK] simulator's MM aggregation matches build_Lambda_tilde "
-          f"to machine precision")
+    t_check  = 100
+    tilde_ft = np.concatenate([F[t_check - k] for k in range(5)])   # (5r,)
+    print("\n" + "-" * 64)
+    print("MM aggregation verification (quarterly series, multivariate)")
+    print("-" * 64)
+    print(f"  {'series':<12s}  {'factors':<12s}  {'||Lam_row||':>11s}  "
+          f"{'max rel.err':>11s}  {'|xcheck diff|':>13s}")
+    print("  " + "-" * 64)
+    for q in q_idx:
+        cols = [int(j) for j in structure.factors_of_series(q)]
+        # OLS della riga di loading sui fattori MM-aggregati caricati:
+        Xphi = Phi_all[4:][:, cols]                     # (T-4, len(cols))
+        y_q  = Y_complete[4:, q]
+        coef, *_ = np.linalg.lstsq(Xphi, y_q, rcond=None)
+        lam_t    = Lambda_star[q, cols]
+        relerr_q = float((np.abs(coef - lam_t)
+                          / np.maximum(np.abs(lam_t), 1e-12)).max())
+        # Cross-check bit-exact vs build_Lambda_tilde (riga intera, multivariata):
+        mu_via_tilde = float(Lambda_tilde[q] @ tilde_ft)
+        mu_via_phi   = float(Lambda_star[q, :] @ Phi_all[t_check, :])
+        diff = abs(mu_via_tilde - mu_via_phi)
+        fac  = ",".join(factor_names[j] for j in cols)
+        print(f"  {ORDERED_COLS[q]:<12s}  {fac:<12s}  "
+              f"{np.linalg.norm(lam_t):>11.4f}  {relerr_q:>10.3%}  {diff:>13.2e}")
+        assert diff < 1e-12, (
+            f"simulator's MM aggregation disagrees with build_Lambda_tilde for "
+            f"'{ORDERED_COLS[q]}' at t={t_check}: diff = {diff:.3e}")
+    print(f"  [OK] MM aggregation matches build_Lambda_tilde to machine precision "
+          f"for all {n_quarterly} quarterly series")
 
     # ── 14. Heavy-tail check on the idiosyncratic residuals ──────────────────
     # E[w_eps_t]=1 so for a monthly series  resid_it = y_it - Lambda[i,:] @ F[t]
@@ -1851,11 +1996,15 @@ if __name__ == "__main__":
     else:
         print(f"  Student-t reference kurtosis undefined (nu_eps <= 4); "
               f"expect very large sample kurtosis")
-    assert np.median(kurt_eps) > 3.0, (
-        f"median kurtosis {np.median(kurt_eps):.2f} <= 3 — heavy tails "
-        f"not observed"
-    )
-    print(f"  [OK] median kurtosis > 3 across monthly series")
+    if np.isfinite(nu_eps_star):
+        assert np.median(kurt_eps) > 3.0, (
+            f"median kurtosis {np.median(kurt_eps):.2f} <= 3 — heavy tails "
+            f"not observed"
+        )
+        print(f"  [OK] median kurtosis > 3 across monthly series")
+    else:
+        print(f"  [skip] variante gaussiana (nu_eps=inf): residui gaussiani, "
+              f"kurtosi ~3 attesa")
 
     print("\n" + "=" * 64)
     print("simulate_observations  —  all self-test checks passed")
@@ -1871,53 +2020,58 @@ if __name__ == "__main__":
     print("=" * 64)
 
     # ── 15. Apply missing pattern on Y_complete from Task 2 ──────────────────
-    print(f"\nApplying default missing pattern: ragged_months=2, "
-          f"timely series = NFCI")
+    # Serie "timely" da tenere osservata al bordo: una monthly PRESENTE nel
+    # pannello (NON cablata a NFCI, assente nel dataset 'final'), passata
+    # esplicita come "tutte tranne la timely" -> al bordo resta solo lei.
+    _timely       = ORDERED_COLS[m_idx[0]]
+    _timely_col   = m_idx[0]
+    _ragged_series = [c for c in ORDERED_COLS if c != _timely]
+    RAGGED_MONTHS = 2
+    print(f"\nApplying missing pattern: ragged_months={RAGGED_MONTHS}, "
+          f"timely series = {_timely!r}")
     Y_masked = apply_missing_pattern(
         Y_complete=Y_complete,
         freq_list=freq_list,
         ordered_cols=ORDERED_COLS,
-        ragged_months=2,
+        ragged_months=RAGGED_MONTHS,
+        ragged_series=_ragged_series,
     )
     assert Y_masked.shape == (T_sim, M_panel)
     print(f"[OK] Y.shape = {Y_masked.shape}")
 
-    # ── 16. GDP observation count ────────────────────────────────────────────
-    # Quarter-end months with offset=2: t = 2, 5, 8, ...
-    # The first one (t = 2) falls inside the MM-boundary [t < 4] zone where
-    # Task 2 has already set the quarterly row to NaN, so the GDP count is
-    # (# quarter-ends) - 1.  For T_sim = 2000 with offset=2 this gives
-    #   #qe = (1997 - 2) / 3 + 1 = 666;  observed = 666 - 1 = 665.
-    gdp_col   = ORDERED_COLS.index("GDPC1")
-    n_obs_gdp = int(np.isfinite(Y_masked[:, gdp_col]).sum())
-    expected  = sum(
+    # ── 16. Quarterly observation count (per OGNI serie trimestrale) ─────────
+    # Quarter-end months with offset=2: t = 2, 5, 8, ...  The first (t=2) falls
+    # in the MM-boundary [t < 4] where Task 2 set the quarterly row to NaN, so
+    # the count is (#quarter-ends with t>=4). Vale per ogni trimestrale (stessa
+    # maschera); nessuna serie cablata.
+    expected = sum(
         1 for t in range(T_sim)
         if (t - 2) % 3 == 0 and t >= 4         # exclude MM-boundary qe at t=2
     )
-    print(f"\nGDP observation count:")
-    print(f"  non-NaN entries in GDPC1                  = {n_obs_gdp}")
-    print(f"  expected (quarter-ends with t>=4)         = {expected}")
-    print(f"  fraction                                  = {n_obs_gdp / T_sim:.3%}"
-          f"  (~ 1/3)")
-    assert n_obs_gdp == expected, (
-        f"GDP non-NaN count {n_obs_gdp} != expected {expected}"
-    )
-    assert 0.32 < n_obs_gdp / T_sim < 0.34
-    print(f"[OK] GDP observed at every quarter-end with t>=4 (MM boundary respected)")
+    print(f"\nQuarterly observation count (expected {expected}, ~1/3 of T):")
+    for q in q_idx:
+        n_obs_q = int(np.isfinite(Y_masked[:, q]).sum())
+        print(f"  {ORDERED_COLS[q]:<18s}  non-NaN = {n_obs_q}  "
+              f"({n_obs_q / T_sim:.3%})")
+        assert n_obs_q == expected, (
+            f"{ORDERED_COLS[q]} non-NaN count {n_obs_q} != expected {expected}")
+        assert 0.32 < n_obs_q / T_sim < 0.34
+    print(f"[OK] every quarterly series observed at quarter-ends t>=4 "
+          f"(MM boundary respected)")
 
-    # ── 17. Ragged-edge check: last 2 months have only NFCI ──────────────────
-    nfci_col = ORDERED_COLS.index("NFCI")
-    last_rows = np.isfinite(Y_masked[-2:])             # (2, M)
-    m_t_last  = last_rows.sum(axis=1)
+    # ── 17. Ragged-edge check: last RAGGED_MONTHS months have only the timely ─
+    last_rows    = np.isfinite(Y_masked[-RAGGED_MONTHS:])   # (RAGGED_MONTHS, M)
+    m_t_last     = last_rows.sum(axis=1)
     obs_idx_last = np.where(last_rows[0])[0]
-    print(f"\nRagged-edge check (last 2 months):")
-    print(f"  m_t for last 2 months = {m_t_last.tolist()}")
-    print(f"  observed series at t=T-2: {[ORDERED_COLS[i] for i in obs_idx_last]}")
+    print(f"\nRagged-edge check (last {RAGGED_MONTHS} months):")
+    print(f"  m_t for last {RAGGED_MONTHS} months = {m_t_last.tolist()}")
+    print(f"  observed series at t=T-{RAGGED_MONTHS}: "
+          f"{[ORDERED_COLS[i] for i in obs_idx_last]}")
     assert np.all(m_t_last == 1), \
-        f"last 2 months expected m_t=1, got {m_t_last.tolist()}"
-    assert obs_idx_last.tolist() == [nfci_col], \
-        f"the only observed series should be NFCI, got {obs_idx_last.tolist()}"
-    print(f"[OK] last 2 months have m_t = 1, only NFCI observed")
+        f"last {RAGGED_MONTHS} months expected m_t=1, got {m_t_last.tolist()}"
+    assert obs_idx_last.tolist() == [_timely_col], \
+        f"the only observed series should be {_timely!r}, got {obs_idx_last.tolist()}"
+    print(f"[OK] last {RAGGED_MONTHS} months have m_t = 1, only {_timely!r} observed")
 
     # ── 18. Distribution of m_t over the whole simulated sample ──────────────
     m_t_arr = np.isfinite(Y_masked).sum(axis=1)        # (T,)
@@ -1926,27 +2080,27 @@ if __name__ == "__main__":
     print(f"  ----  ------  -------")
     for k, v in sorted(Counter(m_t_arr.tolist()).items()):
         print(f"  {k:>4d}  {v:>6d}  {v / T_sim:>7.3%}")
-    # Sanity ranges: m_t = M (quarter-end inside the panel), m_t = M-1
-    # (non-quarter-end, no ragged), m_t = 1 (ragged tail).  At T = 2000,
-    # ragged = 2, offset = 2:  m_t=20 count ~ floor(1998/3)+1 minus any
-    # quarter-end falling inside the ragged tail; m_t=19 count fills the rest.
+    # Partizione (parametrica su n_quarterly): m_t = M (fine trimestre, t>=4,
+    # fuori dalla coda ragged), m_t = M - n_quarterly (le altre: tutte le
+    # trimestrali assenti), m_t = 1 (coda ragged: solo la timely). Niente "M-1".
     n_mM  = int((m_t_arr == M_panel).sum())
-    n_mM1 = int((m_t_arr == M_panel - 1).sum())
+    n_mMq = int((m_t_arr == M_panel - n_quarterly).sum())
     n_m1  = int((m_t_arr == 1).sum())
-    assert n_m1 == 2,  f"expected 2 ragged months, got {n_m1}"
-    assert n_mM + n_mM1 + n_m1 == T_sim, \
-        f"m_t distribution missing some months: {n_mM}+{n_mM1}+{n_m1} != {T_sim}"
-    print(f"[OK] m_t in {{1, {M_panel-1}, {M_panel}}} as expected for the default pattern")
+    assert n_m1 == RAGGED_MONTHS, \
+        f"expected {RAGGED_MONTHS} ragged months, got {n_m1}"
+    assert n_mM + n_mMq + n_m1 == T_sim, \
+        f"m_t distribution missing some months: {n_mM}+{n_mMq}+{n_m1} != {T_sim}"
+    print(f"[OK] m_t in {{1, {M_panel - n_quarterly}, {M_panel}}} "
+          f"as expected (n_quarterly={n_quarterly})")
 
-    # ── 19. Sanity vs the real panel's m_t distribution ──────────────────────
-    # The real panel has m_t = 19 dominant (~66%), m_t = 20 at ~33%, and 2
-    # months of m_t = 1 (ragged) — match the qualitative pattern here.
-    print(f"\nQualitative comparison to the real panel:")
-    print(f"  real-panel dominant m_t   = 19    (~66%)")
-    print(f"  simulator dominant m_t    = {Counter(m_t_arr.tolist()).most_common(1)[0][0]}    "
-          f"({Counter(m_t_arr.tolist()).most_common(1)[0][1] / T_sim:.1%})")
-    print(f"  real-panel quarter-end %  = 33.2% (165/497)")
-    print(f"  simulator quarter-end %   = {n_mM / T_sim:.1%}")
+    # ── 19. Qualitative shape of the m_t distribution ────────────────────────
+    # Dominante attesa = i mesi non-fine-trimestre (m_t = M - n_quarterly);
+    # ~1/3 a fine trimestre (m_t = M). Nessun numero del vecchio pannello small.
+    _dom = Counter(m_t_arr.tolist()).most_common(1)[0]
+    print(f"\nQualitative shape of the m_t distribution:")
+    print(f"  dominant m_t         = {_dom[0]}  ({_dom[1] / T_sim:.1%})  "
+          f"(atteso: M - n_quarterly = {M_panel - n_quarterly})")
+    print(f"  quarter-end share    = {n_mM / T_sim:.1%}  (m_t = M = {M_panel})")
 
     print("\n" + "=" * 64)
     print("apply_missing_pattern  —  all self-test checks passed")
@@ -1960,15 +2114,8 @@ if __name__ == "__main__":
     print("simulate_dfm — end-to-end wrapper")
     print("=" * 64)
 
-    # Build the theta dict expected by simulate_dfm from the archive.
-    theta_star: dict = {
-        "A":      A_star,
-        "Q":      Q_star,
-        "nu_u":   nu_u_star,
-        "Lambda": Lambda_star,
-        "R":      R_star,
-        "nu_eps": nu_eps_star,
-    }
+    # theta_star e' gia' il dict completo del fit (load_final_fit in cima); lo
+    # passiamo cosi' com'e' a simulate_dfm (include rho per le varianti AR1).
 
     # ── 20. Wrapper at T = 497 (real-panel length) ────────────────────────────
     print(f"\nWrapper run at T=497 (same length as the real panel)")
@@ -1978,29 +2125,27 @@ if __name__ == "__main__":
         r=r, seed=2026,
     )
     assert sim_497["Y"].shape          == (497, M_panel)
-    assert sim_497["F"].shape          == (497, 3)
+    assert sim_497["F"].shape          == (497, r)
     assert sim_497["w_u_true"].shape   == (497,)
     assert sim_497["w_eps_true"].shape == (497,)
     assert sim_497["Y_complete"].shape == (497, M_panel)
     assert set(sim_497["theta_used"].keys()) >= {
         "A", "Q", "nu_u", "Lambda", "R", "nu_eps"
     }
-    n_gdp_497 = int(np.isfinite(sim_497["Y"][:, gdp_col]).sum())
+    _exp497 = sum(1 for t in range(497) if (t - 2) % 3 == 0 and t >= 4)
+    n_q_497 = int(np.isfinite(sim_497["Y"][:, _q0]).sum())
     print(f"  Y shape         = {sim_497['Y'].shape}")
     print(f"  F shape         = {sim_497['F'].shape}")
     print(f"  w_u_true shape  = {sim_497['w_u_true'].shape}")
     print(f"  w_eps_true shape= {sim_497['w_eps_true'].shape}")
-    print(f"  GDP non-NaN     = {n_gdp_497}  (real panel: 165, expected here 164 "
-          f"— first quarter-end t=2 falls in the MM boundary t<4)")
+    print(f"  quarterly '{ORDERED_COLS[_q0]}' non-NaN = {n_q_497}  "
+          f"(quarter-ends with t>=4; t=2 falls in the MM boundary t<4)")
     print(f"  theta_used keys = {sorted(sim_497['theta_used'].keys())}")
-    # Expected: 165 quarter-ends in [0, 496] minus 1 because t=2 falls in the
-    # MM boundary [t < 4] where the simulator set the GDP row to NaN.  The
-    # real panel does not have this 1-obs deficit because its preprocessing
-    # uses data from pre-1985 to populate the MM-aggregated GDP at t=2.
-    assert n_gdp_497 == 164, (
-        f"expected exactly 164 GDP obs at T=497 (165 quarter-ends - 1 MM "
-        f"boundary at t=2), got {n_gdp_497}"
-    )
+    # Quarter-ends in [0, 496] with t>=4 (t=2 excluded: MM boundary t<4 where the
+    # simulator set the quarterly row to NaN). Vale per ogni trimestrale.
+    assert n_q_497 == _exp497, (
+        f"expected {_exp497} quarterly obs at T=497 for {ORDERED_COLS[_q0]!r}, "
+        f"got {n_q_497}")
 
     # ── 21. Wrapper at T = 2000 ──────────────────────────────────────────────
     print(f"\nWrapper run at T=2000")
@@ -2010,7 +2155,7 @@ if __name__ == "__main__":
         r=r, seed=2027,
     )
     assert sim_2000["Y"].shape          == (2000, M_panel)
-    assert sim_2000["F"].shape          == (2000, 3)
+    assert sim_2000["F"].shape          == (2000, r)
     assert sim_2000["w_u_true"].shape   == (2000,)
     assert sim_2000["w_eps_true"].shape == (2000,)
     print(f"  Y shape         = {sim_2000['Y'].shape}")
@@ -2031,8 +2176,13 @@ if __name__ == "__main__":
         r=r, seed=2029,
     )
     assert not np.allclose(sim_alt["F"], sim_ref["F"])
-    assert not np.allclose(sim_alt["w_eps_true"], sim_ref["w_eps_true"])
-    print(f"\n[OK] master seed changes propagate to both F and w_eps_true")
+    # w_eps varia col seed solo sotto Student-t (nu_eps finito); sotto gaussiana
+    # e' costante == 1 e non puo' cambiare.
+    if np.isfinite(nu_eps_star):
+        assert not np.allclose(sim_alt["w_eps_true"], sim_ref["w_eps_true"])
+        print(f"\n[OK] master seed changes propagate to both F and w_eps_true")
+    else:
+        print(f"\n[OK] master seed changes propagate to F (w_eps==1: gaussiana)")
 
     # ── 23. Reproducibility check ────────────────────────────────────────────
     sim_a = simulate_dfm(
@@ -2119,7 +2269,11 @@ if __name__ == "__main__":
     else:
         w_ref = rng_ref.gamma(nu_eps_star / 2.0, 2.0 / nu_eps_star, size=T_sim)
     Z_ref   = rng_ref.standard_normal(size=(T_sim, M_panel))
-    eps_ref = Z_ref * np.sqrt(R_star)[None, :] / np.sqrt(w_ref)[:, None]
+    # Stesso ORDINE di operazioni di simulate_observations (_sd = sqrt(R)/sqrt(w),
+    # poi Z * _sd): sotto Student-t (w != 1) l'ordine conta a ~1e-16, e
+    # Z*(sqrt(R)/sqrt(w)) NON e' bit-identico a (Z*sqrt(R))/sqrt(w).
+    _sd_ref = np.sqrt(R_star)[None, :] / np.sqrt(w_ref)[:, None]
+    eps_ref = Z_ref * _sd_ref
     assert np.array_equal(w_ref, obs_pi0["w_eps_true"]), \
         "baseline w_eps draw order/stream changed by the new code"
     # Rebuild the monthly panel by ADDING the reference signal back, rather than

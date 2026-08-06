@@ -1,5 +1,5 @@
 """
-src/em_e_step.py
+src/em/em_e_step.py
 
 Student-t E-step machinery for the mixed-frequency Dynamic Factor Model.
 
@@ -44,6 +44,18 @@ TASK 5 — high-level wrapper (entry point of the full E-step):
        (smoothed factor moments + weights + log-weights + Lambda_tilde),
        plus loglik and inner-loop diagnostics.  Called once per outer
        EM iteration by em_main.py.
+
+ASSE B — idiosyncratic AR(1) in the state:
+  When ``theta`` carries ``rho`` the idiosyncratic errors live INSIDE the
+  augmented state (see :mod:`em.idio_ar1`), so the observation equation is
+  (nearly) deterministic and the baseline ``compute_d_eps`` degenerates.  The
+  residual is then the fresh AR(1) innovation,
+    d^eps_t = sum_i E[(eps_{i,t} - rho_i eps_{i,t-1})^2 | Y] / sigma_i^2,
+  computed by :func:`compute_d_eps_ar1`, symmetric to ``d_u``: its degrees of
+  freedom count M (every series has an innovation at every t, observed or not),
+  not m_t.  With ``per_series_weights`` the E-step returns one weight per cell
+  w^eps_{i,t} of shape (T, M) instead of a shared w^eps_t; this is coherent
+  only under the AR(1) state and is used by the ``student_t_ar1`` variant.
 """
 
 import numpy as np
@@ -235,6 +247,72 @@ def compute_d_eps(
         d_eps[t] = term1 + term2
 
     return d_eps, m_obs
+
+
+def compute_d_eps_ar1(f_smooth, P_smooth, P_lag, rho, sigma2, layout, d_f,
+                      Y=None, per_series: bool = False):
+    r"""
+    Residuo di Mahalanobis idiosincratico quando eps E' NELLO STATO (Asse B).
+
+    PERCHE' SERVE UNA VERSIONE DIVERSA
+    ----------------------------------
+    :func:`compute_d_eps` misura il residuo dell'equazione di OSSERVAZIONE,
+    pesato per ``1/R``. Sotto l'Asse B quell'equazione diventa deterministica
+    (``R_tilde -> 0``): il residuo tende a zero e ``1/R`` a infinito, quindi la
+    formula del baseline e' degenere e non puo' generare i pesi.
+
+    Il residuo giusto e' quello dell'INNOVAZIONE FRESCA dell'AR(1) — la
+    quantita' che sotto l'Asse B porta effettivamente lo shock idiosincratico,
+    esattamente come ``d_u`` fa per l'innovazione dei fattori:
+
+    .. math::
+        d^\varepsilon_t \;=\; \sum_i
+            \frac{\mathbb{E}\big[(\varepsilon_{i,t}
+                  - \rho_i \varepsilon_{i,t-1})^2 \mid Y\big]}{\sigma_i^2}.
+
+    La simmetria con ``d_u`` non e' un'analogia: entrambi sono ora residui
+    dell'equazione di STATO, e i pesi restano l'inverso di una media di
+    quadrati standardizzati. Il conteggio dei gradi di liberta' cambia di
+    conseguenza: non piu' ``m_t`` (serie osservate a t) ma ``M``, perche' ogni
+    serie ha una propria innovazione a ogni t **anche quando non e'
+    osservata** — l'informazione su di essa viene dal solo prior, e lo
+    smoother la propaga.
+
+    Parameters
+    ----------
+    f_smooth, P_smooth, P_lag : np.ndarray
+        Momenti posteriori dello stato AUMENTATO (T, d_f + n_e).
+    rho, sigma2 : np.ndarray, shape (M,)
+    layout : IdioLayout
+    d_f : int
+        Dimensione del blocco fattori (5r): dove inizia il blocco idio.
+    Y : np.ndarray, optional
+        Non usato nel calcolo; accettato per simmetria di firma.
+
+    Returns
+    -------
+    d_eps : np.ndarray, shape (T,)
+    m_eff : np.ndarray, shape (T,)
+        Gradi di liberta' per periodo: costante = M (vedi sopra).
+    """
+    from em.idio_ar1 import (  # noqa: PLC0415
+        extract_idio_moments, idio_innovation_second_moment,
+    )
+    mom = extract_idio_moments(f_smooth, P_smooth, P_lag, layout, d_f)
+    S = idio_innovation_second_moment(mom, rho)          # (T, M)
+    sigma2 = np.asarray(sigma2, float).ravel()
+    D = S / sigma2[None, :]                              # (T, M), per serie
+    # t = 0: eps_{i,-1} non e' definito, come per d_u.  Si usa il secondo
+    # momento non condizionato, cioe' E[eps_0^2]/sigma^2.
+    D[0, :] = mom["E_e2"][0, :] / sigma2
+
+    if per_series:
+        # Un peso per SERIE e per periodo (formulazione del .tex): ciascuna
+        # innovazione e' scalare, quindi 1 grado di liberta' ciascuna.
+        return D, np.ones_like(D)
+    # Peso CONDIVISO (semplificazione del baseline): un solo residuo per
+    # periodo, con M gradi di liberta'.
+    return D.sum(axis=1), np.full(f_smooth.shape[0], float(layout.M))
 
 
 # ─── 2. Factor-side Mahalanobis residual ──────────────────────────────────────
@@ -656,6 +734,7 @@ def ecm_inner_loop(
     max_inner: int = 100,
     verbose: bool = False,
     gaussian: bool = False,
+    w_init: dict | None = None,
 ) -> dict:
     r"""
     Run the ECM inner loop that resolves the coupling between the
@@ -773,6 +852,92 @@ def ecm_inner_loop(
     A      = theta["A"]
     Q      = theta["Q"]
     R      = theta["R"]
+
+    # ── ASSE B: idiosincratico AR(1) nello stato ─────────────────────────────
+    # Con eps nello stato l'osservazione e' deterministica, quindi il residuo
+    # di osservazione non puo' generare i pesi: si usa quello dell'innovazione
+    # AR(1) (vedi compute_d_eps_ar1).  Il resto del ciclo ECM — punto fisso
+    # F-update / W-update, criterio di convergenza, best-iterate — resta
+    # identico: cambia solo COME si calcola d_eps.
+    _idio_ar1 = ("rho" in theta) and (theta["rho"] is not None)
+    # Pesi idiosincratici per-serie (w^eps_{i,t}) invece del peso condiviso
+    # (w^eps_t).  E' la formulazione che il .tex sviluppa come "conceptually
+    # correct": con la persistenza modellata serie per serie, un abbattimento
+    # delle code globale sarebbe internamente incoerente.  Vale solo sotto
+    # l'Asse B: nel baseline eps non e' nello stato e i residui per-serie non
+    # sono separabili dall'equazione di osservazione.
+    _per_series_w = bool(theta.get("per_series_weights", False)) and _idio_ar1
+
+    # Criterio di arresto del ciclo interno: "max" (DEFAULT) o "rms".
+    # Viaggia dentro theta come gli altri flag di variante, cosi' non serve
+    # infilarlo nella firma di ogni chiamante intermedio.
+    #
+    # IL DEFAULT RESTA "max", DELIBERATAMENTE. "rms" e' attivato dalla sola
+    # variante `student_t_ar1` (vedi run_final_artifacts.VARIANTS), E IL MOTIVO
+    # E' `per_series_weights`, NON IL TEMPO DI CALCOLO.
+    #
+    # Il discrimine: `max` e' DIPENDENTE DALLA DIMENSIONE. Coi pesi per serie il
+    # massimo e' preso su T*M variazioni invece che su T, e il massimo di un
+    # insieme piu' grande e' sistematicamente piu' grande: la stessa tolleranza
+    # diventa una richiesta piu' severa per pura dimensione, e `max` su questa
+    # cella non e' confrontabile con `max` sulle celle a pesi condivisi. "rms"
+    # de-distorce, ed e' comunque la scala giusta nel merito, perche' il M-step
+    # consuma MEDIE pesate: cio' che deve convergere e' l'aggregato, non il
+    # singolo peso peggiore.
+    #
+    # Le altre tre mantengono il criterio "max" — la distorsione dimensionale
+    # li' non si presenta:
+    #
+    #   gaussian, gaussian_ar1 : saltano del tutto il ciclo interno (nu->inf
+    #                            => pesi ≡ 1), quindi il criterio e' irrilevante;
+    #   student_t              : il ciclo lo usa, ma i pesi sono CONDIVISI (max
+    #                            su T, nessuna distorsione dimensionale) e gli
+    #                            bastano ~10 iterazioni; col solo warm start
+    #                            scende da 69 s a 35 s (theta invariato a
+    #                            1.1e-06). Non c'e' niente da correggere.
+    #
+    # Il guadagno su `student_t_ar1` (~47 iterazioni interne) e' una conseguenza
+    # gradita, non la motivazione: 581 s -> 157 s a tolleranza esterna invariata,
+    # con loglik NON peggiore (-9722.26 contro -9721.54 del solo warm start;
+    # entrambe migliori del -9731.60 della baseline a freddo).
+    #
+    # CAVEAT da dichiarare se il criterio viene discusso: il rapporto max/RMS
+    # misurato si stabilizza a ~36.7, cioe' nella coda i due criteri sono
+    # PROPORZIONALI. Il passaggio equivale quindi a riscalare la tolleranza per
+    # la dimensione, non a imporre un criterio sostanzialmente diverso — e ne
+    # segue che le quattro celle non condividono la stessa tolleranza interna
+    # effettiva. E' l'intento (era `max` a essere non comparabile), ma va
+    # descritto cosi'.
+    _criterion = str(theta.get("inner_criterion", "max")).lower()
+    if _criterion not in ("max", "rms"):
+        raise ValueError(
+            f"inner_criterion deve essere 'max' o 'rms', non {_criterion!r}.")
+
+    if _per_series_w:
+        # Piu' spazio al ciclo interno quando i pesi sono per-serie, con
+        # QUALUNQUE criterio.
+        #
+        # Con `max` serve perche' il criterio e' un massimo su T*M valori
+        # invece che su T: con molte piu' entrate il massimo di un insieme di
+        # variazioni e' sistematicamente piu' grande, e la stessa tolleranza
+        # diventa una richiesta piu' severa per pura dimensione.
+        #
+        # Con `rms` serve per un motivo diverso e altrettanto concreto: il
+        # tetto non deve MAI essere il vincolo che determina il risultato. Un
+        # pannello diverso — un altro vintage, una finestra piu' corta, un
+        # theta iniziale piu' lontano — puo' richiedere piu' passate di quelle
+        # osservate finora, e un tetto stretto le troncherebbe in silenzio
+        # producendo un E-step peggiore senza che nulla lo segnali se non un
+        # warning. Il tetto e' una rete contro il ciclo infinito, non un
+        # parametro di taratura: va tenuto largo, e se viene raggiunto e' un
+        # sintomo da guardare, non una configurazione da accettare.
+        max_inner = max(int(max_inner), 300)
+    if _idio_ar1:
+        from em.idio_ar1 import build_idio_layout  # noqa: PLC0415
+        _layout = build_idio_layout(freq_list)
+        _rho = np.asarray(theta["rho"], float).ravel()
+        _sigma2 = np.asarray(theta.get("sigma2", R), float).ravel()
+        _d_f = 5 * int(np.asarray(theta["A"]).shape[0])
     nu_eps = float(theta["nu_eps"])
     nu_u   = float(theta["nu_u"])
     r      = A.shape[0]
@@ -780,9 +945,40 @@ def ecm_inner_loop(
     # Selection matrices are fixed for all inner iterations (depend only on Y).
     W_list = build_all_selection_matrices(Y)
 
-    # ── k = 0: initialise weights at prior means (thesis line ~5248-5257) ────
-    w_eps = np.ones(T)
-    w_u   = np.ones(T)
+    # ── k = 0: punto di partenza del punto fisso ─────────────────────────────
+    # Di default le medie a priori, w = 1 (thesis line ~5248-5257).
+    #
+    # WARM START. Il punto fisso converge allo stesso w qualunque sia il punto
+    # di partenza — quello che cambia e' solo quante iterate servono. Dentro
+    # l'EM il theta si muove pochissimo da un'iterazione esterna alla
+    # successiva (nella coda, |dL|/|L| ~ 1e-5), quindi i pesi corretti sono
+    # quasi esattamente quelli gia' calcolati al giro precedente: ripartire da
+    # w = 1 significa ri-percorrere ogni volta l'intera traiettoria.
+    #
+    # Misurato su diag3/student_t_ar1 al theta convergiuto (tol 1e-4):
+    #   partenza a freddo (w=1)          : 47 iterazioni, 18.6 s
+    #   partenza dai pesi precedenti     :  1 iterazione,   0.4 s
+    #   idem con theta perturbato di 1e-3:  6 iterazioni,   2.3 s
+    #   idem con theta perturbato di 1e-2:  8 iterazioni,   3.0 s
+    #
+    # Il criterio di arresto NON viene indebolito: resta |w_new - w_old| < tol,
+    # cioe' "la mappa di punto fisso non muove piu' i pesi". Partire vicino
+    # alla soluzione rende quel test soddisfatto prima perche' la soluzione e'
+    # davvero li', non perche' il test sia diventato piu' permissivo.
+    if w_init is not None:
+        w_eps = np.array(w_init["w_eps"], dtype=float, copy=True)
+        w_u   = np.array(w_init["w_u"], dtype=float, copy=True)
+        _want = (T, Y.shape[1]) if _per_series_w else (T,)
+        if w_eps.shape != _want or w_u.shape != (T,):
+            raise ValueError(
+                f"w_init incoerente: w_eps {w_eps.shape} (atteso {_want}), "
+                f"w_u {w_u.shape} (atteso {(T,)}).")
+        if not (np.all(np.isfinite(w_eps)) and np.all(w_eps > 0)
+                and np.all(np.isfinite(w_u)) and np.all(w_u > 0)):
+            raise ValueError("w_init deve essere finito e strettamente positivo.")
+    else:
+        w_eps = np.ones((T, Y.shape[1])) if _per_series_w else np.ones(T)
+        w_u   = np.ones(T)
 
     # ── Gaussian bypass (Bańbura-Modugno 2014 limit) ─────────────────────────
     # When nu -> infinity the scale-mixture weight prior Gamma(nu/2, nu/2)
@@ -816,6 +1012,11 @@ def ecm_inner_loop(
             "n_inner_iter": 1,
             "loglik":       float(ks_gauss["loglik"]),
             "converged":    True,
+            # Limite gaussiano: i pesi sono ≡1 e non c'e' nessun posteriore da
+            # cui contare gradi di liberta'. La correzione ELBO in questo ramo
+            # non viene nemmeno calcolata (nu = inf), ma la chiave c'e' lo
+            # stesso perche' la forma del dizionario non dipenda dalla variante.
+            "m_obs_eps":    None,
         }
 
     converged    = False
@@ -847,21 +1048,48 @@ def ecm_inner_loop(
         loglik       = ks["loglik"]
 
         # ── W-update: new weights from updated smoothed moments ───────────────
-        d_eps, m_obs = compute_d_eps(
-            Y, f_smooth, P_smooth, Lambda_tilde, R, W_list
-        )
-        d_u         = compute_d_u(f_smooth, P_smooth, P_lag, A, Q, r)
+        if _idio_ar1:
+            d_eps, m_obs = compute_d_eps_ar1(
+                f_smooth, P_smooth, P_lag, _rho, _sigma2, _layout, _d_f,
+                per_series=_per_series_w,
+            )
+            # d_u guarda solo il blocco fattori dello stato aumentato.
+            d_u = compute_d_u(f_smooth[:, :_d_f], P_smooth[:, :_d_f, :_d_f],
+                              P_lag[:, :_d_f, :_d_f], A, Q, r)
+        else:
+            d_eps, m_obs = compute_d_eps(
+                Y, f_smooth, P_smooth, Lambda_tilde, R, W_list
+            )
+            d_u         = compute_d_u(f_smooth, P_smooth, P_lag, A, Q, r)
         weights_new = compute_weights(d_eps, d_u, m_obs, nu_eps, nu_u, r)
         w_eps_new   = weights_new["w_eps"]
         w_u_new     = weights_new["w_u"]
 
         # ── Convergence check (thesis eq. line ~5346-5349) ───────────────────
         # w_u[0] = 1.0 always (d_u[0]=NaN -> prior mean), so its contribution
-        # to delta is identically 0; np.nanmax handles the NaN-safe comparison.
-        delta = (
-            float(np.max(np.abs(w_eps_new - w_eps)))
-            + float(np.nanmax(np.abs(w_u_new - w_u)))
-        )
+        # to delta is identically 0; np.nanmax / np.nanmean sono NaN-safe.
+        #
+        # DUE CRITERI.
+        #  "max" (default, storico): max|Delta w|. E' un massimo su T*M valori
+        #    coi pesi per-serie invece che su T: con 37x piu' entrate la stessa
+        #    tolleranza e' una richiesta piu' severa per pura DIMENSIONE.
+        #  "rms": radice della media dei quadrati. E' la scala che conta per il
+        #    M-step, che consuma MEDIE pesate: cio' che deve convergere e'
+        #    l'aggregato, non il singolo peso peggiore.
+        #
+        # Misurato su diag3/student_t_ar1 al theta convergiuto: il rapporto
+        # max/RMS si stabilizza a ~36.7, cioe' nella coda i due criteri sono
+        # PROPORZIONALI. Passare a "rms" non e' quindi un criterio diverso in
+        # senso sostanziale: e' lo stesso criterio con la tolleranza riscalata
+        # per la dimensione del problema. Va detto, per non vendere come
+        # cambiamento di sostanza quello che e' un cambiamento di scala.
+        d_eps_w = np.abs(w_eps_new - w_eps)
+        d_u_w   = np.abs(w_u_new - w_u)
+        if _criterion == "rms":
+            delta = (float(np.sqrt(np.mean(d_eps_w ** 2)))
+                     + float(np.sqrt(np.nanmean(d_u_w ** 2))))
+        else:
+            delta = float(np.max(d_eps_w)) + float(np.nanmax(d_u_w))
 
         if verbose:
             print(f"  {k:>4}  {delta:>12.6f}  {loglik:>14.2f}")
@@ -879,6 +1107,7 @@ def ecm_inner_loop(
                 "log_w_eps":    weights_new["log_w_eps"],
                 "log_w_u":      weights_new["log_w_u"],
                 "loglik":       loglik,
+                "m_obs_eps":    m_obs,
             }
 
         w_eps = w_eps_new
@@ -912,6 +1141,7 @@ def ecm_inner_loop(
             "loglik":            bs["loglik"],
             "converged":         False,
             "used_best_iterate": True,
+            "m_obs_eps":         bs["m_obs_eps"],
         }
 
     return {
@@ -927,6 +1157,13 @@ def ecm_inner_loop(
         "loglik":            loglik,
         "converged":         True,
         "used_best_iterate": False,
+        # Gradi di liberta' EFFETTIVI di ciascun peso idiosincratico, cioe' il
+        # numero di osservazioni che informano quel peso. E' l'`m_obs` usato
+        # QUI per costruire i pesi, ed e' esposto perche' la correzione ELBO
+        # deve usare lo STESSO oggetto invece di ricalcolarselo: le due strade
+        # erano divergenti e il risultato era un ELBO che non corrispondeva al
+        # modello stimato. Forma (T,) col peso condiviso, (T, M) per-serie.
+        "m_obs_eps":         m_obs,
     }
 
 
@@ -941,6 +1178,7 @@ def run_e_step(
     verbose: bool = False,
     save_path=None,
     gaussian: bool = False,
+    w_init: dict | None = None,
 ) -> dict:
     r"""
     High-level entry point: full E-step at a single outer EM iteration.
@@ -1059,6 +1297,7 @@ def run_e_step(
         Y, theta,
         freq_list=freq_list,
         tol_inner=tol_inner,
+        w_init=w_init,
         max_inner=max_inner,
         verbose=verbose,
         gaussian=gaussian,
@@ -1079,6 +1318,9 @@ def run_e_step(
         "w_u":          ecm["w_u"],
         "log_w_eps":    ecm["log_w_eps"],
         "log_w_u":      ecm["log_w_u"],
+        # Gradi di liberta' effettivi dei pesi idiosincratici: li consuma la
+        # correzione ELBO, che DEVE usare gli stessi dell'E-step.
+        "m_obs_eps":    ecm.get("m_obs_eps"),
         # augmented loading matrix (computed once inside the inner loop)
         "Lambda_tilde": ecm["Lambda_tilde"],
         # outer-EM monitoring
@@ -1112,49 +1354,51 @@ def run_e_step(
 # ─── Self-test ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    # ─────────────────────────────────────────────────────────────────────────
+    # Self-test dell'E-step, parametrico sulla struttura di fattore.
+    #
+    #     python -m em.em_e_step --spec fed_overlap
+    #     python -m em.em_e_step --spec diag4
+    #     python -m em.em_e_step --spec diag3
+    #
+    # I test numerici qui sotto (d_eps, d_u, pesi, limite gaussiano, ciclo ECM)
+    # sono per loro natura indipendenti dalla struttura: leggono theta^(0), Y e
+    # freq_list e verificano identita' algebriche. L'unica cosa che cambiava fra
+    # le config era il PREAMBOLO, ora unificato nella fixture.
+    # ─────────────────────────────────────────────────────────────────────────
     import pathlib
     import sys
 
     import pandas as pd
 
-    # ── parse config flag ─────────────────────────────────────────────────────
     _src_dir = str(pathlib.Path(__file__).resolve().parent.parent)
     if _src_dir not in sys.path:
         sys.path.insert(0, _src_dir)
-    from config_utils import parse_config_args, resolve_output_path, get_project_root
 
-    _args = parse_config_args("em_e_step self-test — E-step weights and Mahalanobis residuals.")
-    _cfg  = _args.config
-
-    # ── locate project root & make sibling modules importable ────────────────
-    project_root = get_project_root()
-    src_dir = project_root / "src"
-    if str(src_dir) not in sys.path:
-        sys.path.insert(0, str(src_dir))
-
-    from em.em_initialization import load_standardized_data              # noqa: E402
-    from kalman            import build_all_selection_matrices, run_kalman  # noqa: E402
-    from data_loader       import load_config as _dl_load_config      # noqa: E402
-    FREQ = _dl_load_config(_cfg)["FREQ"]
-
-    npz_path = resolve_output_path("processed", "theta_initial.npz", _cfg)
-    csv_path = resolve_output_path("dataset", "", _cfg)
-    meta_path = resolve_output_path("processed", "theta_initial_metadata.json", _cfg)
-
-    print(f"Loading theta^(0) from: {npz_path}")
-    theta = np.load(npz_path)
-    R = theta["R"]                       # (M,)
-
-    # Y is loaded *standardised*, NaN preserved — the same representation on
-    # which theta^(0) was calibrated.  ``dates`` is kept separately because
-    # the diagnostic prints below reference calendar months (NBER recessions,
-    # COVID April 2020).
-    Y, mean_, std_, series_names = load_standardized_data(
-        dataset_path=str(csv_path),
-        metadata_path=str(meta_path),
+    from kalman import build_all_selection_matrices, run_kalman        # noqa: E402
+    from em.selftest_fixture import (                                 # noqa: E402
+        parse_spec_args, load_fixture, selftest_scratch,
     )
-    dates = pd.read_csv(str(csv_path), index_col=0, parse_dates=True).index
-    freq_list = [FREQ[name] for name in series_names]
+
+    _args = parse_spec_args(
+        "em_e_step self-test — pesi dell'E-step e residui di Mahalanobis.")
+    fx = load_fixture(_args.spec)
+
+    print("=" * 64)
+    print(fx.describe())
+    print("=" * 64)
+
+    # theta^(0) dalla fixture (stessa pipeline di em_initialization).
+    theta = fx.theta0
+    R = np.asarray(theta["R"])           # (M,)
+
+    # Y standardizzato, NaN preservati — la rappresentazione su cui theta^(0)
+    # e' calibrato.  `dates` resta separato perche' le diagnostiche sotto
+    # citano mesi di calendario (recessioni NBER, aprile 2020).
+    Y = fx.Y
+    dates = fx.Y_std_df.index
+    series_names = fx.ordered_cols
+    freq_list = fx.freq_list
     T, M = Y.shape
     print(f"Y shape: T={T}, M={M}   "
           f"({sum(f == 'monthly' for f in freq_list)} monthly + "
@@ -1203,19 +1447,22 @@ if __name__ == "__main__":
         )
     print(f"[OK] m_obs[t] == W_list[t].shape[0] for all t")
 
-    # Coherence with the m_t distribution: fully-observed quarter-end months
-    # have m_t == M; non-quarter-end fully-observed months have m_t == M-1
-    # (one quarterly series is missing).  The exact M depends on the config.
+    # Coerenza con la distribuzione di m_t.  Nei mesi di FINE TRIMESTRE
+    # completamente osservati m_t == M; nei mesi NON di fine trimestre cadono
+    # TUTTE le serie trimestrali, quindi m_t == M - n_quarterly.  Il numero di
+    # trimestrali viene da freq_list (sul dataset 'final' sono tre).
     is_qend = dates.month.isin([3, 6, 9, 12])
-    M_full  = int(np.max(m_obs))   # maximum observed count = M at quarter-end
-    M_nq    = M_full - 1           # non-quarter-end count (one quarterly series out)
-    n_qend_full   = int(np.sum((m_obs == M_full) & is_qend))
-    n_nonqend_nq  = int(np.sum((m_obs == M_nq)  & ~is_qend))
-    print(f"[OK] m_obs == {M_full} at {n_qend_full} months (quarter-end, all series)")
-    print(f"[OK] m_obs == {M_nq} at {n_nonqend_nq} months (non-quarter-end)")
+    n_quarterly = sum(f == "quarterly" for f in freq_list)
+    M_full = int(np.max(m_obs))          # massimo osservato = M a fine trimestre
+    M_nq   = M_full - n_quarterly        # mesi non di fine trimestre
+    n_qend_full  = int(np.sum((m_obs == M_full) & is_qend))
+    n_nonqend_nq = int(np.sum((m_obs == M_nq) & ~is_qend))
+    print(f"[OK] m_obs == {M_full} in {n_qend_full} mesi (fine trimestre, tutte le serie)")
+    print(f"[OK] m_obs == {M_nq} in {n_nonqend_nq} mesi (non fine trimestre, "
+          f"cadono le {n_quarterly} trimestrali)")
     assert n_qend_full > 0 and n_nonqend_nq > 0, (
-        f"expected at least some m_t={M_full} (quarter-end) "
-        f"and m_t={M_nq} (non-qend)"
+        f"attesi mesi con m_t={M_full} (fine trimestre) e m_t={M_nq} "
+        f"(non fine trimestre, M - {n_quarterly} trimestrali)"
     )
 
     # ── 5. Top-10 d_eps months: should fall on shock periods (2008-09, 2020) ─
@@ -1356,11 +1603,9 @@ independently.""")
         print(f"  Rank of Apr-2020 within T-1 = {T - 1}: #{rank_apr20_u}")
 
     # Theoretical anchor: under Gaussian innovations with weights = 1, the
-    # expected value of d^u_t is E[d^u_t] = r = 3 (chi-squared(r) mean).
-    # On correctly standardised data the sample mean is ~ 2.77, close to the
-    # theoretical r = 3 expected under a well-specified model — a clean
-    # diagnostic of correct scaling. (Previously, under mis-scaled data, the
-    # sample mean was ~ 1.0, a symptom of the scale bug, now resolved.)
+    # expected value of d^u_t is E[d^u_t] = r (mean of a chi-squared(r)).
+    # On correctly standardised data the sample mean sits close to r under a
+    # well-specified model — a clean diagnostic of correct scaling.
     print(f"\n  Theoretical Gaussian baseline E[d^u_t] = r = {r}   "
           f"(sample mean is {np.nanmean(d_u):.3f})")
 
@@ -1649,7 +1894,7 @@ Section 1 of the thesis (excess kurtosis in most of the series).""")
     expected_keys = {
         "f_smooth", "P_smooth", "P_lag",
         "w_eps", "w_u", "log_w_eps", "log_w_u",
-        "Lambda_tilde",
+        "Lambda_tilde", "m_obs_eps",
         "loglik",
         "n_inner_iter", "converged", "used_best_iterate",
         "T", "M", "r",
@@ -1718,8 +1963,9 @@ Section 1 of the thesis (excess kurtosis in most of the series).""")
 
     # ── 28. Persistence: save -> load -> compare ─────────────────────────────
     import tempfile
-    save_dir = project_root / "data" / "processed"
-    save_dir.mkdir(parents=True, exist_ok=True)
+    # cartella temporanea: il round-trip su disco non deve lasciare file
+    # negli artefatti veri (vedi selftest_scratch).
+    save_dir = pathlib.Path(selftest_scratch(f"em_e_step_{_args.spec}"))
     with tempfile.NamedTemporaryFile(
         suffix=".npz", dir=str(save_dir), delete=False
     ) as tmp:

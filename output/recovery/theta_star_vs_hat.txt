@@ -1,0 +1,52 @@
+==============================================================================
+  THETA_STAR vs THETA_HAT  —  identificazione o ottimo locale?
+  Generated 2026-07-20 14:32:44
+  T_sim = 2000, seed = 42, celle attese = 15
+
+  theta_star = fit sul pannello REALE
+  theta_hat  = ri-stima sul pannello SIMULATO da theta_star (init PCA)
+
+  Il verdetto lo da' la colonna SIMULATO, dove theta_star e' il vero:
+    positivo -> l'EM trova un punto migliore del vero (nessun ottimo locale)
+    negativo oltre soglia -> OTTIMO LOCALE: l'EM non raggiunge il vero
+  La colonna REALE risponde a un'altra domanda (chi descrive i dati veri)
+  e non e' informativa sul meccanismo: theta_star vince per costruzione.
+
+  sd(f) = deviazione standard implicata da (A,Q); sotto Convenzione 1 ~1.
+==============================================================================
+
+  spec         variante                 SIM hat-star  REAL star-hat   esito
+  --------------------------------------------------------------------------
+  fed_overlap  gaussian                        65.00          17.22   entro rumore
+                                      sd(f) star G=1.00 S=1.00 R=1.00 L=1.00  |  hat G=1.00 S=1.02 R=1.00 L=1.00
+  fed_overlap  gaussian_ar1                    69.54          16.33   entro rumore
+                                      sd(f) star G=1.01 S=1.00 R=0.99 L=1.00  |  hat G=1.01 S=1.01 R=1.00 L=1.00
+  fed_overlap  student_t                       49.41          18.95   entro rumore
+                                      sd(f) star G=1.05 S=1.23 R=0.72 L=0.32  |  hat G=0.99 S=0.96 R=0.96 L=0.89
+  fed_overlap  student_t_ar1                -2357.58         902.16   *** OTTIMO LOCALE ***
+                                      sd(f) star G=1.09 S=1.21 R=0.74 L=0.34  |  hat G=0.93 S=0.93 R=0.96 L=0.94
+  fed_overlap  student_t_ar1_shared            -7.66          62.94   entro rumore
+                                      sd(f) star G=1.03 S=1.22 R=0.68 L=0.25  |  hat G=0.93 S=1.00 R=0.94 L=0.95
+  diag4        gaussian                        45.99          12.32   entro rumore
+                                      sd(f) star S=1.00 R=1.00 L=1.00 N=1.00  |  hat S=1.00 R=1.00 L=1.00 N=1.00
+  diag4        gaussian_ar1                    51.59          27.11   entro rumore
+                                      sd(f) star S=1.00 R=0.99 L=1.00 N=1.01  |  hat S=1.00 R=1.00 L=1.00 N=1.00
+  diag4        student_t                       25.94          19.94   entro rumore
+                                      sd(f) star S=1.18 R=0.68 L=0.22 N=1.06  |  hat S=1.07 R=0.97 L=0.97 N=0.88
+  diag4        student_t_ar1                -1944.13         621.81   *** OTTIMO LOCALE ***
+                                      sd(f) star S=1.18 R=0.69 L=0.23 N=1.06  |  hat S=0.97 R=0.95 L=0.96 N=0.92
+  diag4        student_t_ar1_shared            20.72          51.29   entro rumore
+                                      sd(f) star S=1.19 R=0.68 L=0.22 N=1.06  |  hat S=1.08 R=0.97 L=0.97 N=0.88
+  diag3        gaussian                        41.33          11.87   entro rumore
+                                      sd(f) star A=1.00 N=1.00 L=1.00  |  hat A=1.03 N=1.00 L=1.00
+  diag3        gaussian_ar1                    62.28          -8.06   entro rumore
+                                      sd(f) star A=1.08 N=1.01 L=1.00  |  hat A=1.00 N=1.00 L=1.00
+  diag3        student_t                      -22.89          43.58   entro rumore
+                                      sd(f) star A=1.13 N=1.03 L=0.23  |  hat A=0.98 N=0.96 L=0.93
+  diag3        student_t_ar1                -1663.26         581.52   *** OTTIMO LOCALE ***
+                                      sd(f) star A=1.07 N=1.06 L=0.24  |  hat A=0.96 N=0.95 L=0.97
+  diag3        student_t_ar1_shared           -24.42          69.14   entro rumore
+                                      sd(f) star A=0.61 N=0.97 L=0.19  |  hat A=0.98 N=0.95 L=0.98
+
+  Completo: 15/15 celle.
+==============================================================================

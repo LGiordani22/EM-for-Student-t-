@@ -1,300 +1,449 @@
 """
 src/forecast/nowcast_engine.py
 
-Real-time DFM NOWCAST ENGINE for the nowcasting pipeline (Third brick).
+Il MOTORE: una cella (spec x variante), una data, un trimestre target -> un
+nowcast del PIL.
 
-Given an "as of" date and a target quarter, estimate the Student-t (or
-Gaussian) mixed-frequency DFM on the real-time panel produced by
-panel_builder.build_panel, and extract the implied nowcast of quarterly GDP
-growth for the target quarter.
+Nessuna orchestrazione qui dentro: il ciclo settimanale sta in
+`weekly_nowcast.py`.  Questo modulo sa fare una cosa sola, e la fa bene.
 
-This module contains ONLY the DFM engine.  The univariate benchmarks (ARMA,
-random walk) live in a separate module (benchmarks.py) and are not imported
-here.
+LE TRE SPEC E LE CINQUE VARIANTI
+--------------------------------
+La spec (`fed_overlap` | `diag4` | `diag3`) e' la struttura di caricamento, cioe'
+quali fattori ciascuna serie vede; viene da `config/factor_specs.json` tramite
+`em.factor_structure.build_loading_mask`.  La variante combina tre flag
+ortogonali (`gaussian`, `idio_ar1`, `per_series_weights`) nei cinque modelli
+stimati: `gaussian`, `gaussian_ar1`, `student_t`, `student_t_ar1`,
+`student_t_ar1_shared`.
 
-What it does
-------------
-1. build_panel(as_of) — the real-time 20-series panel (Second brick).
-2. Extend the panel forward with all-NaN rows up to the target quarter-end
-   month, so the Kalman smoother produces the *forecast* of the latent factors
-   at the target month (a genuine nowcast: the target quarter's GDP is not yet
-   published, and its last monthly indicators may not be either).
-3. BLIND PCA initialisation recomputed on THIS vintage (scale + theta^(0)).
-   We deliberately do NOT warm-start from theta_star (the in-sample fit):
-     * scale rigour — every vintage is standardised on its own
-       expanding-window mean/std (see "scale coherence" below); warm-starting
-       loadings calibrated to the full-sample scale would be inconsistent;
-     * out-of-sample rigour — the nowcast must not borrow any information from
-       the future that theta_star implicitly contains.
-4. fit_dfm(...) — the already-validated EM machine (Kalman filter/smoother +
-   E-step + M-step + sign/Convention-1 post-processing).
-5. Extract the GDP nowcast at the target quarter-end month via the GDP row of
-   the augmented loading and the Mariano-Murasawa weights (1/3, 2/3, 1, 2/3,
-   1/3), exactly the construction validated in em_main.
+DUE MODI DI PRODURRE UN NOWCAST
+-------------------------------
+`estimate(...)`     stima i parametri sul vintage (EM completo).  Costoso.
+`filter_only(...)`  tiene i parametri fissi e ricalcola solo lo stato.  Molto
+                    piu' rapido, ed e' cio' che serve nelle settimane in cui non
+                    si ri-stima: i parametri si muovono lentamente, lo stato no.
+                    Non e' un filtro gaussiano travestito — sotto Student-t
+                    ripassa dal ciclo ECM, quindi i pesi w_t sono ricalcolati
+                    sull'informazione nuova, con theta congelato.
 
-Scale coherence (CRITICAL)
---------------------------
-Standardisation of the panel and de-standardisation of the nowcast use the
-SAME per-series mean/std, computed on the sample of THIS vintage (data up to
-as_of) — NOT the full sample, NOT the in-sample fit.  Each vintage has its own
-expanding-window scale.  Sequence:
+L'ESTRAZIONE DEL PIL: LA RIGA DI LAMBDA, NON UN INDICE
+------------------------------------------------------
+Il valore modellato della serie target al mese `t` e'
 
-    mean, std    = column stats of THIS vintage's panel (non-NaN)
-    panel_std    = (panel - mean) / std            ; fit_dfm(panel_std)
-    nowcast_std  = Lambda[GDP] · (MM · f_smooth)   (standardised units)
-    nowcast_z    = nowcast_std                      (z vs this vintage's GDP std)
-    nowcast_livello = nowcast_std * std[GDP] + mean[GDP]   (SAME mean/std)
+    yhat_t = check_Lambda[target, :] @ stato_t
 
-This is the *Volatility Paradox*: in a calm training window std[GDP] is small,
-so the de-standardised level looks smoothed — which is CORRECT in real time
-(no look-ahead to the larger full-sample volatility).
+dove `check_Lambda` e' *la stessa* matrice di osservazione che il filtro di
+Kalman ha usato — restituita da `run_e_step` come `Lambda_tilde`.  Non si
+ricostruisce niente a mano, e questo risolve da solo due cose che una
+ricostruzione manuale sbaglia:
+
+  * **Fattori multipli.**  Sotto `fed_overlap` il PIL carica su DUE fattori
+    (G e R).  La riga di Lambda li contiene entrambi, con i loro pesi; prendere
+    "il fattore del blocco del PIL" ne butterebbe uno, senza errore visibile.
+  * **Idiosincratico con memoria.**  Sotto le varianti `*_ar1` l'idiosincratico
+    e' uno stato, la sua media condizionata non e' zero, e per una trimestrale
+    e' aggregato con gli stessi pesi MM della parte comune.  `check_Lambda`
+    include quel blocco (`[Lambda_tilde | C_idio]`), quindi la componente entra
+    da sola.  Ometterla distorcerebbe tre varianti su cinque.
+
+L'aggregazione di Mariano-Murasawa {1/3, 2/3, 1, 2/3, 1/3} e' anch'essa gia'
+dentro `check_Lambda` per le righe trimestrali: il nowcast del PIL e' il valore
+TRIMESTRALE, letto al mese di fine trimestre.
+
+  * **Una parametrizzazione sola.**  `check_Lambda` e lo stato che moltiplica
+    devono venire dallo STESSO dizionario, perche' `fit_dfm` ne restituisce due
+    versioni osservazionalmente equivalenti ma non mescolabili (canonica in
+    `fit["f_smooth"]`, raw in `fit["e_step_output"]`).  Si usa la raw, che e'
+    l'unica completa sotto `*_ar1`.  Il dettaglio sta in `extract_target`.
+
+LA SCALA
+--------
+Standardizzazione e de-standardizzazione usano media e deviazione dello STESSO
+vintage (`scale.standardize_asof` sul pannello gia' mascherato), mai del
+campione pieno.  La catena intera e le sue inverse stanno in `scale.py`.
 """
 
 from __future__ import annotations
 
-import os
-import sys
-
 import numpy as np
 import pandas as pd
 
-# Forecast-package siblings (resolved relative to the project root, which is on
-# sys.path when this module is run as `python -m src.forecast.nowcast_engine`).
-from src.data_loader import BLOCK, FREQ, ORDERED_COLS, load_config
+from src.forecast import scale
 from src.forecast.panel_builder import build_panel
-from src.forecast.data_import import gdp_available_through
+from src.forecast.release_calendar import quarter_end
 
-# The First-Stage estimation machine lives under src/ (shared infra at the root,
-# the EM engine in the em/ package), with some modules importing one another
-# lazily (e.g. `from em.em_e_step import run_e_step` inside run_em).  Put src/ on
-# sys.path so those imports resolve when fit_dfm runs.
-_SRC_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _SRC_DIR not in sys.path:
-    sys.path.insert(0, _SRC_DIR)
-
-from em.em_initialization import (             # noqa: E402  (after sys.path tweak)
-    standardize,
+from em.em_initialization import (
     mm_fill_quarterly,
     gaussian_fill_ragged,
     pca_initialization,
     compute_theta_initial,
 )
-from em.em_main import fit_dfm                  # noqa: E402
+from em.em_e_step import run_e_step
+from em.em_main import fit_dfm
+from em.factor_structure import build_loading_mask
 
-# ─── Constants for the GDP extraction (match em_main / kalman) ────────────────
-_BLOCK_ORDER: list[str] = ["real", "financial", "other"]
-_MM_WEIGHTS = np.array([1.0 / 3.0, 2.0 / 3.0, 1.0, 2.0 / 3.0, 1.0 / 3.0])
-_REF_SERIES = {"real": "PAYEMS", "financial": "S&P 500", "other": "UMCSENTx"}
-_R = 3  # one factor per block
+# ─── Le cinque varianti: combinazioni dei flag ortogonali ─────────────────────
+# Stessa semantica di `run_final_artifacts.VARIANTS`, ridotta a cio' che il
+# nowcast deve sapere.  `inner_criterion` compare solo dove serve: con i pesi
+# per-serie il criterio `max` e' preso su T*M variazioni invece che su T, quindi
+# la stessa tolleranza diventa una richiesta piu' severa per pura dimensione.
+VARIANTS: dict[str, dict] = {
+    "gaussian":             {"gaussian": True,  "idio_ar1": False, "per_series_weights": False},
+    "gaussian_ar1":         {"gaussian": True,  "idio_ar1": True,  "per_series_weights": False},
+    "student_t":            {"gaussian": False, "idio_ar1": False, "per_series_weights": False},
+    "student_t_ar1":        {"gaussian": False, "idio_ar1": True,  "per_series_weights": True,
+                             "inner_criterion": "rms"},
+    "student_t_ar1_shared": {"gaussian": False, "idio_ar1": True,  "per_series_weights": False},
+}
+
+SPECS: tuple[str, ...] = ("fed_overlap", "diag4", "diag3")
 
 
-def _quarter_end(target_quarter: str) -> pd.Timestamp:
-    """Parse a 'YYYYQn' label into the month-END of that quarter's last month."""
-    s = str(target_quarter).upper().replace(" ", "")
-    if "Q" not in s:
-        raise ValueError(f"target_quarter {target_quarter!r} is not 'YYYYQn'.")
-    y_str, q_str = s.split("Q")
-    y, q = int(y_str), int(q_str)
-    if not 1 <= q <= 4:
-        raise ValueError(f"quarter must be 1..4, got {q} in {target_quarter!r}.")
-    return pd.Timestamp(y, q * 3, 1) + pd.offsets.MonthEnd(0)
+# ─── Il vintage: pannello, scala, struttura, punto d'innesco ──────────────────
 
-
-def nowcast_gdp(
-    as_of_date,
-    target_quarter: str,
-    config_name: str = "small",
-    estimator: str = "student_t",
-    theta_init: dict | None = None,
-    max_iter: int = 250,
-    verbose: bool = False,
-) -> dict:
+def prepare_vintage(as_of_date, target_quarter: str, spec: str, variant: str,
+                    theta_warm: dict | None = None, seed: int = 42,
+                    panel: pd.DataFrame | None = None,
+                    metadata: pd.DataFrame | None = None,
+                    exact: pd.DataFrame | None = None) -> dict:
     """
-    Nowcast quarterly GDP growth for `target_quarter` using data available at
-    `as_of_date`, via the real-time mixed-frequency DFM.
+    Tutto cio' che serve per stimare o filtrare a una data, e nient'altro.
 
-    Parameters
-    ----------
-    as_of_date : str | datetime | (year, month) tuple
-        Vintage publication date (information set), e.g. "2008-11-15".
-    target_quarter : str
-        Target quarter as 'YYYYQn', e.g. "2008Q4".
-    estimator : "student_t" | "gaussian"
-        Which DFM to estimate.  "gaussian" sets nu = inf inside fit_dfm.
-    theta_init : dict | None
-        If None (default), a blind PCA initialisation is recomputed on this
-        vintage.  If given, it is used as theta^(0) (escape hatch; the
-        nowcast loop should leave it None for out-of-sample rigour).
-    max_iter : int
-        Maximum outer-EM iterations (forwarded to fit_dfm).
-    verbose : bool
-        Per-iteration EM log (forwarded to fit_dfm).
-
-    Returns
-    -------
-    dict with keys: nowcast_livello, nowcast_z, target_quarter, as_of,
-        estimator, n_iter, converged, nu_eps_hat (None for gaussian),
-        ultimo_gdp_disponibile, mean_gdp_train, std_gdp_train.
+    `theta_warm`, se dato, sostituisce l'inizializzazione PCA come punto di
+    partenza dell'EM.  Il warm start dal vintage PRECEDENTE non e' look-ahead:
+    e' solo un innesco migliore per lo stesso ottimo, e non contiene alcuna
+    informazione futura.  (Cosa diversa sarebbe partire dal theta di campione
+    pieno, che quell'informazione la contiene: non si fa.)
     """
-    if estimator not in ("student_t", "gaussian"):
-        raise ValueError(f"estimator must be 'student_t' or 'gaussian', got {estimator!r}.")
+    if spec not in SPECS:
+        raise ValueError(f"spec {spec!r} ignota; attesa una di {SPECS}.")
+    if variant not in VARIANTS:
+        raise ValueError(f"variante {variant!r} ignota; attesa una di {tuple(VARIANTS)}.")
+    cfg = VARIANTS[variant]
 
-    cfg = load_config(config_name)
-    _block = cfg["BLOCK"]
-    _freq = cfg["FREQ"]
-    _ordered_cols = cfg["ORDERED_COLS"]
+    panel_asof = build_panel(as_of_date, target_quarter, panel=panel,
+                             metadata=metadata, exact=exact)
 
-    target_qe = _quarter_end(target_quarter)
+    # Serie con UNA SOLA osservazione nel vintage: il fattore la interpola
+    # esattamente, il residuo idiosincratico va a zero e `update_R` sbatte sulla
+    # guardia di degenerazione (r_i = 0) facendo abortire l'EM.  Una sola
+    # osservazione non porta informazione stimabile: la si AZZERA (NaN),
+    # riportando la colonna al caso "zero osservazioni" che il Kalman gia'
+    # gestisce via W_t.  Non si RIMUOVE la colonna — `build_loading_mask`
+    # pretende la bijezione serie<->assegnazioni, e togliere la colonna la
+    # romperebbe; azzerarla lascia intatti cols, mask e freq_list.  Le colonne
+    # gia' a zero oss restano tali (comportamento invariato).  Il TARGET
+    # (ultima colonna) non si tocca mai.  Esempio: PPIFIS a inizio 2010.
+    target_col = panel_asof.columns[-1]
+    n_obs = panel_asof.notna().sum()
+    too_thin = [c for c in panel_asof.columns
+                if c != target_col and int(n_obs[c]) == 1]
+    if too_thin:
+        panel_asof = panel_asof.copy()
+        panel_asof[too_thin] = np.nan
 
-    # 1. Real-time panel, extended forward to the target quarter-end so the
-    #    smoother forecasts the factors there (all-NaN rows -> pure prediction).
-    panel = build_panel(as_of_date, config_name=config_name)
-    if target_qe < panel.index[0]:
-        raise ValueError(
-            f"target quarter-end {target_qe.date()} precedes the panel start "
-            f"{panel.index[0].date()}."
-        )
-    if target_qe > panel.index[-1]:
-        panel = panel.reindex(pd.date_range(panel.index[0], target_qe, freq="ME"))
-    panel.index.name = None
+    cols = list(panel_asof.columns)
 
-    # 2. Blind expanding-window standardisation + PCA init on THIS vintage.
-    Y_std, mean, std = standardize(panel)
-    Y_mm = Y_std.copy()
-    for col in Y_std.columns:
-        if _freq.get(col) == "quarterly":
-            Y_mm[col] = mm_fill_quarterly(Y_std[col])
-    Y_filled = gaussian_fill_ragged(Y_mm, random_state=42)
-    if theta_init is None:
-        F0, _info = pca_initialization(Y_filled, _block)
-        theta0 = compute_theta_initial(Y_filled, F0, _block)
+    meta = metadata if metadata is not None else None
+    freq_list = _freq_list_for(cols, meta)
+    structure = build_loading_mask(spec, cols)
+
+    # Scala del vintage: il pannello e' gia' mascherato, quindi media e
+    # deviazione sono espandenti per costruzione.
+    Y_std_df, mean, std = scale.standardize_asof(panel_asof)
+
+    if theta_warm is not None:
+        theta0 = dict(theta_warm)
     else:
-        theta0 = theta_init
+        Y_mm = Y_std_df.copy()
+        for c, fr in zip(cols, freq_list):
+            if fr == "quarterly":
+                Y_mm[c] = mm_fill_quarterly(Y_std_df[c])
+        Y_filled = gaussian_fill_ragged(Y_mm, random_state=seed)
+        F0, _info = pca_initialization(Y_filled, structure)
+        theta0 = compute_theta_initial(Y_filled, F0, structure,
+                                       idio_ar1=cfg["idio_ar1"],
+                                       freq_list=freq_list)
 
-    # 3. Estimate the DFM (reuse the validated EM machine).
-    freq_list = [_freq[c] for c in _ordered_cols]
-    fit = fit_dfm(
-        Y=Y_std.to_numpy(),
-        theta_init=theta0,
-        freq_list=freq_list,
-        block_map=_block,
-        ordered_cols=_ordered_cols,
-        ref_series=_REF_SERIES,
-        gaussian=(estimator == "gaussian"),
+    if cfg.get("per_series_weights"):
+        theta0["per_series_weights"] = True
+    if cfg.get("inner_criterion"):
+        theta0["inner_criterion"] = cfg["inner_criterion"]
+
+    return {
+        "as_of": pd.Timestamp(as_of_date),
+        "target_quarter": target_quarter,
+        "spec": spec,
+        "variant": variant,
+        "panel": panel_asof,
+        "Y_std_df": Y_std_df,
+        "mean": mean,
+        "std": std,
+        "cols": cols,
+        "freq_list": freq_list,
+        "structure": structure,
+        "theta0": theta0,
+        "gaussian": cfg["gaussian"],
+    }
+
+
+def _freq_list_for(cols: list[str], metadata: pd.DataFrame | None) -> list[str]:
+    """'monthly'/'quarterly' per colonna, dai metadati del pannello."""
+    from src.forecast.release_calendar import load_metadata
+    meta = load_metadata() if metadata is None else metadata
+    freq_of = dict(zip(meta["series_id"], meta["freq"]))
+    missing = [c for c in cols if c not in freq_of]
+    if missing:
+        raise KeyError(f"serie senza frequenza nei metadati: {missing}")
+    return ["monthly" if freq_of[c] == "M" else "quarterly" for c in cols]
+
+
+# ─── I due modi di produrre lo stato ──────────────────────────────────────────
+
+def estimate(vintage: dict, max_iter: int = 250, verbose: bool = False) -> dict:
+    """EM completo sul vintage.  Restituisce l'output di `fit_dfm`."""
+    return fit_dfm(
+        Y=vintage["Y_std_df"].to_numpy(),
+        theta_init=vintage["theta0"],
+        freq_list=vintage["freq_list"],
+        block_map=vintage["structure"],
+        ordered_cols=vintage["cols"],
+        gaussian=vintage["gaussian"],
         use_full_elbo=True,
         max_iter=max_iter,
         verbose=verbose,
         save_path=None,
     )
-    theta = fit["theta"]
-    f_smooth = np.asarray(fit["f_smooth"])             # (T, 5r)
 
-    # 4. GDP nowcast at the target quarter-end month, via the MM aggregation of
-    #    the GDP block factor across the five lag-blocks.
-    gdp_idx = _ordered_cols.index("GDPC1")
-    gdp_block_j = _BLOCK_ORDER.index(_block["GDPC1"])   # 0 (real)
-    idx_lags = np.array([lag * _R + gdp_block_j for lag in range(5)])
-    t_idx = Y_std.index.get_loc(target_qe)
-    phi = float(f_smooth[t_idx, idx_lags] @ _MM_WEIGHTS)
-    nowcast_std = float(np.asarray(theta["Lambda"])[gdp_idx, gdp_block_j] * phi)
 
-    # 5. De-standardise with the SAME vintage mean/std (scale coherence).
-    mean_gdp = float(mean["GDPC1"])
-    std_gdp = float(std["GDPC1"])
-    nowcast_livello = nowcast_std * std_gdp + mean_gdp
-    nowcast_z = nowcast_std                              # already in std[GDP] units
+def filter_only(vintage: dict, theta: dict, verbose: bool = False) -> dict:
+    """
+    Solo lo stato, parametri congelati: E-step su `theta` senza M-step.
 
-    nu_eps = float(theta["nu_eps"])
+    Sotto Student-t il ciclo ECM interno gira comunque, quindi i pesi w_t
+    reagiscono all'informazione nuova della settimana; e' solo theta a non
+    muoversi.
+    """
+    return run_e_step(
+        Y=vintage["Y_std_df"].to_numpy(),
+        theta=theta,
+        freq_list=vintage["freq_list"],
+        gaussian=vintage["gaussian"],
+        verbose=verbose,
+    )
+
+
+# ─── L'estrazione del target ──────────────────────────────────────────────────
+
+def extract_target(vintage: dict, state: np.ndarray, Lambda_full: np.ndarray,
+                   P_smooth: np.ndarray | None = None,
+                   theta: dict | None = None,
+                   target_series: str | None = None) -> dict:
+    """
+    Il valore modellato della serie target al mese di fine trimestre.
+
+    `Lambda_full` e' la matrice di osservazione usata dal filtro
+    (`run_e_step(...)["Lambda_tilde"]` o `fit_dfm(...)["e_step_output"]`
+    equivalente): include gia' i pesi MM sulle righe trimestrali e, sotto
+    `idio_ar1`, il blocco idiosincratico.  La riga del target moltiplica lo stato
+    intero: nessun indice di fattore da indovinare.
+
+    `state` E `Lambda_full` DEVONO VENIRE DALLA STESSA PARAMETRIZZAZIONE
+    ------------------------------------------------------------------
+    `fit_dfm` restituisce DUE mondi, entrambi legittimi ma non mescolabili:
+
+      * CANONICO — `fit["theta"]`, `fit["f_smooth"]`, `fit["P_smooth"]`: dopo
+        ortogonalizzazione, normalizzazione dei segni e Convenzione 1
+        (`em_main.py`, sez. 2c/3/4);
+      * RAW — tutto cio' che sta in `fit["e_step_output"]`, che la docstring di
+        `fit_dfm` dichiara esplicitamente *pre-post-processing*.
+
+    I due sono osservazionalmente equivalenti: la Convenzione 1 riscala
+    `f_can = f_raw / c` e `Lambda_can = Lambda_raw * c`, quindi il prodotto
+    `Lambda @ f` e' lo stesso — ma SOLO se i due fattori del prodotto vengono
+    dallo stesso mondo.  Mescolarli restituisce `z_vero / c`, cioe' un nowcast
+    silenziosamente compresso (fino a ~2.6x su `diag3`), e per giunta solo nelle
+    settimane in cui si ri-stima: le settimane a theta congelato passano da
+    `filter_only`, che e' coerente per costruzione.  Il risultato e' una
+    seghettatura mensile che sembra segnale e non lo e'.
+
+    Qui si usa la coppia RAW, perche' e' l'unica disponibile per intero: sotto
+    le varianti `*_ar1` la riga di `Lambda_tilde` ha in coda il blocco
+    idiosincratico, che `kalman.build_Lambda_tilde` non ricostruisce (rende
+    (M, 5r), senza `C_idio`).  `P_smooth` viene dallo stesso dizionario, quindi
+    `z` e `sd_z` sono sulla stessa scala.
+    """
+    cols = vintage["cols"]
+    target = target_series or cols[-1]
+    if target not in cols:
+        raise KeyError(f"serie target {target!r} assente dal pannello.")
+    i = cols.index(target)
+
+    target_qe = quarter_end(vintage["target_quarter"])
+    idx = vintage["Y_std_df"].index
+    if target_qe not in idx:
+        raise ValueError(
+            f"il mese di fine trimestre {target_qe.date()} non e' nel pannello "
+            f"(ultimo mese: {idx[-1].date()}).  Il pannello va esteso fino al "
+            f"target: passa `target_quarter` a build_panel."
+        )
+    t = idx.get_loc(target_qe)
+
+    row = np.asarray(Lambda_full, dtype=float)[i, :]
+    z = float(row @ np.asarray(state, dtype=float)[t, :])
+
+    # Incertezza dello stato proiettata sul target.  Sotto le varianti senza
+    # idio_ar1 l'idiosincratico NON e' nello stato, quindi la sua varianza va
+    # aggiunta a mano; sotto *_ar1 e' gia' dentro P_smooth.
+    sd = float("nan")
+    if P_smooth is not None:
+        var = float(row @ np.asarray(P_smooth, dtype=float)[t] @ row)
+        if theta is not None and not _has_idio_state(theta):
+            R = np.asarray(theta["R"], dtype=float).ravel()
+            var += float(R[i])
+        sd = float(np.sqrt(max(var, 0.0)))
+
+    out = scale.unscale(z, float(vintage["mean"][target]), float(vintage["std"][target]))
+    out["sd_z"] = sd
+    out["target_series"] = target
+    return out
+
+
+def _has_idio_state(theta) -> bool:
+    """True se l'idiosincratico e' uno stato AR(1) invece che rumore bianco."""
+    try:
+        return ("rho" in theta) and (theta["rho"] is not None)
+    except TypeError:
+        return False
+
+
+# ─── L'entrata unica ──────────────────────────────────────────────────────────
+
+def nowcast(as_of_date, target_quarter: str, spec: str, variant: str,
+            theta: dict | None = None, theta_warm: dict | None = None,
+            max_iter: int = 250, verbose: bool = False,
+            target_series: str | None = None,
+            panel: pd.DataFrame | None = None,
+            metadata: pd.DataFrame | None = None,
+            exact: pd.DataFrame | None = None) -> dict:
+    """
+    Nowcast del PIL per `target_quarter` con l'informazione nota a `as_of_date`.
+
+    Parameters
+    ----------
+    theta : dict, optional
+        Se dato, i parametri sono CONGELATI a questo valore e si ricalcola solo
+        lo stato (settimana senza ri-stima).  Se None, si stima l'EM.
+    theta_warm : dict, optional
+        Punto di partenza dell'EM quando si stima (il theta del vintage
+        precedente).  Ignorato se `theta` e' dato.
+
+    Returns
+    -------
+    dict
+        `nowcast_bea`     tasso di crescita BEA, %  (l'unita' di lettura)
+        `nowcast_livello` log-differenza annualizzata (l'unita' del pannello)
+        `nowcast_z`       standardizzata (l'unita' del modello)
+        `sd_z`            deviazione dello stato proiettata sul target, in z
+        `theta`           i parametri usati (da riciclare la settimana dopo)
+        + metadati della cella e della stima
+    """
+    v = prepare_vintage(as_of_date, target_quarter, spec, variant,
+                        theta_warm=theta_warm, panel=panel,
+                        metadata=metadata, exact=exact)
+
+    if theta is None:
+        fit = estimate(v, max_iter=max_iter, verbose=verbose)
+        theta_used = fit["theta"]
+        eso = fit["e_step_output"]
+        n_iter, converged, reestimated = int(fit["n_iter"]), bool(fit["converged"]), True
+    else:
+        theta_used = theta
+        eso = filter_only(v, theta_used, verbose=verbose)
+        n_iter, converged, reestimated = 0, True, False
+
+    # STATO, LAMBDA E P DALLO STESSO DIZIONARIO, SEMPRE.  E' l'unico invariante
+    # che tiene in piedi la scala del nowcast: `fit["f_smooth"]` e' CANONICO
+    # mentre `fit["e_step_output"]` e' RAW, e mescolare i due mondi comprime il
+    # nowcast del fattore della Convenzione 1 — silenziosamente, e solo nelle
+    # settimane con ri-stima.  `filter_only` restituisce lo stesso dizionario
+    # nella stessa parametrizzazione, quindi le due branch sono omogenee e una
+    # settimana EM e una congelata sono confrontabili.  Vedi `extract_target`.
+    res = extract_target(v, np.asarray(eso["f_smooth"], dtype=float),
+                         eso["Lambda_tilde"],
+                         P_smooth=eso.get("P_smooth"), theta=theta_used,
+                         target_series=target_series)
+
+    nu_eps = _maybe_float(theta_used, "nu_eps")
     return {
-        "nowcast_livello": nowcast_livello,
-        "nowcast_z": nowcast_z,
+        "as_of": str(pd.Timestamp(as_of_date).date()),
         "target_quarter": target_quarter,
-        "as_of": str(as_of_date),
-        "estimator": estimator,
-        "n_iter": int(fit["n_iter"]),
-        "converged": bool(fit["converged"]),
-        "nu_eps_hat": (nu_eps if estimator == "student_t" else None),
-        "ultimo_gdp_disponibile": gdp_available_through(as_of_date, config_name=config_name),
-        "mean_gdp_train": mean_gdp,
-        "std_gdp_train": std_gdp,
+        "spec": spec,
+        "variant": variant,
+        "target_series": res["target_series"],
+        "nowcast_bea": res["bea"],
+        "nowcast_livello": res["level"],
+        "nowcast_z": res["z"],
+        "sd_z": res["sd_z"],
+        "n_iter": n_iter,
+        "converged": converged,
+        "reestimated": reestimated,
+        "nu_eps_hat": (None if v["gaussian"] else nu_eps),
+        "mean_train": float(v["mean"][res["target_series"]]),
+        "std_train": float(v["std"][res["target_series"]]),
+        "n_obs_panel": int(v["panel"].notna().sum().sum()),
+        "theta": theta_used,
     }
 
 
-__all__ = ["nowcast_gdp"]
+def _maybe_float(theta, key: str):
+    try:
+        val = theta[key]
+    except (KeyError, IndexError, TypeError):
+        return None
+    return None if val is None else float(np.asarray(val).ravel()[0])
 
 
-# ─── Smoke tests ──────────────────────────────────────────────────────────────
-# Run from the project root with:  python -m src.forecast.nowcast_engine
-# Local: real vintages on disk + current processed dataset.  Estimates the full
-# EM per call (minutes), so this exercises only two dates x two estimators.
-
-def _hr(title: str) -> None:
-    print("\n" + "=" * 76)
-    print(title)
-    print("=" * 76)
+__all__ = ["VARIANTS", "SPECS", "prepare_vintage", "estimate", "filter_only",
+           "extract_target", "nowcast"]
 
 
-def _realized_gdp(target_qe: pd.Timestamp) -> float:
-    """Current (revised) realised GDP growth for the target quarter."""
-    cur = pd.read_csv(
-        os.path.join(_SRC_DIR, "..", "data", "processed", "dataset_small.csv"),
-        index_col=0,
-    )
-    cur.index = pd.to_datetime(cur.index)
-    if target_qe in cur.index:
-        return float(cur.loc[target_qe, "GDPC1"])
-    return float("nan")
-
-
-def _run_date(as_of: str, target_quarter: str, scenario: str) -> None:
-    _hr(f"{scenario}:  as_of = {as_of}   target = {target_quarter}")
-    target_qe = _quarter_end(target_quarter)
-
-    res = {}
-    for est in ("student_t", "gaussian"):
-        print(f"\n  estimating DFM ({est}) ...")
-        res[est] = nowcast_gdp(as_of, target_quarter, estimator=est, verbose=False)
-        r = res[est]
-        print(f"    converged = {r['converged']}, n_iter = {r['n_iter']}, "
-              f"last available GDP = "
-              f"{r['ultimo_gdp_disponibile'].date()}")
-        nu_str = f"{r['nu_eps_hat']:.2f}" if r["nu_eps_hat"] is not None else "inf (gaussian)"
-        print(f"    nowcast: livello = {r['nowcast_livello']:+.4f}   "
-              f"z = {r['nowcast_z']:+.4f}   nu_eps_hat = {nu_str}")
-
-    # Scale check: training mean/std of GDP for this vintage (identical across
-    # estimators — depends only on the panel).
-    mean_gdp = res["student_t"]["mean_gdp_train"]
-    std_gdp = res["student_t"]["std_gdp_train"]
-    print(f"\n  training-scale GDP (this vintage): mean = {mean_gdp:+.4f}, "
-          f"std = {std_gdp:.4f}")
-    print(f"    (expected expanding-window std, NOT the full-sample value)")
-
-    realized = _realized_gdp(target_qe)
-    realized_z = (realized - mean_gdp) / std_gdp if std_gdp else float("nan")
-    print(f"\n  realised {target_quarter} (current dataset): "
-          f"livello = {realized:+.4f}   z = {realized_z:+.4f}")
-
-    print("\n  comparison  (nowcast vs realised):")
-    print(f"    {'method':<14}{'livello':>12}{'z':>10}{'err(liv)':>12}{'err(z)':>10}")
-    for est in ("student_t", "gaussian"):
-        r = res[est]
-        print(f"    {est:<14}{r['nowcast_livello']:>12.4f}{r['nowcast_z']:>10.4f}"
-              f"{r['nowcast_livello'] - realized:>12.4f}"
-              f"{r['nowcast_z'] - realized_z:>10.4f}")
-    print(f"    {'realised':<14}{realized:>12.4f}{realized_z:>10.4f}"
-          f"{0.0:>12.4f}{0.0:>10.4f}")
-
+# ─── Verifica ─────────────────────────────────────────────────────────────────
+# Esegui:  python -m src.forecast.nowcast_engine
+# Una stima vera per cella: lento (minuti).  Gira due celle, non quindici.
 
 if __name__ == "__main__":
-    _hr("nowcast_engine.py smoke tests  (DFM only)")
+    def _hr(t: str) -> None:
+        print("\n" + "=" * 78)
+        print(t)
+        print("=" * 78)
 
-    # Crisis quarter: GDP collapses; expect the level to be underestimated
-    # (structural compression of the calm training std) but z to flag the event;
-    # the Student-t may smooth more than the Gaussian (common-extreme down-weight).
-    _run_date("2008-11-15", "2008Q4", "CRISIS")
+    from src.forecast.release_calendar import load_metadata, load_panel
 
-    # Calm quarter: the two estimators should be close.
-    _run_date("2015-05-15", "2015Q2", "CALM")
+    _hr("nowcast_engine.py — una cella, una data")
 
-    _hr("Done.")
+    full, meta = load_panel(), load_metadata()
+    AS_OF, TARGET = "2008-11-14", "2008Q4"
+
+    realised_level = float(full.loc[quarter_end(TARGET), "GDPC1"])
+    realised_bea = float(scale.to_bea(realised_level))
+
+    for spec, variant in (("diag3", "gaussian"), ("fed_overlap", "gaussian")):
+        _hr(f"{spec} / {variant}   as_of={AS_OF}  target={TARGET}")
+        r = nowcast(AS_OF, TARGET, spec, variant, panel=full, metadata=meta,
+                    max_iter=60, verbose=False)
+        print(f"  convergenza    : {r['converged']} (n_iter={r['n_iter']})")
+        print(f"  scala vintage  : mean={r['mean_train']:+.4f}  std={r['std_train']:.4f}")
+        print(f"  nowcast        : z={r['nowcast_z']:+.4f}  "
+              f"livello={r['nowcast_livello']:+.4f} (log ann.)  "
+              f"BEA={r['nowcast_bea']:+.4f}%")
+        print(f"  realizzato     : livello={realised_level:+.4f}  BEA={realised_bea:+.4f}%")
+        print(f"  errore (BEA)   : {r['nowcast_bea'] - realised_bea:+.4f} punti")
+
+        # Il riciclo dei parametri: stessa cella, settimana dopo, theta congelato.
+        r2 = nowcast("2008-11-21", TARGET, spec, variant, theta=r["theta"],
+                     panel=full, metadata=meta)
+        print(f"  settimana dopo (theta congelato): BEA={r2['nowcast_bea']:+.4f}%  "
+              f"(mosso di {r2['nowcast_bea'] - r['nowcast_bea']:+.4f} coi dati nuovi)")
+
+    _hr("Fatto.")

@@ -1,5 +1,5 @@
 """
-src/em_m_step.py
+src/em/em_m_step.py
 
 Student-t M-step machinery for the mixed-frequency Dynamic Factor Model.
 
@@ -38,6 +38,19 @@ TASK 2 — block-restricted, mixed-frequency Lambda update  (this file):
     regressor of its economic block (f^k_t for monthly series, the MM
     composite phi^k_t for quarterly series).
 
+TASK 3 — factor-block update  (this file):
+  - update_A_Q(P00, P10, P11, T_eff)
+      -> (A_new, Q_new).  Sequential ECM closed form: A^(j+1) = P10 (P00)^{-1},
+    then Q^(j+1) = (P11 - A^(j+1) P10') / T_eff evaluated at the new A.
+
+TASK 4 — idiosyncratic scale update  (this file):
+  - update_R(Y, f_smooth, P_smooth, Lambda_new, w_eps, W_list,
+             block_map, freq_list, ordered_cols, r)
+      -> R_new (M,): per-series weighted residual variance at Lambda^(j+1).
+    Under ASSE B (idio AR(1) in the state, see :mod:`em.idio_ar1`) R is
+    replaced by the pair (rho, sigma^2) estimated from the posterior
+    idiosyncratic moments; with rho = 0 the two coincide exactly.
+
 TASK 5 — degrees-of-freedom update via Brent root-finding  (this file):
   - update_nu(w_bar, log_w_bar, nu_bounds=(2.1, 200.0))
       -> nu_new (float).  Identical functional form for nu_u and
@@ -62,6 +75,11 @@ TASK 6 — high-level M-step wrapper  (this file):
 import numpy as np
 from scipy.optimize import brentq
 from scipy.special import digamma
+
+try:  # package (from em.em_m_step) o script (python src/em/em_m_step.py)
+    from em.factor_structure import as_structure
+except ModuleNotFoundError:  # pragma: no cover
+    from factor_structure import as_structure
 
 
 # ─── 1. Weighted second moments of the monthly factors ───────────────────────
@@ -258,8 +276,9 @@ def compute_weighted_moments(
     ``range(1, T)``.  Vectorising over t would require pre-extracting
     three (T, r) means and three (T, r, r) covariance blocks via fancy
     indexing, then summing with ``np.einsum``.  This is left as a
-    future optimisation: T = 497 here, so the loop runs in a few
-    milliseconds and the readable form is preferred.
+    future optimisation: T is a few hundred months on these panels, so
+    the loop runs in a few milliseconds and the readable form is
+    preferred.
     """
     T = f_smooth.shape[0]
 
@@ -289,17 +308,55 @@ def compute_weighted_moments(
 
 # ─── 2. Block-restricted, mixed-frequency Lambda update ──────────────────────
 
-# Canonical block ordering used throughout the project.  Must match the
-# convention set by ``em_initialization.pca_initialization`` and
-# ``em_initialization.compute_theta_initial``: column j of every factor
-# matrix corresponds to the block at position j of this list.
-_BLOCK_ORDER: list[str] = ["real", "financial", "other"]
-_BLOCK_TO_COL: dict[str, int] = {b: j for j, b in enumerate(_BLOCK_ORDER)}
-
 # Mariano-Murasawa aggregation weights c_l for l = 0, ..., 4.
 # Applied to (f^k_t, f^k_{t-1}, f^k_{t-2}, f^k_{t-3}, f^k_{t-4}) to form the
 # composite regressor phi^k_t used in the quarterly observation equation.
 _MM_WEIGHTS: np.ndarray = np.array([1.0 / 3.0, 2.0 / 3.0, 1.0, 2.0 / 3.0, 1.0 / 3.0])
+
+
+def _effective_regressor_moments(
+    f_obs: np.ndarray,
+    P_obs: np.ndarray,
+    cols_i: np.ndarray,
+    freq: str,
+    r: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    r"""
+    Momenti posteriori del regressore effettivo g_t per una riga di Lambda,
+    mask-driven. Condiviso da update_Lambda e update_R.
+
+    Per ogni fattore attivo j in ``cols_i`` la componente g^j_t e' una
+    combinazione lineare a_j' tilde_f_t dello stato aumentato:
+      * monthly   -> a_j = e_j            (fattore contemporaneo f^j_t),
+      * quarterly -> a_j = MM-weights sui 5 lag [j, r+j, 2r+j, 3r+j, 4r+j]
+                     (regressore composito phi^j_t).
+
+    Con A = [a_{j1}; a_{j2}; ...] (k x 5r):
+        E[g_t]     = A tilde_f_{t|T}
+        Cov(g_t)   = A tilde_P_{t|T} A'
+    da cui E[g g'] = Cov + E[g]E[g]'. Le CROSS-covarianze tra fattori attivi
+    (off-diagonali di Cov) sono cio' che rende non-diagonale il caso overlap.
+
+    Returns
+    -------
+    G   : (n_obs, k)      E[g_t | Y] per i tempi osservati.
+    Cov : (n_obs, k, k)   Cov(g_t | Y).
+    """
+    dim = f_obs.shape[1]
+    k = len(cols_i)
+    A = np.zeros((k, dim))
+    for a, j in enumerate(cols_i):
+        j = int(j)
+        if freq == "monthly":
+            A[a, j] = 1.0
+        elif freq == "quarterly":
+            idx = np.array([l * r + j for l in range(5)])
+            A[a, idx] = _MM_WEIGHTS
+        else:
+            raise ValueError(f"freq '{freq}' ignota; atteso 'monthly'/'quarterly'.")
+    G = f_obs @ A.T                                   # (n_obs, k)
+    Cov = np.einsum("ap,npq,bq->nab", A, P_obs, A)    # (n_obs, k, k)
+    return G, Cov
 
 
 def update_Lambda(
@@ -308,13 +365,13 @@ def update_Lambda(
     P_smooth: np.ndarray,
     w_eps: np.ndarray,
     W_list: list[np.ndarray],
-    block_map: dict[str, str],
+    structure,
     freq_list: list[str],
     ordered_cols: list[str],
     r: int,
 ) -> np.ndarray:
     r"""
-    Block-restricted, mixed-frequency M-step update of the loading matrix
+    Mask-driven, mixed-frequency M-step update of the loading matrix
     :math:`\mathbf{\Lambda}` (monthly + quarterly rows in a single pass).
 
     Each row of :math:`\mathbf{\Lambda}` is updated independently as a
@@ -397,29 +454,28 @@ def update_Lambda(
         the NaN pattern of ``Y`` directly (equivalent to projecting
         ``W_t`` onto column i and dropping zero rows), which is the
         more natural primitive for the row-by-row update.
-    block_map : dict[str, str]
-        Maps each series name to its economic block:
-        ``"real"``, ``"financial"``, or ``"other"``.  Typically
-        :data:`data_loader.BLOCK`.
+    structure : FactorStructure | dict[str, str]
+        Struttura di fattore (loading mask). Determina, per ogni serie, su
+        quali fattori puo' caricare. Un dict serie->blocco viene adattato a una
+        struttura DIAGONALE via ``as_structure``.
+        Con una colonna attiva per riga -> scalar OLS; con piu' colonne
+        (globale+locale) -> OLS multivariato di riga.
     freq_list : list[str], length M
         Frequency tag (``"monthly"`` or ``"quarterly"``) of each
         series, *in the same order as the columns of* ``Y``
         (i.e. aligned with ``ordered_cols``).
     ordered_cols : list[str], length M
-        Series names in the order of the columns of ``Y``.  Used
-        together with ``block_map`` to map each row of Y to its
-        block, and hence to the single column of Lambda that is
-        allowed to be non-zero.
+        Series names in the order of the columns of ``Y``.  Righe della mask.
     r : int
-        Number of monthly latent factors (= number of blocks = 3 in
-        this project).
+        Numero di fattori latenti mensili (= numero di colonne della mask).
 
     Returns
     -------
     Lambda_new : np.ndarray, shape (M, r)
-        Updated loading matrix.  By construction, row i has at most one
-        non-zero entry, at column ``j = _BLOCK_TO_COL[block_map[ordered_cols[i]]]``;
-        all other columns of row i are exactly zero.  No NaN, no inf.
+        Updated loading matrix. Row i ha entrate non-nulle SOLO nelle colonne
+        attive della sua riga di mask (``structure.factors_of_series(i)``): una
+        sola (diagonale) o piu' (globale+locale). Le altre colonne sono
+        esattamente zero. No NaN, no inf.
 
     Notes
     -----
@@ -502,7 +558,8 @@ def update_Lambda(
     **Time set :math:`\mathcal{T}_i` and missing data.**
     The observation set of each row is the set of times at which the
     corresponding entry of ``Y`` is non-NaN.  For monthly series this
-    excludes the ragged edge; for the quarterly series (GDPC1) this
+    excludes the ragged edge; for le serie trimestrali (GDPC1, GDI,
+    ULCNFB) this
     automatically restricts the sums to quarter-end months *that have
     been released* (Q3 2025 ragged edge in the May 2026 vintage is
     naturally excluded).  The selection matrix :math:`\mathbf{W}_t`
@@ -541,93 +598,57 @@ def update_Lambda(
             f"freq_list has length {len(freq_list)} but Y has {M} columns."
         )
 
+    fs = as_structure(structure, ordered_cols)
+    if fs.r != r:
+        raise ValueError(f"structure ha r={fs.r} ma f_smooth implica r={r}.")
+
     Lambda_new = np.zeros((M, r))
-
-    # Pre-build the augmented-state indices [j, r+j, 2r+j, 3r+j, 4r+j] for each
-    # block column j.  This is the index pattern that extracts the j-th block-
-    # factor across the five lags of the augmented state.
-    quarterly_indices: dict[int, np.ndarray] = {
-        j: np.array([l * r + j for l in range(5)]) for j in range(r)
-    }
-
-    eps_denom = 1e-12   # safety tolerance against degenerate sums
+    eps_denom = 1e-12   # tolleranza contro somme degeneri
 
     for i in range(M):
-        col   = ordered_cols[i]
-        block = block_map[col]
-        if block not in _BLOCK_TO_COL:
-            raise KeyError(
-                f"Series '{col}' has unknown block '{block}'. "
-                f"Expected one of {_BLOCK_ORDER}."
-            )
-        j = _BLOCK_TO_COL[block]
-        freq = freq_list[i]
+        cols_i = fs.factors_of_series(i)     # colonne attive della mask (>=1)
+        freq   = freq_list[i]
 
-        # T_i = set of times at which series i is observed (Y[t, i] not NaN).
-        # For monthly series this excludes the ragged edge; for the quarterly
-        # series this is naturally only the released quarter-end months.
-        obs_mask = ~np.isnan(Y[:, i])
-        obs_t    = np.where(obs_mask)[0]
-
+        # T_i = tempi in cui la serie i e' osservata (Y[t, i] non NaN).
+        obs_t = np.where(~np.isnan(Y[:, i]))[0]
         if obs_t.size == 0:
-            # No observed entries — leave Lambda[i, j] = 0 (degenerate; would
-            # mean the series carries no information about the loading).
-            continue
+            continue                          # nessuna info -> riga resta 0
 
-        y_i  = Y[obs_t, i]            # (n_obs,)
-        w_i  = w_eps[obs_t]           # (n_obs,)  posterior weights
+        y_i = Y[obs_t, i]                     # (n_obs,)
+        # w_eps puo' essere (T,) — peso condiviso — oppure (T, M) — pesi
+        # per-serie (formulazione del .tex, usata sotto idio AR(1)).  In
+        # entrambi i casi la riga i vuole un vettore (n_obs,).
+        w_i = (w_eps[obs_t, i] if np.ndim(w_eps) == 2
+               else w_eps[obs_t])             # (n_obs,) pesi posteriori
 
-        if freq == "monthly":
-            # Regressor: contemporaneous block-factor f^k_t.
-            # E[f^k_t | Y]       = f_smooth[t, j]
-            # E[(f^k_t)^2 | Y]   = P_smooth[t, j, j] + f_smooth[t, j]^2
-            E_f  = f_smooth[obs_t, j]                # (n_obs,)
-            V_f  = P_smooth[obs_t, j, j]             # (n_obs,)
-            E_f2 = V_f + E_f ** 2                    # (n_obs,)
+        # Regressore effettivo g_t: una componente per fattore attivo
+        # (contemporaneo se mensile, composito MM se trimestrale).
+        G, Cov = _effective_regressor_moments(
+            f_smooth[obs_t], P_smooth[obs_t], cols_i, freq, r)
 
-            num = float(np.sum(w_i * y_i * E_f))
-            den = float(np.sum(w_i * E_f2))
+        # OLS pesato multivariato:  Lambda_{i,J} = S_gg^{-1} S_yg
+        #   S_gg = sum_t w_t E[g_t g_t'] = sum_t w_t (Cov_t + E[g_t]E[g_t]')
+        #   S_yg = sum_t w_t y_{i,t} E[g_t]
+        E_gg = Cov + G[:, :, None] * G[:, None, :]        # (n_obs, k, k)
+        S_gg = np.einsum("n,nab->ab", w_i, E_gg)          # (k, k)
+        S_yg = np.einsum("n,n,na->a", w_i, y_i, G)        # (k,)
 
-        elif freq == "quarterly":
-            # Regressor: MM composite block-factor phi^k_t.
-            # Extract the 5 lagged block-factors from the augmented state.
-            idx = quarterly_indices[j]               # (5,)
-
-            # Means: (n_obs, 5) -> (n_obs,) via mm-weighted sum
-            f_block = f_smooth[obs_t][:, idx]        # (n_obs, 5)
-            E_phi   = f_block @ _MM_WEIGHTS          # (n_obs,)
-
-            # Covariance sub-matrices: (n_obs, 5, 5) -> (n_obs,) via c' P c
-            # P_block[t] = P_smooth[obs_t[t]][np.ix_(idx, idx)]  (read out as
-            # a 3-D advanced-indexing slice over the observed times).
-            P_block = P_smooth[
-                obs_t[:, None, None],
-                idx[None, :, None],
-                idx[None, None, :],
-            ]                                         # (n_obs, 5, 5)
-            V_phi   = np.einsum(
-                "s,nsl,l->n", _MM_WEIGHTS, P_block, _MM_WEIGHTS
-            )                                         # (n_obs,)
-            E_phi2  = V_phi + E_phi ** 2              # (n_obs,)
-
-            num = float(np.sum(w_i * y_i * E_phi))
-            den = float(np.sum(w_i * E_phi2))
-
+        if cols_i.size == 1:
+            # caso diagonale: scalar OLS
+            den = float(S_gg[0, 0])
+            if abs(den) < eps_denom:
+                raise RuntimeError(
+                    f"Denominatore degenere per la serie '{ordered_cols[i]}' "
+                    f"(freq '{freq}'): {den:.3e}.")
+            Lambda_new[i, int(cols_i[0])] = float(S_yg[0]) / den
         else:
-            raise ValueError(
-                f"Series '{col}' has unknown freq '{freq}'. "
-                "Expected 'monthly' or 'quarterly'."
-            )
-
-        if abs(den) < eps_denom:
-            raise RuntimeError(
-                f"Degenerate denominator for series '{col}' (block '{block}', "
-                f"freq '{freq}'): sum = {den:.3e}.  The block-factor appears "
-                f"to be (nearly) zero across the observation set, or all "
-                f"posterior weights vanish."
-            )
-
-        Lambda_new[i, j] = num / den
+            # caso non-diagonale (globale+locale): OLS multivariato k x k
+            if np.linalg.cond(S_gg) > 1e12:
+                raise RuntimeError(
+                    f"S_gg mal condizionata per la serie '{ordered_cols[i]}' "
+                    f"(fattori {cols_i.tolist()}): i fattori attivi sono quasi "
+                    f"collineari sul set osservato.")
+            Lambda_new[i, cols_i] = np.linalg.solve(S_gg, S_yg)
 
     return Lambda_new
 
@@ -932,7 +953,7 @@ def update_R(
     Lambda_new: np.ndarray,
     w_eps: np.ndarray,
     W_list: list[np.ndarray],
-    block_map: dict[str, str],
+    structure,
     freq_list: list[str],
     ordered_cols: list[str],
     r: int,
@@ -1015,12 +1036,10 @@ def update_R(
         :math:`\phi^k_t`.
     Lambda_new : np.ndarray, shape (M, r)
         Updated loading matrix :math:`\mathbf{\Lambda}^{(j+1)}` from
-        :func:`update_Lambda`.  Block-diagonal by construction: row
-        ``i`` has at most one non-zero entry, at column
-        ``j = _BLOCK_TO_COL[block_map[ordered_cols[i]]]``.  *Must*
-        be the updated value, not :math:`\mathbf{\Lambda}^{(j)}` —
-        this is the defining feature of sequential conditional
-        maximisation (thesis line ~5608).
+        :func:`update_Lambda`. Riga ``i`` ha entrate non-nulle solo nelle
+        colonne attive della mask. *Must* be the updated value, not
+        :math:`\mathbf{\Lambda}^{(j)}` — defining feature of sequential
+        conditional maximisation (thesis line ~5608).
     w_eps : np.ndarray, shape (T,)
         Posterior mean of the idiosyncratic Student-t weights
         :math:`\hat{w}^\varepsilon_t` from the converged inner ECM
@@ -1033,9 +1052,10 @@ def update_R(
         Selection matrices kept for API consistency with the E-step;
         the row-by-row primitive used here reads the observation
         sets directly from ``np.isnan(Y[:, i])``.
-    block_map : dict[str, str]
-        Maps each series name to its economic block
-        (``"real"``, ``"financial"``, ``"other"``).
+    structure : FactorStructure | dict[str, str]
+        Struttura di fattore (loading mask); un dict serie->blocco viene
+        adattato a diagonale via ``as_structure``. Determina le colonne
+        attive di ogni riga per il calcolo del residuo.
     freq_list : list[str], length M
         Frequency tag (``"monthly"`` or ``"quarterly"``) of each
         series, aligned with ``ordered_cols`` and the columns of Y.
@@ -1117,7 +1137,8 @@ def update_R(
     (Banbura-Modugno 2014 §3.2).
 
     **Composite regressor for quarterly series.**
-    For the (unique, in this project) quarterly row GDPC1, the
+    For OGNI riga trimestrale (nel dataset final sono tre: GDPC1, GDI,
+    ULCNFB — non e' cablata a una sola), il
     regressor :math:`f^k_t` is replaced by the MM composite
     :math:`\phi^k_t`.  Its posterior moments are read off the
     augmented smoothed state at the *same* time index t (no recourse
@@ -1214,92 +1235,48 @@ def update_R(
             f"freq_list has length {len(freq_list)} but Y has {M} columns."
         )
 
+    fs = as_structure(structure, ordered_cols)
+    if fs.r != r:
+        raise ValueError(f"structure ha r={fs.r} ma f_smooth implica r={r}.")
+
     R_new = np.zeros(M)
-
-    # Same augmented-state lag indices used in update_Lambda for the
-    # quarterly composite regressor phi^k_t.
-    quarterly_indices: dict[int, np.ndarray] = {
-        j: np.array([l * r + j for l in range(5)]) for j in range(r)
-    }
-
-    eps_r = 1e-12   # safety tolerance for the positivity check
+    eps_r = 1e-12   # tolleranza per il controllo di positivita'
 
     for i in range(M):
-        col   = ordered_cols[i]
-        block = block_map[col]
-        if block not in _BLOCK_TO_COL:
-            raise KeyError(
-                f"Series '{col}' has unknown block '{block}'. "
-                f"Expected one of {_BLOCK_ORDER}."
-            )
-        j     = _BLOCK_TO_COL[block]
-        freq  = freq_list[i]
-        lam   = float(Lambda_new[i, j])     # scalar loading (block restriction)
-        lam2  = lam * lam
+        cols_i = fs.factors_of_series(i)     # colonne attive della mask
+        freq   = freq_list[i]
 
-        # T_i  = set of times at which series i is observed.
-        obs_mask = ~np.isnan(Y[:, i])
-        obs_t    = np.where(obs_mask)[0]
-        n_obs    = obs_t.size
+        obs_t = np.where(~np.isnan(Y[:, i]))[0]
+        n_obs = obs_t.size
 
         if n_obs == 0:
-            # All-NaN series (e.g. WPSFD49207 before 2016-03 in the big config).
-            # update_Lambda already set lambda[i,:] = 0 via its own n_obs==0 branch,
-            # so this series carries no information in the current vintage.
-            # Keep r_i = 1.0 (unit variance of the standardised data) as a
-            # neutral placeholder; the Kalman filter ignores it when Y[:,i] is all NaN.
+            # Serie tutta-NaN nel vintage: update_Lambda ha gia' lasciato la riga
+            # a 0; r_i = 1.0 (varianza unitaria dello standardizzato) come neutro.
             R_new[i] = 1.0
             continue
 
-        y_i = Y[obs_t, i]                   # (n_obs,)
-        w_i = w_eps[obs_t]                  # (n_obs,)
+        y_i = Y[obs_t, i]                    # (n_obs,)
+        w_i = (w_eps[obs_t, i] if np.ndim(w_eps) == 2
+               else w_eps[obs_t])            # (n_obs,)  vedi update_Lambda
+        lam = Lambda_new[i, cols_i]          # (k,) loadings attivi
 
-        if freq == "monthly":
-            # Regressor: contemporaneous block-factor f^k_t.
-            E_f  = f_smooth[obs_t, j]                   # (n_obs,)
-            V_f  = P_smooth[obs_t, j, j]                # (n_obs,)
+        # Regressore effettivo g_t (come in update_Lambda) e residuo
+        #   e_{i,t} = y_{i,t} - sum_{j in J} Lambda_{ij} g^j_t.
+        #   E[e^2 | Y] = (y - Lambda . E[g])^2 + Lambda' Cov(g) Lambda.
+        G, Cov = _effective_regressor_moments(
+            f_smooth[obs_t], P_smooth[obs_t], cols_i, freq, r)
+        resid_point = y_i - G @ lam                          # (n_obs,)
+        quad = np.einsum("a,nab,b->n", lam, Cov, lam)        # (n_obs,)
+        E_resid2 = resid_point ** 2 + quad
 
-            # Point residual at the posterior mean of f^k_t.
-            resid_point = y_i - lam * E_f               # (n_obs,)
-
-            # E[(y - lam f)^2 | Y] = resid_point^2 + lam^2 * Var(f^k_t | Y).
-            E_resid2 = resid_point ** 2 + lam2 * V_f    # (n_obs,)
-
-        elif freq == "quarterly":
-            # Regressor: MM composite block-factor phi^k_t.
-            idx = quarterly_indices[j]                  # (5,)
-
-            f_block = f_smooth[obs_t][:, idx]           # (n_obs, 5)
-            E_phi   = f_block @ _MM_WEIGHTS             # (n_obs,)
-
-            P_block = P_smooth[
-                obs_t[:, None, None],
-                idx[None, :, None],
-                idx[None, None, :],
-            ]                                            # (n_obs, 5, 5)
-            V_phi   = np.einsum(
-                "s,nsl,l->n", _MM_WEIGHTS, P_block, _MM_WEIGHTS
-            )                                            # (n_obs,)
-
-            resid_point = y_i - lam * E_phi              # (n_obs,)
-            E_resid2    = resid_point ** 2 + lam2 * V_phi
-
-        else:
-            raise ValueError(
-                f"Series '{col}' has unknown freq '{freq}'. "
-                "Expected 'monthly' or 'quarterly'."
-            )
-
-        # r_i = (1/|T_i|) * sum_{t in T_i} w_eps[t] * E[resid^2 | Y].
+        # r_i = (1/|T_i|) sum_{t in T_i} w_eps[t] E[e^2 | Y].
         r_i = float(np.sum(w_i * E_resid2)) / float(n_obs)
 
         if r_i <= eps_r:
             raise RuntimeError(
-                f"Degenerate idiosyncratic variance for series '{col}' "
-                f"(block '{block}', freq '{freq}'): r_i = {r_i:.3e}. "
-                f"The residual is essentially zero across the observation "
-                f"set — implausible for macro data, inspect Lambda_new[i, j]."
-            )
+                f"Varianza idiosincratica degenere per la serie '{ordered_cols[i]}' "
+                f"(freq '{freq}'): r_i = {r_i:.3e}. Residuo quasi nullo sul set "
+                f"osservato — implausibile per dati macro, controlla Lambda_new[i].")
 
         R_new[i] = r_i
 
@@ -1507,8 +1484,8 @@ def update_nu(
     log-mean (``log_w_u[0] = psi(nu_u/2) - log(nu_u/2)``) by the
     E-step convention, since :math:`d_u[0]` is undefined (no
     :math:`f_{-1}`).  These boundary values are included in the
-    averages by the caller in this self-test (one period out of
-    :math:`T = 497`; the effect on :math:`\nu^{(j+1)}` is negligible).
+    averages by the caller in this self-test (one period out of several
+    hundred; the effect on :math:`\nu^{(j+1)}` is negligible).
     The thesis sums (line ~6405) run from :math:`t = 1` to :math:`T`,
     consistent with including this prior term.
 
@@ -1653,13 +1630,12 @@ def run_m_step(
         ``[FREQ[c] for c in ordered_cols]`` using the canonical
         ``ORDERED_COLS`` and ``FREQ`` mapping from
         :mod:`data_loader`.
-    block_map : dict[str, str], optional
-        Maps each series name to its economic block
-        (``"real"``, ``"financial"``, ``"other"``).  Defaults to
-        :data:`data_loader.BLOCK`.
-    ordered_cols : list[str], length M, optional
-        Series names in the order of the columns of ``Y``.  Defaults to
-        :data:`data_loader.ORDERED_COLS`.
+    block_map : FactorStructure or dict[str, str]
+        Struttura di fattore (mask M x r da
+        :func:`factor_structure.build_loading_mask`, oppure una mappa
+        serie -> blocco adattata a struttura diagonale).  Obbligatorio.
+    ordered_cols : list[str], length M
+        Series names in the order of the columns of ``Y``.  Obbligatorio.
     freeze_nu_iters : int, default 0
         Number of outer EM iterations during which the two
         degrees-of-freedom parameters are *not* updated and instead
@@ -1811,8 +1787,8 @@ def run_m_step(
     matches the row-by-row update form).  We therefore rebuild
     ``W_list`` at runtime from the NaN pattern of ``Y`` if it is not
     carried inside ``e_step_output``; this is a few-millisecond
-    operation at :math:`T = 497` and avoids forcing the E-step to
-    serialise a list of 497 small matrices.
+    operation at these panel lengths and avoids forcing the E-step to
+    serialise a list of `T` small matrices.
 
     Examples
     --------
@@ -1820,18 +1796,16 @@ def run_m_step(
     >>> theta1  = run_m_step(Y, estep, theta_old=theta)
     >>> # one full outer EM iteration is now (E + M).
     """
-    # ── Lazy defaults from data_loader.  Keeping these optional ensures
-    #    that run_m_step can be exercised in isolation in a unit test that
-    #    fabricates synthetic block / freq metadata, while in production the
-    #    caller almost always wants the project-canonical mapping. ─────────
-    if (block_map is None) or (freq_list is None) or (ordered_cols is None):
-        from data_loader import BLOCK, FREQ, ORDERED_COLS
-        if ordered_cols is None:
-            ordered_cols = ORDERED_COLS
-        if block_map is None:
-            block_map = BLOCK
-        if freq_list is None:
-            freq_list = [FREQ[c] for c in ordered_cols]
+    # ── Nessun default implicito: la descrizione del pannello va passata dal
+    #    chiamante (vedi run_em).  Un test che vuole metadati sintetici li
+    #    fabbrica e li passa esplicitamente. ────────────────────────────────
+    _missing = [n for n, v in (("freq_list", freq_list), ("block_map", block_map),
+                               ("ordered_cols", ordered_cols)) if v is None]
+    if _missing:
+        raise ValueError(
+            f"run_m_step: argomenti obbligatori mancanti: {_missing}. "
+            f"Passa ordered_cols, freq_list e block_map (FactorStructure o dict)."
+        )
 
     # ── Extract per-period posterior moments from the E-step output ──────
     f_smooth  = e_step_output["f_smooth"]
@@ -1851,12 +1825,39 @@ def run_m_step(
         W_list = build_all_selection_matrices(Y)
 
     T = Y.shape[0]
-    r = f_smooth.shape[1] // 5
-    if 5 * r != f_smooth.shape[1]:
-        raise ValueError(
-            f"f_smooth has {f_smooth.shape[1]} columns; expected a multiple "
-            f"of 5 (augmented state dimension 5r).  r inferred = {r}."
+
+    # ── ASSE B: idiosincratico AR(1) nello stato? ────────────────────────────
+    # Se attivo, lo stato e' [f_tilde (5r) | e (n_e)] e la larghezza di
+    # f_smooth NON e' piu' 5r: r si legge da A, e i blocchi vanno separati.
+    idio_ar1 = ("rho" in theta_old) and (theta_old["rho"] is not None)
+    if idio_ar1:
+        r = int(np.asarray(theta_old["A"]).shape[0])
+        d_f = 5 * r
+        from em.idio_ar1 import (  # noqa: PLC0415
+            build_idio_layout, extract_idio_moments,
+            update_rho as _update_rho, update_sigma2 as _update_sigma2,
         )
+        _layout = build_idio_layout(freq_list)
+        if f_smooth.shape[1] != d_f + _layout.n_e:
+            raise ValueError(
+                f"idio AR(1) attivo ma f_smooth ha {f_smooth.shape[1]} colonne; "
+                f"attese {d_f} + {_layout.n_e} = {d_f + _layout.n_e}."
+            )
+        # I momenti idiosincratici servono PRIMA di restringere ai fattori.
+        _idio_mom = extract_idio_moments(f_smooth, P_smooth, P_lag, _layout, d_f)
+        # Da qui in poi gli update dei fattori vedono solo il loro blocco:
+        # update_Lambda / update_A_Q sono scritti per uno stato 5r e restano
+        # invariati — l'Asse B non li tocca.
+        f_smooth = f_smooth[:, :d_f]
+        P_smooth = P_smooth[:, :d_f, :d_f]
+        P_lag = P_lag[:, :d_f, :d_f]
+    else:
+        r = f_smooth.shape[1] // 5
+        if 5 * r != f_smooth.shape[1]:
+            raise ValueError(
+                f"f_smooth has {f_smooth.shape[1]} columns; expected a multiple "
+                f"of 5 (augmented state dimension 5r).  r inferred = {r}."
+            )
 
     # ── 1. Observation pair (sequential: Lambda first, then R at new Lambda)
     #    -- See "Observation pair" in the docstring above. --
@@ -1866,23 +1867,44 @@ def run_m_step(
         P_smooth=P_smooth,
         w_eps=w_eps,
         W_list=W_list,
-        block_map=block_map,
+        structure=block_map,             # FactorStructure (o dict serie->blocco via as_structure)
         freq_list=freq_list,
         ordered_cols=ordered_cols,
         r=r,
     )
-    R_new = update_R(
-        Y=Y,
-        f_smooth=f_smooth,
-        P_smooth=P_smooth,
-        Lambda_new=Lambda_new,           # uses Lambda^(j+1), not Lambda^(j)
-        w_eps=w_eps,
-        W_list=W_list,
-        block_map=block_map,
-        freq_list=freq_list,
-        ordered_cols=ordered_cols,
-        r=r,
-    )
+    if idio_ar1:
+        # ASSE B — l'idiosincratico e' nello stato, non nell'osservazione.
+        #
+        # `update_R` stimerebbe la varianza del residuo di OSSERVAZIONE, che
+        # qui e' (quasi) zero per costruzione: R_tilde -> 0. I due parametri
+        # idiosincratici si stimano invece dai momenti posteriori di eps:
+        #
+        #   rho_i     = OLS pesato di E[eps_t eps_{t-1}] su E[eps_{t-1}^2]
+        #   sigma_i^2 = varianza pesata dell'innovazione FRESCA
+        #               E[(eps_t - rho_i eps_{t-1})^2]
+        #
+        # Ordine sequenziale come per (Lambda, R) e (A, Q): prima rho, poi
+        # sigma^2 valutata al rho NUOVO.
+        rho_new = _update_rho(_idio_mom, w_eps)
+        sigma2_new = _update_sigma2(_idio_mom, rho_new, w_eps)
+        # 'R' resta il nome del parametro di scala idiosincratica: nel modello
+        # esteso e' la varianza dell'innovazione fresca (con rho=0 le due
+        # definizioni coincidono, ed e' il nesting esatto del baseline).
+        R_new = sigma2_new
+    else:
+        rho_new = None
+        R_new = update_R(
+            Y=Y,
+            f_smooth=f_smooth,
+            P_smooth=P_smooth,
+            Lambda_new=Lambda_new,       # uses Lambda^(j+1), not Lambda^(j)
+            w_eps=w_eps,
+            W_list=W_list,
+            structure=block_map,         # FactorStructure (o dict serie->blocco via as_structure)
+            freq_list=freq_list,
+            ordered_cols=ordered_cols,
+            r=r,
+        )
 
     # ── 2. Transition pair (sequential: A first, then Q at new A) ─────────
     #    The number of transitions actually summed in compute_weighted_moments
@@ -1919,7 +1941,7 @@ def run_m_step(
         # The boundary entries at t = 0 (w_u[0] = 1.0 = prior mean,
         # log_w_u[0] = psi(nu_u/2) - log(nu_u/2)) are included in the
         # mean — this is consistent with the thesis sum at riga ~6405 and
-        # has negligible numerical effect (1 period out of T = 497).
+        # has negligible numerical effect (1 period out of T).
         w_u_bar       = float(np.mean(w_u))
         log_w_u_bar   = float(np.mean(log_w_u))
         w_eps_bar     = float(np.mean(w_eps))
@@ -1946,6 +1968,9 @@ def run_m_step(
     theta_new["nu_u"]    = nu_u_new
     theta_new["nu_eps"]  = nu_eps_new
     theta_new["Sigma_0"] = Sigma_0_new
+    if idio_ar1:
+        theta_new["rho"] = rho_new
+        theta_new["sigma2"] = sigma2_new
 
     # Propagate the latest E-step weights / smoothed factors into the
     # auxiliary keys carried by theta_initial.npz, when present.  These
@@ -1967,53 +1992,46 @@ def run_m_step(
 # ─── Self-test ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    # ─────────────────────────────────────────────────────────────────────────
+    # Self-test dell'M-step, parametrico sulla struttura di fattore.
+    #
+    #     python -m em.em_m_step --spec fed_overlap
+    #     python -m em.em_m_step --spec diag4
+    #     python -m em.em_m_step --spec diag3
+    #
+    # Ogni riferimento a una colonna-fattore passa dalla MASK
+    # (`fs.factors_of_series(i)`), mai da una mappa blocco->colonna cablata:
+    # cosi' il test vale identico per le spec diagonali (1 entrata per riga) e
+    # per fed_overlap (globale + locale, 2 entrate per riga).
+    # ─────────────────────────────────────────────────────────────────────────
     import pathlib
     import sys
 
     import pandas as pd
 
-    # ── parse config flag ─────────────────────────────────────────────────────
     _src_dir = str(pathlib.Path(__file__).resolve().parent.parent)
     if _src_dir not in sys.path:
         sys.path.insert(0, _src_dir)
-    from config_utils import parse_config_args, resolve_output_path, get_project_root
 
-    _args = parse_config_args("em_m_step self-test — M-step parameter updates.")
-    _cfg  = _args.config
+    from em.em_e_step import run_e_step                             # noqa: E402
+    from kalman import build_all_selection_matrices                 # noqa: E402
+    from em.selftest_fixture import parse_spec_args, load_fixture    # noqa: E402
 
-    # ── Locate project root & make sibling modules importable ────────────────
-    project_root = get_project_root()
-    src_dir = project_root / "src"
-    if str(src_dir) not in sys.path:
-        sys.path.insert(0, str(src_dir))
+    _args = parse_spec_args("em_m_step self-test — aggiornamenti dei parametri.")
+    fx = load_fixture(_args.spec)
+    fs = fx.structure
 
-    from data_loader       import load_config as _dl_load_config  # noqa: E402
-    from em.em_e_step         import run_e_step                      # noqa: E402
-    from em.em_initialization import load_standardized_data          # noqa: E402
-    from kalman            import build_all_selection_matrices     # noqa: E402
+    print("=" * 70)
+    print(fx.describe())
+    print("=" * 70)
 
-    _cfg_dict    = _dl_load_config(_cfg)
-    BLOCK        = _cfg_dict["BLOCK"]
-    FREQ         = _cfg_dict["FREQ"]
-    ORDERED_COLS = _cfg_dict["ORDERED_COLS"]
-
-    npz_path  = resolve_output_path("processed", "theta_initial.npz", _cfg)
-    csv_path  = resolve_output_path("dataset", "", _cfg)
-    meta_path = resolve_output_path("processed", "theta_initial_metadata.json", _cfg)
-
-    print(f"Loading theta^(0) from: {npz_path}")
-    theta = np.load(npz_path)
-
-    # Y is loaded *standardised*, NaN preserved.
-    Y, mean_, std_, series_names = load_standardized_data(
-        dataset_path=str(csv_path),
-        metadata_path=str(meta_path),
-    )
-    freq_list = [FREQ[name] for name in series_names]
+    theta = fx.theta0
+    Y = fx.Y
+    series_names = ORDERED_COLS = fx.ordered_cols
+    freq_list = fx.freq_list
+    structure = fs                     # passata come block_map alle update_*
     T, M = Y.shape
-    r = int(theta["A"].shape[0])
-    print(f"Y shape: T={T}, M={M}   r={r}  [standardised, NaN preserved]")
-    print(f"  mean/std consistency vs theta_initial_metadata.json: PASSED")
+    r = fs.r
 
     # ── 1. Run the E-step at theta^(0) to obtain the inputs ──────────────────
     print("\nRunning E-step (verbose=False) to obtain smoothed moments + weights ...")
@@ -2131,15 +2149,11 @@ if __name__ == "__main__":
     print("=" * 64)
 
     # ── Build the inputs not already available in this scope ─────────────────
-    # block_map  : dict series-name -> block        (BLOCK)
-    # freq_list  : list[str] aligned with columns of Y, in ORDERED_COLS order
-    # W_list     : selection matrices (kept for API consistency)
-    block_map    = BLOCK
-    freq_list_M  = [FREQ[c] for c in ORDERED_COLS]    # (M,)
-    W_list       = build_all_selection_matrices(Y)
-    assert series_names == ORDERED_COLS, (
-        "Column order of Y must match data_loader.ORDERED_COLS"
-    )
+    # structure  : FactorStructure (mask M x r)
+    # freq_list_M: list[str] allineata alle colonne di Y
+    # W_list     : matrici di selezione
+    freq_list_M = freq_list
+    W_list = build_all_selection_matrices(Y)
 
     Lambda_new = update_Lambda(
         Y=Y,
@@ -2147,7 +2161,7 @@ if __name__ == "__main__":
         P_smooth=P_smooth,
         w_eps=w_eps,
         W_list=W_list,
-        block_map=block_map,
+        structure=structure,
         freq_list=freq_list_M,
         ordered_cols=ORDERED_COLS,
         r=r,
@@ -2160,73 +2174,64 @@ if __name__ == "__main__":
     assert np.all(np.isfinite(Lambda_new)), "Lambda_new contains NaN/inf"
     print(f"[OK] shape = {Lambda_new.shape}   no NaN/inf")
 
-    # ── 2. Block-diagonality: every off-block entry must be exactly zero ─────
-    off_block_max = 0.0
-    off_block_violations: list[tuple[str, int, int, float]] = []
+    # ── 2. Rispetto della MASK: ogni entrata fuori-mask esattamente zero ─────
+    #    Per diag3/diag4 la mask ha una entrata per riga; per fed_overlap ne ha
+    #    due (globale + locale) e il test resta valido senza cambiare una riga.
+    off_mask_max = 0.0
+    off_mask_violations: list[tuple[str, int, int, float]] = []
     for i, col in enumerate(ORDERED_COLS):
-        j_allowed = _BLOCK_TO_COL[block_map[col]]
+        allowed = set(fs.factors_of_series(i).tolist())
         for jj in range(r):
-            if jj != j_allowed and Lambda_new[i, jj] != 0.0:
-                off_block_max = max(off_block_max, abs(Lambda_new[i, jj]))
-                off_block_violations.append((col, i, jj, float(Lambda_new[i, jj])))
-    assert off_block_max == 0.0, (
-        f"Lambda_new is not block-diagonal: "
-        f"max off-block |entry| = {off_block_max:.3e}\n"
-        f"  first violations: {off_block_violations[:5]}"
+            if jj not in allowed and Lambda_new[i, jj] != 0.0:
+                off_mask_max = max(off_mask_max, abs(Lambda_new[i, jj]))
+                off_mask_violations.append((col, i, jj, float(Lambda_new[i, jj])))
+    assert off_mask_max == 0.0, (
+        f"Lambda_new non rispetta la mask: max |entrata fuori-mask| = "
+        f"{off_mask_max:.3e}\n  prime violazioni: {off_mask_violations[:5]}"
     )
-    print(f"[OK] Lambda_new is exactly block-diagonal "
-          f"(max off-block |entry| = {off_block_max:.2e})")
+    print(f"[OK] Lambda_new rispetta la mask ({int(fs.mask.sum())} entrate attive; "
+          f"max |fuori-mask| = {off_mask_max:.2e})")
 
-    # ── 3. No NaN/inf among the on-block entries either (already covered by
-    #       the assertion above, but be explicit) ──────────────────────────────
-    on_block_vals = np.array([
-        Lambda_new[i, _BLOCK_TO_COL[block_map[col]]]
-        for i, col in enumerate(ORDERED_COLS)
-    ])
-    assert np.all(np.isfinite(on_block_vals)), "Some on-block loadings are NaN/inf"
-    print(f"[OK] on-block loadings all finite   "
-          f"range = [{on_block_vals.min():+.4f}, {on_block_vals.max():+.4f}]")
+    # ── 3. I caricamenti ATTIVI devono essere finiti ─────────────────────────
+    on_mask_vals = Lambda_new[fs.mask == 1]
+    assert np.all(np.isfinite(on_mask_vals)), "Alcuni caricamenti attivi sono NaN/inf"
+    print(f"[OK] caricamenti attivi tutti finiti   "
+          f"range = [{on_mask_vals.min():+.4f}, {on_mask_vals.max():+.4f}]")
 
-    # ── 4. Side-by-side comparison Lambda^(0) vs Lambda_new ───────────────────
-    Lambda_0 = theta["Lambda"]
-    factor_labels = ["f_R", "f_F", "f_X"]
-    print("\n--- Lambda^(0) vs Lambda_new (on-block loadings only) ---")
-    print(f"  {'Series':<22s}  {'block':<10s}  {'freq':<10s}  "
+    # ── 4. Confronto Lambda^(0) vs Lambda_new sulle entrate attive ───────────
+    Lambda_0 = np.asarray(theta["Lambda"])
+    print("\n--- Lambda^(0) vs Lambda_new (solo entrate attive della mask) ---")
+    print(f"  {'Serie':<22s}  {'fattore':<8s}  {'freq':<10s}  "
           f"{'Lambda^(0)':>11s}  {'Lambda_new':>11s}  {'delta':>10s}")
     print("  " + "-" * 80)
     for i, col in enumerate(ORDERED_COLS):
-        b = block_map[col]
-        j = _BLOCK_TO_COL[b]
-        lam0 = Lambda_0[i, j]
-        lam1 = Lambda_new[i, j]
-        delta = lam1 - lam0
-        print(
-            f"  {col:<22s}  {b:<10s}  {freq_list_M[i]:<10s}  "
-            f"{lam0:>+11.4f}  {lam1:>+11.4f}  {delta:>+10.4f}"
-        )
+        for j in fs.factors_of_series(i):
+            lam0, lam1 = Lambda_0[i, j], Lambda_new[i, j]
+            print(f"  {col:<22s}  {fs.factor_names[j]:<8s}  {freq_list_M[i]:<10s}  "
+                  f"{lam0:>+11.4f}  {lam1:>+11.4f}  {lam1 - lam0:>+10.4f}")
 
-    # ── 5. Full Lambda_new printed ───────────────────────────────────────────
-    print("\n--- Lambda_new (M=20 rows × r=3 cols) ---")
-    print(f"  {'Series':<22s}  {'f_R':>10s}  {'f_F':>10s}  {'f_X':>10s}  Block")
-    print("  " + "-" * 72)
+    # ── 5. Lambda_new completa ───────────────────────────────────────────────
+    print(f"\n--- Lambda_new (M={M} righe x r={r} colonne) ---")
+    print(f"  {'Serie':<22s}  " + "  ".join(f"{n:>10s}" for n in fs.factor_names))
+    print("  " + "-" * (24 + 12 * r))
     for i, col in enumerate(ORDERED_COLS):
-        b = block_map[col]
-        print(
-            f"  {col:<22s}  {Lambda_new[i, 0]:>+10.4f}  "
-            f"{Lambda_new[i, 1]:>+10.4f}  {Lambda_new[i, 2]:>+10.4f}  {b}"
-        )
+        print(f"  {col:<22s}  "
+              + "  ".join(f"{Lambda_new[i, j]:>+10.4f}" for j in range(r)))
 
-    # ── 6. Spot-check: GDPC1 row (the only quarterly row) ────────────────────
-    gdp_idx     = ORDERED_COLS.index("GDPC1")
-    gdp_block_j = _BLOCK_TO_COL[block_map["GDPC1"]]   # 0 (real)
-    print(
-        f"\nGDPC1 spot-check:\n"
-        f"  initial loading  Lambda^(0)[GDPC1, f_R] = {Lambda_0[gdp_idx, gdp_block_j]:+.6f}\n"
-        f"  updated loading  Lambda_new [GDPC1, f_R] = {Lambda_new[gdp_idx, gdp_block_j]:+.6f}\n"
-        f"  (the update uses the MM composite regressor phi^R_t and weights "
-        f"w_eps, restricted to the {(~np.isnan(Y[:, gdp_idx])).sum()} observed "
-        f"quarter-end months)"
-    )
+    # ── 6. Spot-check sulla serie TARGET (trimestrale) ───────────────────────
+    #    Il target non e' cablato: e' l'ultima colonna del config, e i fattori
+    #    su cui carica vengono dalla mask (G+R in fed_overlap, R in diag4, ...).
+    tgt = fx.target
+    tgt_idx = ORDERED_COLS.index(tgt)
+    tgt_js = fs.factors_of_series(tgt_idx)
+    print(f"\nSpot-check '{tgt}' (trimestrale, carica su "
+          f"{[fs.factor_names[j] for j in tgt_js]}):")
+    for j in tgt_js:
+        print(f"  Lambda^(0)[{tgt}, {fs.factor_names[j]}] = {Lambda_0[tgt_idx, j]:+.6f}"
+              f"   ->  Lambda_new = {Lambda_new[tgt_idx, j]:+.6f}")
+    print(f"  (l'update usa il regressore composito MM phi_t e i pesi w_eps, "
+          f"ristretto ai {(~np.isnan(Y[:, tgt_idx])).sum()} mesi di fine "
+          f"trimestre osservati)")
 
     print("\n" + "=" * 64)
     print("update_Lambda test passed.")
@@ -2238,9 +2243,9 @@ if __name__ == "__main__":
     #
     # Sintomo osservato dopo un M-step:
     #   - INDPRO  (real,      monthly): 0.40 -> ~0.0006
-    #   - PAYEMS  (real,      monthly): 0.38 -> ~0.0003
+    #   - una mensile del fattore piu' largo: 0.38 -> ~0.0003
     #   - CPIAUCSL(other,     monthly): 0.68 -> ~0.0001
-    #   - BAAFFM  (financial, monthly): 0.50 -> ~1.155  (esplosa)
+    #   - una mensile di un fattore stretto:  0.50 -> ~1.155  (esplosa)
     #
     # Ipotesi:  E[(f^k_t)^2 | Y] = P_smooth[t,j,j] + f_smooth[t,j]^2
     # potrebbe essere molto piu' grande della corrispondente quantita'
@@ -2256,13 +2261,13 @@ if __name__ == "__main__":
     print("=" * 64)
 
     # ── 0. Recupero dei fattori PCA originali F dal theta_initial.npz ────────
-    F_pca = theta["F"]   # (T, r) — fattori PCA usati in compute_theta_initial
+    F_pca = fx.F0        # (T, r) — fattori PCA usati in compute_theta_initial
     assert F_pca.shape == (T, r), f"F_pca.shape={F_pca.shape}, atteso ({T},{r})"
 
     # ── 1. Confronto scala globale F_pca vs f_smooth vs diag(P_smooth) ───────
-    print("\n--- Scala globale dei regressori (per ciascun blocco j) ---")
+    print("\n--- Scala globale dei regressori (per ciascun fattore j) ---")
     print(
-        f"  {'block':<10s}  {'j':>2s}  "
+        f"  {'fattore':<10s}  {'j':>2s}  "
         f"{'std(F_pca[:,j])':>17s}  "
         f"{'std(f_smooth[:,j])':>20s}  "
         f"{'mean(P_smooth[t,j,j])':>22s}  "
@@ -2270,7 +2275,7 @@ if __name__ == "__main__":
     )
     print("  " + "-" * 100)
     for j in range(r):
-        block_name = _BLOCK_ORDER[j]
+        block_name = fs.factor_names[j]
         std_F_pca   = float(np.std(F_pca[:, j], ddof=1))
         std_f_sm    = float(np.std(f_smooth[:, j], ddof=1))
         mean_P_diag = float(np.mean(P_smooth[:, j, j]))
@@ -2284,15 +2289,23 @@ if __name__ == "__main__":
         )
 
     # ── 2. Per 3 serie campione: decomposizione num / den ────────────────────
-    target_series = ["INDPRO", "BAAFFM", "CPIAUCSL"]
+    #    Le serie campione non sono cablate: si prende una mensile per ciascuno
+    #    dei primi fattori della mask, cosi' il campione copre strutture diverse
+    #    (e resta valido su qualunque pannello).
+    target_series = []
+    for j in range(min(3, r)):
+        for i in fs.members(j):
+            if freq_list[i] == "monthly" and ORDERED_COLS[i] not in target_series:
+                target_series.append(ORDERED_COLS[i])
+                break
     print("\n--- Decomposizione num/den per 3 serie campione (monthly) ---")
     for name in target_series:
         if name not in ORDERED_COLS:
             print(f"\n  [SKIP] '{name}' non e' in ORDERED_COLS")
             continue
         i    = ORDERED_COLS.index(name)
-        b    = block_map[name]
-        j    = _BLOCK_TO_COL[b]
+        b    = "/".join(fs.factor_names[k] for k in fs.factors_of_series(i))
+        j    = int(fs.factors_of_series(i)[0])
         freq = freq_list_M[i]
 
         obs_mask = ~np.isnan(Y[:, i])
@@ -2362,7 +2375,7 @@ if __name__ == "__main__":
         if name not in ORDERED_COLS:
             continue
         i = ORDERED_COLS.index(name)
-        j = _BLOCK_TO_COL[block_map[name]]
+        j = int(fs.factors_of_series(i)[0])
         obs_t = np.where(~np.isnan(Y[:, i]))[0]
         y_i   = Y[obs_t, i]
         E_f   = f_smooth[obs_t, j]
@@ -2499,7 +2512,7 @@ if __name__ == "__main__":
         Lambda_new=Lambda_new,           # j+1 loadings from Task 2
         w_eps=w_eps,
         W_list=W_list,
-        block_map=block_map,
+        structure=structure,
         freq_list=freq_list_M,
         ordered_cols=ORDERED_COLS,
         r=r,
@@ -2532,7 +2545,7 @@ if __name__ == "__main__":
           f"{'R^(0)':>11s}  {'R_new':>11s}  {'R_new/R^(0)':>13s}")
     print("  " + "-" * 84)
     for i, col in enumerate(ORDERED_COLS):
-        b    = block_map[col]
+        b    = "/".join(fs.factor_names[k] for k in fs.factors_of_series(i))
         rat  = R_new[i] / R0[i] if R0[i] > 0 else np.nan
         print(
             f"  {col:<22s}  {b:<10s}  {freq_list_M[i]:<10s}  "
@@ -2557,13 +2570,13 @@ if __name__ == "__main__":
     for k in range(3):
         i = order_asc[k]
         col = ORDERED_COLS[i]
-        print(f"  {col:<22s}  block={block_map[col]:<10s}  "
+        print(f"  {col:<22s}  block={b:<10s}  "
               f"freq={freq_list_M[i]:<10s}  R_new = {R_new[i]:.4f}")
     print("\n--- Worst 3 explained by the factor (highest R_new) ---")
     for k in range(3):
         i = order_asc[-(k + 1)]
         col = ORDERED_COLS[i]
-        print(f"  {col:<22s}  block={block_map[col]:<10s}  "
+        print(f"  {col:<22s}  block={b:<10s}  "
               f"freq={freq_list_M[i]:<10s}  R_new = {R_new[i]:.4f}")
 
     # ── 5. Spot-check: GDPC1 (quarterly) ──────────────────────────────────
@@ -2583,21 +2596,23 @@ if __name__ == "__main__":
     # ── 6. Posterior-uncertainty correction: how much does it matter? ─────
     # Compare R_new (with the lam^2 * Var[f] correction) against the
     # "naive" point-residual estimator that drops the variance term.
+    #    Il valore atteso usa TUTTI i fattori attivi della riga (uno per le spec
+    #    diagonali, due per fed_overlap): sommando su `fs.factors_of_series(i)`
+    #    il residuo e' quello giusto in entrambi i casi.
     R_naive = np.zeros(M)
     for i in range(M):
-        col = ORDERED_COLS[i]
-        j   = _BLOCK_TO_COL[block_map[col]]
-        lam = float(Lambda_new[i, j])
         obs_t = np.where(~np.isnan(Y[:, i]))[0]
         y_i   = Y[obs_t, i]
         w_i   = w_eps[obs_t]
-        if freq_list_M[i] == "monthly":
-            E_f = f_smooth[obs_t, j]
-            resid = y_i - lam * E_f
-        else:
-            idx = np.array([l * r + j for l in range(5)])
-            E_phi = f_smooth[obs_t][:, idx] @ _MM_WEIGHTS
-            resid = y_i - lam * E_phi
+        fitted = np.zeros(obs_t.size)
+        for j in fs.factors_of_series(i):
+            lam = float(Lambda_new[i, j])
+            if freq_list_M[i] == "monthly":
+                fitted += lam * f_smooth[obs_t, j]
+            else:
+                idx = np.array([l * r + j for l in range(5)])
+                fitted += lam * (f_smooth[obs_t][:, idx] @ _MM_WEIGHTS)
+        resid = y_i - fitted
         R_naive[i] = float(np.sum(w_i * resid ** 2)) / obs_t.size
 
     extra_share = (R_new - R_naive) / R_new   # share of R_new due to Var[f]
@@ -2628,7 +2643,7 @@ if __name__ == "__main__":
     #                        (prior log-mean at the CURRENT nu_u)
     # The thesis sum (riga ~6405) is (1/T) sum_{t=1}^T = mean over all
     # T periods in 0-indexed Python, consistent with this convention.
-    # The single boundary period out of T=497 contributes negligibly.
+    # The single boundary period out of T contributes negligibly.
     log_w_u   = estep["log_w_u"]
     log_w_eps = estep["log_w_eps"]
 
@@ -2786,7 +2801,7 @@ if __name__ == "__main__":
         e_step_output=estep,
         theta_old=theta,
         freq_list=freq_list_M,
-        block_map=block_map,
+        block_map=structure,
         ordered_cols=ORDERED_COLS,
         freeze_nu_iters=0,        # default: do update nu from iter 0
         current_iter=0,
@@ -2822,17 +2837,13 @@ if __name__ == "__main__":
     print(f"[OK] no NaN/inf in any field of theta_new")
 
     # ── 4. Structural properties of each block ────────────────────────────────
-    # 4a. Lambda block-diagonal
-    off_block_max = 0.0
-    for i, col in enumerate(ORDERED_COLS):
-        j_allowed = _BLOCK_TO_COL[block_map[col]]
-        for jj in range(r):
-            if jj != j_allowed:
-                off_block_max = max(off_block_max, abs(theta_new["Lambda"][i, jj]))
-    assert off_block_max == 0.0, (
-        f"Lambda_new not block-diagonal: max off-block |entry| = {off_block_max:.3e}"
+    # 4a. Lambda rispetta la mask (zero esatto fuori dalle entrate ammesse)
+    off_mask_vals = np.abs(np.asarray(theta_new["Lambda"])[fs.mask == 0])
+    off_mask_max = float(off_mask_vals.max()) if off_mask_vals.size else 0.0
+    assert off_mask_max == 0.0, (
+        f"Lambda non rispetta la mask: max |entrata fuori-mask| = {off_mask_max:.3e}"
     )
-    print(f"[OK] Lambda block-diagonal  (max off-block |entry| = {off_block_max:.2e})")
+    print(f"[OK] Lambda rispetta la mask  (max |fuori-mask| = {off_mask_max:.2e})")
 
     # 4b. A stable VAR(1) (spectral radius < 1)
     rho_A_new = float(np.max(np.abs(np.linalg.eigvals(theta_new["A"]))))
@@ -2907,10 +2918,10 @@ if __name__ == "__main__":
     mean_R_new  = float(np.mean(theta_new["R"]))
     # On-block loadings only (off-block entries are exactly zero in both):
     on_block_0  = np.array([
-        Lambda_0[i, _BLOCK_TO_COL[block_map[c]]] for i, c in enumerate(ORDERED_COLS)
+        Lambda_0[i, int(fs.factors_of_series(i)[0])] for i, c in enumerate(ORDERED_COLS)
     ])
     on_block_n  = np.array([
-        theta_new["Lambda"][i, _BLOCK_TO_COL[block_map[c]]]
+        theta_new["Lambda"][i, int(fs.factors_of_series(i)[0])]
         for i, c in enumerate(ORDERED_COLS)
     ])
     mean_abs_lam_0 = float(np.mean(np.abs(on_block_0)))
@@ -2936,7 +2947,7 @@ if __name__ == "__main__":
         e_step_output=estep,
         theta_old=theta,
         freq_list=freq_list_M,
-        block_map=block_map,
+        block_map=structure,
         ordered_cols=ORDERED_COLS,
         freeze_nu_iters=5,
         current_iter=0,
@@ -2964,7 +2975,7 @@ if __name__ == "__main__":
         e_step_output=estep,
         theta_old=theta,
         freq_list=freq_list_M,
-        block_map=block_map,
+        block_map=structure,
         ordered_cols=ORDERED_COLS,
         freeze_nu_iters=5,
         current_iter=5,            # = freeze_nu_iters -> update from here

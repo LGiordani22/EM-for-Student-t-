@@ -1,5 +1,5 @@
 """
-src/em_main.py
+src/em/em_main.py
 
 Outer EM orchestrator for the Student-t Dynamic Factor Model and the
 post-convergence identification utilities used to render the smoothed
@@ -110,12 +110,11 @@ import hashlib
 import numpy as np
 from scipy.special import gammaln as _sc_gammaln, digamma as _sc_digamma
 
+try:  # package (from em.em_main) o script (python src/em/em_main.py)
+    from em.factor_structure import as_structure
+except ModuleNotFoundError:  # pragma: no cover
+    from factor_structure import as_structure
 
-# Canonical block ordering.  Must match em_initialization.compute_theta_initial
-# and em_m_step._BLOCK_ORDER: column j of every factor matrix corresponds to
-# the block at position j of this list.
-_BLOCK_ORDER: list[str] = ["real", "financial", "other"]
-_BLOCK_TO_COL: dict[str, int] = {b: j for j, b in enumerate(_BLOCK_ORDER)}
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -391,7 +390,7 @@ def normalize_signs(
     P_smooth: np.ndarray,
     P_lag: np.ndarray,
     ref_series: dict[str, str],
-    block_map: dict[str, str],
+    structure,
     ordered_cols: list[str],
     r: int,
 ) -> dict:
@@ -460,15 +459,17 @@ def normalize_signs(
     P_lag : np.ndarray, shape (T, 5r, 5r)
         Lag-one smoothed cross-covariance :math:`\tilde{P}_{t, t-1 \mid T}`.
     ref_series : dict[str, str]
-        Reference series per block.  Example:
-        ``{"real": "PAYEMS", "financial": "S&P 500", "other": "UMCSENTx"}``.
-        Each reference series must (i) be a member of ``ordered_cols``
-        and (ii) belong to the corresponding block in ``block_map``.
-        These two conditions are checked and a :class:`ValueError` is
-        raised on violation.
-    block_map : dict[str, str]
-        Maps each series name to its economic block
-        (``"real"``, ``"financial"``, ``"other"``).
+        Serie di riferimento per fattore, es. per la spec ``diag4``:
+        ``{"S": "ISM_PMI", "R": "INDPRO", "L": "PAYEMS", "N": "CPIAUCSL"}``.
+        Le chiavi sono i NOMI DEI FATTORI della struttura (non blocchi
+        cablati).  Ogni riferimento deve (i) stare in ``ordered_cols`` e
+        (ii) essere membro del fattore corrispondente secondo la mask.
+        Entrambe le condizioni sono verificate, con :class:`ValueError`
+        in caso di violazione.
+    structure : FactorStructure or dict[str, str]
+        Struttura di fattore: una ``FactorStructure`` (mask M x r, da
+        :func:`factor_structure.build_loading_mask`) oppure una mappa
+        serie -> blocco, che viene adattata a struttura diagonale.
     ordered_cols : list[str], length M
         Series names in the order of the rows of
         :math:`\mathbf{\Lambda}` (= columns of the observation matrix
@@ -549,22 +550,25 @@ def normalize_signs(
 
     **The solution: reference-series sign convention.**
 
-    For each block we pick a series whose direction of variation has
-    an unambiguous economic interpretation:
+    Per ciascun FATTORE si sceglie una serie membro la cui direzione di
+    variazione ha un'interpretazione economica non ambigua, e le si
+    impone caricamento positivo.  Esempi sul dataset 'final':
 
-    - *Real block, reference PAYEMS* (non-farm payrolls): payroll
-      employment grows in expansions and falls in recessions.  Forcing
-      its loading to be positive aligns ``f^R_t`` with the business
-      cycle in the usual direction (high = expansion).
-    - *Financial block, reference S&P 500*: equity prices rise in
-      bullish markets and fall in bearish ones.  Positive loading
-      aligns ``f^F_t`` with risk appetite / financial-condition
-      easing.
-    - *Other block, reference UMCSENTx* (consumer sentiment): higher
-      sentiment = more confidence.  Positive loading aligns
-      ``f^X_t`` with consumer optimism.
+    - un fattore di attivita' reale con riferimento ``INDPRO`` o
+      ``PAYEMS``: produzione e occupazione crescono nelle espansioni,
+      quindi caricamento positivo allinea il fattore al ciclo nel verso
+      consueto (alto = espansione);
+    - un fattore di sondaggi con riferimento ``ISM_PMI``: sopra 50 =
+      espansione dichiarata dalle imprese;
+    - un fattore di prezzi con riferimento ``CPIAUCSL``: caricamento
+      positivo = il fattore cresce quando l'inflazione accelera.
 
-    For each block :math:`k`, let :math:`i_k^\mathrm{ref}` be the row
+    Quale serie sia il riferimento NON e' cablato: arriva dall'argomento
+    ``ref_series`` (chiavi = nomi dei fattori della struttura), e in sua
+    assenza da :func:`_default_ref_series`, che prende il primo membro di
+    ciascun fattore secondo la mask.
+
+    For each factor :math:`k`, let :math:`i_k^\mathrm{ref}` be the row
     index of the reference series and :math:`j_k` be the column index
     of the corresponding factor.  Define
 
@@ -720,52 +724,44 @@ def normalize_signs(
 
     Examples
     --------
-    >>> from data_loader import BLOCK, ORDERED_COLS
+    >>> ordered_cols = load_fixture("diag4").ordered_cols
     >>> result = normalize_signs(
     ...     theta=theta_converged,
     ...     f_smooth=estep["f_smooth"],
     ...     P_smooth=estep["P_smooth"],
     ...     P_lag=estep["P_lag"],
-    ...     ref_series={
-    ...         "real": "PAYEMS",
-    ...         "financial": "S&P 500",
-    ...         "other": "UMCSENTx",
-    ...     },
-    ...     block_map=BLOCK,
-    ...     ordered_cols=ORDERED_COLS,
-    ...     r=3,
+    ...     ref_series=None,          # derivate dalla mask
+    ...     structure=build_loading_mask("diag4", ordered_cols),
+    ...     ordered_cols=ordered_cols,
+    ...     r=4,
     ... )
     >>> theta_canonical = result["theta_new"]
     >>> f_canonical     = result["f_smooth_new"]
     """
     # ── 1. Validate the reference-series specification ───────────────────────
+    # Mask-driven e r-generico: un ref per FATTORE (nome), non per blocco.
     M = len(ordered_cols)
-    if r != len(_BLOCK_ORDER):
-        # This is a project-level invariant (r=3 = number of blocks); we
-        # check it because the rest of the routine assumes one factor per
-        # block.  A future variant with r_R + r_F + r_X > 3 would need a
-        # generalised sign convention (rank-r sign matrix per block).
-        raise ValueError(
-            f"normalize_signs currently assumes one factor per block "
-            f"(r == len(_BLOCK_ORDER) = {len(_BLOCK_ORDER)}); got r = {r}."
-        )
+    fs = as_structure(structure, ordered_cols)
+    if fs.r != r:
+        raise ValueError(f"structure ha r={fs.r} ma r={r} passato a normalize_signs.")
 
-    for block, ref_name in ref_series.items():
-        if block not in _BLOCK_TO_COL:
+    for fname, ref_name in ref_series.items():
+        if fname not in fs.factor_names:
             raise KeyError(
-                f"ref_series mentions unknown block '{block}'.  "
-                f"Expected one of {_BLOCK_ORDER}."
+                f"ref_series cita il fattore ignoto '{fname}'. "
+                f"Attesi: {fs.factor_names}."
             )
         if ref_name not in ordered_cols:
             raise KeyError(
-                f"Reference series '{ref_name}' for block '{block}' is not "
-                f"in ordered_cols.  Available: {ordered_cols}."
+                f"Serie di riferimento '{ref_name}' per il fattore '{fname}' "
+                f"assente da ordered_cols."
             )
-        if block_map.get(ref_name) != block:
+        i_ref = ordered_cols.index(ref_name)
+        j = fs.factor_col(fname)
+        if fs.mask[i_ref, j] != 1:
             raise ValueError(
-                f"Reference series '{ref_name}' is claimed to represent "
-                f"block '{block}' but block_map says it belongs to "
-                f"'{block_map.get(ref_name)}'.  Configuration bug?"
+                f"La serie di riferimento '{ref_name}' non carica sul fattore "
+                f"'{fname}' (mask=0). Scegli una serie membro del fattore."
             )
 
     # ── 2. Determine the diagonal sign matrix D for the r monthly factors ────
@@ -778,18 +774,18 @@ def normalize_signs(
 
     d = np.ones(r, dtype=float)
     sign_flips: dict[str, int] = {}
-    for block, ref_name in ref_series.items():
-        j = _BLOCK_TO_COL[block]
+    for fname, ref_name in ref_series.items():
+        j = fs.factor_col(fname)
         i_ref = ordered_cols.index(ref_name)
         lam_ref = float(Lambda[i_ref, j])
         if lam_ref < 0.0:
             d[j] = -1.0
-            sign_flips[block] = -1
+            sign_flips[fname] = -1
         else:
             # lam_ref >= 0  -> no flip needed.  The exactly-zero case is
-            # treated as +1 by convention (see "Numerical guard" in the
-            # docstring); in practice it never arises on macro data.
-            sign_flips[block] = +1
+            # treated as +1 by convention; in practice it never arises on
+            # macro data.
+            sign_flips[fname] = +1
 
     # ── 3. Build the augmented sign vector D_aug = blkdiag(D, D, D, D, D) ────
     # In numpy: simply tile the (r,) sign vector five times to length 5r.
@@ -1522,31 +1518,171 @@ def compute_elbo_correction(
 
     # ── Idiosyncratic weights (eps) ───────────────────────────────────────────
     if not np.isinf(nu_eps):
-        w_eps_bar    = float(np.mean(w_eps))
-        logw_eps_bar = float(np.mean(log_w_eps))
+        # I GRADI DI LIBERTA' VENGONO DALL'E-STEP, NON RICALCOLATI QUI.
+        #
+        # Il numero di pesi da contare dipende dallo schema, e va preso
+        # dall'E-step: contare sempre T termini con `m_t` osservazioni assume UN
+        # peso per periodo, il che vale SOLO per il baseline i.i.d. Negli altri
+        # due schemi l'E-step usa quantita' diverse:
+        #
+        #   baseline i.i.d.        m_obs = m_t   , un peso per periodo   (T,)
+        #   AR(1), peso condiviso  m_obs = M     , un peso per periodo   (T,)
+        #   AR(1), pesi per-serie  m_obs = 1     , un peso per cella   (T, M)
+        #
+        # (Sotto AR(1) i gradi di liberta' passano da m_t a M perche' gli stati
+        # idiosincratici esistono per TUTTE le serie, osservate o no.)
+        #
+        # Contare male i pesi fa sì che l'oggetto monitorato non sia l'ELBO del
+        # modello stimato: sui dati reali la differenza e' piccola perche' i
+        # pesi restano vicini a 1, ma su un DGP con code marcate diventa grande
+        # abbastanza da far SCENDERE la quantita' monitorata mentre l'EM
+        # progredisce — e da far fermare l'algoritmo sul criterio sbagliato.
+        # Prendere `m_obs` dall'E-step lega il conteggio allo schema
+        # effettivamente stimato.
+        m_obs_eps = e_step_output.get("m_obs_eps")
+        if m_obs_eps is None:
+            # Se l'E-step non espone m_obs, si ricade sull'ipotesi di un peso
+            # per periodo (lecita solo per il baseline).
+            m_obs_eps = m_t
+        m_obs_eps = np.asarray(m_obs_eps, dtype=float)
 
-        # Term (2): T * E_q[log Gamma(w_eps_t; nu_eps/2, nu_eps/2)]
-        term2_eps = T * (
-            (nu_eps / 2.0) * np.log(nu_eps / 2.0)
-            - _sc_gammaln(nu_eps / 2.0)
-            + (nu_eps / 2.0 - 1.0) * logw_eps_bar
-            - (nu_eps / 2.0) * w_eps_bar
+        # Ogni ENTRATA di w_eps e' un peso distinto con il suo posteriore.
+        # Con i pesi per-serie sono T*M, non T: contarne T sarebbe sbagliato
+        # sia nel termine del prior sia nell'entropia.
+        w_e   = np.asarray(w_eps, dtype=float)
+        lw_e  = np.asarray(log_w_eps, dtype=float)
+        if m_obs_eps.shape != w_e.shape:
+            m_obs_eps = np.broadcast_to(m_obs_eps.reshape(-1, *([1] * (w_e.ndim - 1))),
+                                        w_e.shape)
+        n_eps = float(w_e.size)
+
+        # Term (2): sum over weights of E_q[log Gamma(w; nu_eps/2, nu_eps/2)]
+        term2_eps = (
+            n_eps * ((nu_eps / 2.0) * np.log(nu_eps / 2.0)
+                     - _sc_gammaln(nu_eps / 2.0))
+            + (nu_eps / 2.0 - 1.0) * float(np.sum(lw_e))
+            - (nu_eps / 2.0) * float(np.sum(w_e))
         )
 
-        # Term (3): sum_t H[Gamma(alpha_eps_t, beta_eps_t)]
-        # alpha_eps_t = (nu_eps + m_t)/2 VARIES with t via m_t
-        alpha_eps = (nu_eps + m_t) / 2.0                  # (T,)
+        # Term (3): sum over weights of H[Gamma(alpha, beta)], con
+        # alpha = (nu_eps + m_obs)/2 per ciascun peso.
+        alpha_eps = (nu_eps + m_obs_eps) / 2.0
         term3_eps = (
             float(np.sum(
                 alpha_eps * (1.0 - _sc_digamma(alpha_eps))
                 + _sc_gammaln(alpha_eps)
             ))
-            + T * logw_eps_bar
+            + float(np.sum(lw_e))
         )
 
         correction += term2_eps + term3_eps
 
     return float(correction)
+
+
+# ─── 2b. Ortogonalizzazione globale ⊥ locali (identificazione bifactor) ───────
+
+def orthogonalize_global(
+    theta: dict | "np.lib.npyio.NpzFile",
+    f_smooth: np.ndarray,
+    P_smooth: np.ndarray,
+    P_lag: np.ndarray,
+    structure,
+    r: int,
+) -> dict:
+    r"""
+    Chiude l'indeterminatezza rotazionale RESIDUA delle strutture non-diagonali
+    con fattore globale (es. ``fed_overlap``): il "travaso" di un fattore locale
+    dentro il globale (per r=4 sono 3 gradi di liberta'). Rende ogni locale
+    ORTOGONALE al globale in senso di varianza TOTALE, scegliendo il
+    rappresentante interpretabile dell'orbita — come normalize_signs/convention_1,
+    NON tocca verosimiglianza ne' valori fittati (Lambda*f invariante).
+
+    Per le strutture DIAGONALI (nessun fattore globale) e' un no-op: non c'e'
+    travaso da chiudere.
+
+    Matematica
+    ----------
+    Sia g la colonna del fattore globale (membri = tutte le serie) e l i locali.
+    Dalla covarianza TOTALE dei fattori (legge della varianza totale):
+        S = (1/T) F_c' F_c + mean_t P_t[:r,:r],   F_c = f_smooth[:, :r]
+    si pone c_l = S[l, g] / S[g, g] e si ruota con
+        f~_l = f_l - c_l f_g,   f~_g = f_g   =>  H^{-1} = I - sum_l c_l e_l e_g',
+        H = I + sum_l c_l e_l e_g'  (nilpotente).
+    Allora Lambda~ = Lambda H (i loadings locali restano invariati -> mask
+    preservata; il globale assorbe i locali). Cov_totale(f~_g, f~_l) = 0.
+
+    Tutti gli oggetti trasformano per similarita' (G := H^{-1}, G_aug = blkdiag
+    di 5 copie di G):
+        Lambda~ = Lambda H,  A~ = G A H,  Q~ = G Q G',
+        f~ = f_smooth G_aug',  P~ = G_aug P G_aug',  Sigma_0~ = G_aug Sigma_0 G_aug'.
+
+    Ritorna un dict con le stesse chiavi di normalize_signs
+    (theta_new, f_smooth_new, P_smooth_new, P_lag_new) + 'leak_coef'.
+    """
+    # Per l'ortogonalizzazione servono solo mask e nomi dei fattori. Un dict
+    # serie->blocco e' sempre diagonale -> no-op immediato.
+    _noop = {
+        "theta_new": {k: np.asarray(theta[k]).copy() for k in theta.keys()},
+        "f_smooth_new": f_smooth.copy(), "P_smooth_new": P_smooth.copy(),
+        "P_lag_new": P_lag.copy(), "leak_coef": {},
+    }
+    if not hasattr(structure, "mask"):
+        return _noop
+    fs = structure
+    if fs.r != r:
+        raise ValueError(f"structure ha r={fs.r} ma r={r} passato.")
+
+    # Fattore globale = colonna con TUTTE le serie come membri.
+    M = fs.M
+    global_cols = [j for j in range(r) if int(fs.mask[:, j].sum()) == M]
+    if fs.diagonal or not global_cols:
+        return _noop                      # nessun globale -> niente da chiudere
+    g = global_cols[0]
+    locals_ = [j for j in range(r) if j != g]
+
+    # Covarianza TOTALE dei fattori contemporanei (legge della varianza totale).
+    T = f_smooth.shape[0]
+    Fc = f_smooth[:, :r]                                  # (T, r)
+    S = (Fc.T @ Fc) / T + P_smooth[:, :r, :r].mean(axis=0)
+    if abs(S[g, g]) < 1e-12:
+        raise RuntimeError("Varianza totale del fattore globale ~0: impossibile "
+                           "ortogonalizzare.")
+    c = {l: float(S[l, g] / S[g, g]) for l in locals_}
+
+    # H e H^{-1} (=G). H = I + sum_l c_l e_l e_g' ; G = I - sum_l c_l e_l e_g'.
+    H = np.eye(r); G = np.eye(r)
+    for l in locals_:
+        H[l, g] += c[l]
+        G[l, g] -= c[l]
+    dim = 5 * r
+    G_aug = np.kron(np.eye(5), G)                         # blkdiag(G, ..., G)
+
+    Lam = np.asarray(theta["Lambda"])
+    A = np.asarray(theta["A"]); Q = np.asarray(theta["Q"])
+    Sig0 = np.asarray(theta["Sigma_0"])
+
+    Lam_new = Lam @ H
+    A_new = G @ A @ H                                     # G A G^{-1}, G^{-1}=H
+    Q_new = G @ Q @ G.T
+    Sig0_new = G_aug @ Sig0 @ G_aug.T
+    f_new = f_smooth @ G_aug.T
+    P_new = np.einsum("ap,npq,bq->nab", G_aug, P_smooth, G_aug)
+    Plag_new = np.einsum("ap,npq,bq->nab", G_aug, P_lag, G_aug)
+
+    theta_new = {k: np.asarray(theta[k]).copy() for k in theta.keys()}
+    theta_new["Lambda"] = Lam_new
+    theta_new["A"] = A_new
+    theta_new["Q"] = Q_new
+    theta_new["Sigma_0"] = Sig0_new
+    if "F" in theta_new:
+        theta_new["F"] = np.asarray(theta_new["F"]) @ G.T
+
+    return {
+        "theta_new": theta_new, "f_smooth_new": f_new,
+        "P_smooth_new": P_new, "P_lag_new": Plag_new,
+        "leak_coef": {fs.factor_names[l]: c[l] for l in locals_},
+    }
 
 
 def run_em(
@@ -1798,21 +1934,25 @@ def run_em(
     >>> step_v = apply_convention_1(step_s["theta_new"],
     ...                              step_s["f_smooth_new"],
     ...                              step_s["P_smooth_new"],
-    ...                              step_s["P_lag_new"], r=3)
+    ...                              step_s["P_lag_new"], r=4)
     """
     # Import here to avoid a circular import at module load time.
     from em.em_e_step import run_e_step                       # noqa: E402
     from em.em_m_step import run_m_step                       # noqa: E402
 
-    # Lazy defaults from data_loader (same convention as run_m_step).
-    if (block_map is None) or (freq_list is None) or (ordered_cols is None):
-        from data_loader import BLOCK, FREQ, ORDERED_COLS  # noqa: E402
-        if ordered_cols is None:
-            ordered_cols = ORDERED_COLS
-        if block_map is None:
-            block_map = BLOCK
-        if freq_list is None:
-            freq_list = [FREQ[c] for c in ordered_cols]
+    # Nessun default implicito: la struttura del pannello va passata dal
+    # chiamante.  Un fallback su data_loader legherebbe il motore a uno schema
+    # di pannello esterno e — peggio — farebbe girare l'EM su una M diversa da
+    # quella di Y senza che nulla lo segnali.
+    _missing = [n for n, v in (("freq_list", freq_list), ("block_map", block_map),
+                               ("ordered_cols", ordered_cols)) if v is None]
+    if _missing:
+        raise ValueError(
+            f"run_em: argomenti obbligatori mancanti: {_missing}. "
+            f"Passa ordered_cols (le colonne di Y, nell'ordine), freq_list "
+            f"('monthly'/'quarterly' per colonna) e block_map (una FactorStructure "
+            f"da em.factor_structure.build_loading_mask, oppure un dict serie->blocco)."
+        )
 
     # Materialise theta into a plain dict so we can mutate it safely
     # (np.load returns an NpzFile that does not support item assignment).
@@ -1842,6 +1982,12 @@ def run_em(
     eps_div  = 1e-10
     tol_mono = tol_outer
 
+    # Pazienza del criterio di stallo (punto 3-bis del ciclo). Va tenuta
+    # abbastanza larga da non scambiare per stallo una singola oscillazione
+    # numerica dell'ELBO — che sotto E-step inesatto e' attesa — e abbastanza
+    # stretta da non sprecare decine di iterazioni su un plateau vero.
+    _EM_PATIENCE = 10
+
     # ── Gaussian-mode hard freeze on the heavy-tail parameters ───────────────
     # When ``gaussian=True``, the E-step skips the ECM inner loop and runs a
     # single Kalman pass at w = 1 (the Bańbura-Modugno 2014 limit).  The M-step
@@ -1861,10 +2007,34 @@ def run_em(
               f"{'rho(A)':>7s}  {'inner':>5s}")
         print("-" * 80)
 
+    # WARM START del ciclo ECM interno (vedi em_e_step, sezione "k = 0").
+    # I pesi dell'iterazione esterna precedente sono un punto di partenza molto
+    # migliore di w = 1, perche' fra due iterazioni EM il theta si muove poco.
+    # Attivo per default; `theta["cold_start_inner"] = True` disattiva il warm
+    # start (ciclo interno da w = 1).
+    _warm = not bool(theta.get("cold_start_inner", False))
+    _w_prev: dict | None = None
+
+    # Tolleranza del ciclo ECM interno. Viaggia in theta come gli altri flag di
+    # variante. Conta perche' regola l'ESATTEZZA dell'E-step, da cui dipende
+    # quanto strettamente vale la monotonia dell'ELBO: l'EM la garantisce con
+    # E-step esatto, e a tolleranza finita la garanzia vale solo a meno di
+    # quella tolleranza.
+    _tol_inner = float(theta.get("tol_inner", 1e-4))
+
+    # Stato per il criterio di stallo (punto 3-bis).
+    best_L: float = -np.inf
+    best_j: int = -1
+    since_best: int = 0
+    stalled: bool = False
+
     for j in range(max_iter):
         # ── 1. E-step at current theta ──────────────────────────────────────
         e_out = run_e_step(Y, theta, freq_list=freq_list, verbose=False,
-                           gaussian=gaussian)
+                           gaussian=gaussian, tol_inner=_tol_inner,
+                           w_init=_w_prev if _warm else None)
+        if _warm:
+            _w_prev = {"w_eps": e_out["w_eps"], "w_u": e_out["w_u"]}
         L_j   = float(e_out["loglik"])
         if use_full_elbo:
             L_j += compute_elbo_correction(e_out, theta, r, Y)
@@ -1873,10 +2043,15 @@ def run_em(
         n_iter = j + 1
 
         # ── 2. Monotonicity check (j >= 1) ──────────────────────────────────
+        # `delta_L` e' SEGNATO; `rel_change_L` resta in valore assoluto perche'
+        # e' la quantita' riportata nel log e nelle diagnostiche.
+        # La distinzione conta al punto 3: un passo INDIETRO non e' convergenza.
         rel_change_L = float("inf")
+        delta_L      = float("inf")
         if j >= 1:
             L_prev       = loglik_history[j - 1]
-            rel_change_L = abs(L_j - L_prev) / (abs(L_prev) + eps_div)
+            delta_L      = L_j - L_prev
+            rel_change_L = abs(delta_L) / (abs(L_prev) + eps_div)
             if L_j < L_prev - tol_mono * abs(L_prev):
                 # The loglik decreased by more than the floating-point
                 # tolerance — surface this prominently per the thesis
@@ -1894,7 +2069,20 @@ def run_em(
                     )
 
         # ── 3. Convergence check (criterion i) ──────────────────────────────
-        if j >= 1 and rel_change_L < tol_outer:
+        # `delta_L >= 0` NON e' pedanteria: usare `abs(L_j - L_prev)` leggerebbe
+        # un passo all'INDIETRO abbastanza piccolo come convergenza. E' successo
+        # davvero su diag3/student_t_ar1 (2026-07-19):
+        #
+        #   iter 100  delta +0.136
+        #   iter 101  delta +0.130
+        #   iter 102  delta -0.022   -> |dL|/|L| = 2.2e-6 < 1e-5 -> "CONVERGED"
+        #
+        # L'EM guadagnava ancora +0.13 per iterazione in modo regolare e si e'
+        # fermato PROPRIO sull'oscillazione, restituendo per giunta l'iterato
+        # peggiore dei due (-9722.2607 contro -9722.2389). Una diminuzione e'
+        # il contrario dell'aver raggiunto un massimo: qui si continua, e se
+        # l'oscillazione persiste la si tratta al punto 3-bis.
+        if j >= 1 and 0.0 <= delta_L and rel_change_L < tol_outer:
             converged = True
             if verbose:
                 # Print the final iteration row (no following M-step, no
@@ -1912,6 +2100,38 @@ def run_em(
                     f"|dL|/|L| = {rel_change_L:.3e} < tol_outer = {tol_outer:.0e}"
                 )
             break
+
+        # ── 3-bis. Stallo: il massimo non migliora piu' da troppe iterazioni ─
+        # Rete di sicurezza per la modifica al punto 3. Non fermandosi piu' su
+        # una diminuzione, un'oscillazione persistente (o un plateau raggiunto
+        # dal basso a passi alterni) arriverebbe fino a `max_iter`. Si conta da
+        # quante iterazioni il MASSIMO non migliora: cattura sia le
+        # oscillazioni alternate sia i cali consecutivi, che un semplice
+        # contatore di passi negativi consecutivi si lascerebbe sfuggire.
+        # QUALUNQUE miglioramento stretto azzera il contatore — niente soglia.
+        # Una soglia qui sarebbe attiva nel modo peggiore: nella regione dove
+        # l'ELBO sale a passi comparabili a `tol_outer*|L|`, un progresso reale
+        # ma di poco inferiore alla soglia non verrebbe contato, e dopo qualche
+        # iterazione lo stallo fermerebbe l'algoritmo MENTRE STA ANCORA
+        # MASSIMIZZANDO. E' esattamente cio' che questa rete non deve fare: il
+        # suo unico scopo e' impedire un ciclo infinito quando il massimo non
+        # si muove piu'. Se si muove, anche di poco, l'EM deve proseguire.
+        # (`np.isfinite` non e' difensivo a caso: con best_L = -inf qualunque
+        # confronto aritmetico darebbe NaN e il contatore scatterebbe subito.)
+        if not np.isfinite(best_L) or L_j > best_L:
+            best_L, best_j, since_best = L_j, j, 0
+        else:
+            since_best += 1
+            if since_best >= _EM_PATIENCE:
+                stalled = True
+                if verbose:
+                    print(
+                        f"\n[STALLO] il massimo non migliora da "
+                        f"{_EM_PATIENCE} iterazioni (migliore: L^({best_j}) = "
+                        f"{best_L:.6f}; corrente: L^({j}) = {L_j:.6f}). "
+                        f"Interrotto: non e' convergenza."
+                    )
+                break
 
         # ── 4. M-step at current theta produces theta^(j+1) ─────────────────
         theta_new = run_m_step(
@@ -1958,8 +2178,19 @@ def run_em(
     # ── Post-loop: handle the case where max_iter was reached without
     #    triggering criterion (i).  Per thesis riga ~9803-9808 this is a
     #    safety mechanism rather than a normal exit. ────────────────────────
-    if not converged:
-        if verbose:
+    if not converged and verbose:
+        if stalled:
+            # Uscita per stallo: NON e' max_iter, e non va segnalata come tale
+            # o si cerca il problema nel posto sbagliato (alzare max_iter non
+            # servirebbe a niente).
+            print(
+                f"\n[WARN] uscita per STALLO dopo {n_iter} iterazioni: il "
+                f"massimo dell'ELBO non migliorava da {_EM_PATIENCE} "
+                f"iterazioni (migliore L^({best_j}) = {best_L:.6f}).  "
+                f"Alzare max_iter non aiuta; guarda l'esattezza dell'E-step "
+                f"(tol_inner / inner_criterion) e la traiettoria della loglik."
+            )
+        else:
             print(
                 f"\n[WARN] max_iter = {max_iter} reached without convergence "
                 f"(criterion iii).  Final relative dL = "
@@ -1989,22 +2220,32 @@ def run_em(
         "n_iter":                  n_iter,
         "converged":               converged,
         "monotonicity_violations": monotonicity_violations,
+        # Distingue le due uscite non-convergenti: `stalled=True` significa che
+        # il massimo non migliorava piu', NON che sia finito il budget.
+        "stalled":                 stalled,
+        "best_loglik":             float(best_L),
+        "best_iter":               int(best_j),
     }
 
 
 # ─── 4. fit_dfm — full First-Stage entry point ────────────────────────────────
 
-# Default reference series for sign normalisation.  Each block's chosen
-# reference is the canonical, economically directional series of that block:
-#   - real      : PAYEMS    (nonfarm payrolls; up = expansion)
-#   - financial : S&P 500   (equity index; up = bullish risk appetite)
-#   - other     : UMCSENTx  (consumer sentiment; up = more confidence)
-# The user may override via the ``ref_series`` argument of :func:`fit_dfm`.
-_DEFAULT_REF_SERIES: dict[str, str] = {
-    "real":      "PAYEMS",
-    "financial": "S&P 500",
-    "other":     "UMCSENTx",
-}
+def _default_ref_series(structure) -> dict[str, str]:
+    """
+    Serie di riferimento di default per la normalizzazione dei segni: una per
+    fattore, presa dalla struttura invece che da un elenco cablato.
+
+    Il riferimento e' il PRIMO MEMBRO di ciascun fattore secondo la mask — una
+    scelta arbitraria ma ben definita per qualunque pannello. Chi vuole un
+    riferimento con un segno economicamente interpretabile lo passa
+    esplicitamente via l'argomento ``ref_series`` di :func:`fit_dfm`.
+    """
+    fs = as_structure(structure, getattr(structure, "ordered_cols", None)
+                      or list(structure))
+    return {
+        fs.factor_names[j]: fs.ordered_cols[int(fs.members(j)[0])]
+        for j in range(fs.r)
+    }
 
 
 def fit_dfm(
@@ -2107,12 +2348,12 @@ def fit_dfm(
         Initial parameter iterate :math:`\theta^{(0)}` (typically the
         output of :func:`em_initialization.compute_theta_initial`).
     freq_list, block_map, ordered_cols : optional
-        Forwarded to :func:`run_em`.  Defaults are loaded lazily from
-        :mod:`data_loader` when not supplied.
+        Forwarded to :func:`run_em`.  Obbligatori: descrivono il pannello
+        e non hanno piu' un default implicito.
     ref_series : dict[str, str] or None, default None
-        Reference series per block for sign normalisation.  ``None``
-        uses :data:`_DEFAULT_REF_SERIES`
-        (``{"real": "PAYEMS", "financial": "S&P 500", "other": "UMCSENTx"}``).
+        Serie di riferimento per fattore per la normalizzazione dei segni.
+        ``None`` usa :func:`_default_ref_series`, che prende il primo
+        membro di ciascun fattore secondo la mask.
     tol_outer : float, default 1e-5
         Relative-ELBO convergence tolerance.  Forwarded to
         :func:`run_em`.
@@ -2253,33 +2494,75 @@ def fit_dfm(
     M = int(Y.shape[1])
     r = int(np.asarray(theta_raw["A"]).shape[0])
 
-    # Lazy defaults from data_loader (consistent with run_em).
+    # ── ASSE B: se l'idio e' nello stato, la post-elaborazione riguarda SOLO
+    #    il blocco dei fattori.  Segno, scala e ortogonalizzazione sono
+    #    trasformazioni dell'identificazione dei FATTORI: ribaltare il segno di
+    #    f_j e della colonna j di Lambda lascia eps intatto (l'idio non carica
+    #    sui fattori).  Si stacca quindi il blocco idio, si identifica, e lo si
+    #    riattacca invariato. ──────────────────────────────────────────────────
+    _d_f = 5 * r
+    _idio_tail = None
+    if f_smooth_raw.shape[1] > _d_f:
+        _idio_tail = {
+            "f": f_smooth_raw[:, _d_f:].copy(),
+            "P": P_smooth_raw[:, _d_f:, _d_f:].copy(),
+            "P_lag": P_lag_raw[:, _d_f:, _d_f:].copy(),
+        }
+        f_smooth_raw = f_smooth_raw[:, :_d_f]
+        P_smooth_raw = P_smooth_raw[:, :_d_f, :_d_f]
+        P_lag_raw = P_lag_raw[:, :_d_f, :_d_f]
+        # Sigma_0 va ristretto in modo coerente per gli assert a valle.
+        _Sigma0_full = np.asarray(theta_raw["Sigma_0"])
+        if _Sigma0_full.shape[0] > _d_f:
+            theta_raw = {k: theta_raw[k] for k in theta_raw.keys()}
+            theta_raw["Sigma_0"] = _Sigma0_full[:_d_f, :_d_f]
+            _idio_tail["Sigma_0"] = _Sigma0_full
+
+    # Nessun default implicito (vedi run_em): block_map/ordered_cols descrivono
+    # il pannello e vanno passati.  ref_series invece resta opzionale: puo'
+    # derivare dalla mask (primo membro di ciascun fattore).
+    _missing = [n for n, v in (("block_map", block_map),
+                               ("ordered_cols", ordered_cols)) if v is None]
+    if _missing:
+        raise ValueError(
+            f"apply_identification: argomenti obbligatori mancanti: {_missing}. "
+            f"Passa la struttura di fattore (FactorStructure o dict) e l'ordine "
+            f"delle colonne di Y."
+        )
     if ref_series is None:
-        ref_series = _DEFAULT_REF_SERIES
-    if (block_map is None) or (ordered_cols is None):
-        from data_loader import BLOCK, ORDERED_COLS                # noqa: E402
-        if block_map is None:
-            block_map = BLOCK
-        if ordered_cols is None:
-            ordered_cols = ORDERED_COLS
+        # Un riferimento per fattore, derivato dalla struttura (mask o dict).
+        ref_series = _default_ref_series(
+            block_map if hasattr(block_map, "mask")
+            else as_structure(block_map, ordered_cols))
 
     # ── 2. Raw fitted values (invariance witness) ─────────────────────────────
     # Snapshot the monthly fitted values BEFORE the post-processing.  Sign
     # normalisation and Convention 1 are observationally equivalent, so the
-    # POST-processing fitted values must exactly coincide with these.  We
-    # store them in the result and the cache so that the invariance check
-    # remains available even when the EM is loaded from disk.
+    # POST-processing fitted values must exactly coincide with these.
     Lambda_raw        = np.asarray(theta_raw["Lambda"])
     fitted_values_raw = f_smooth_raw[:, :r] @ Lambda_raw.T          # (T, M)
 
-    # ── 3. Sign normalisation (Task 1) ────────────────────────────────────────
-    sign_out = normalize_signs(
+    # ── 2c. Ortogonalizzazione globale ⊥ locali ───────────────────────────────
+    # Chiude il "travaso" locale->globale delle strutture NON-diagonali con
+    # fattore globale (es. fed_overlap). No-op su dict/diagonali. Va PRIMA di
+    # segno/scala (operazioni diagonali che preservano l'ortogonalita').
+    orth_out = orthogonalize_global(
         theta=theta_raw,
         f_smooth=f_smooth_raw,
         P_smooth=P_smooth_raw,
         P_lag=P_lag_raw,
+        structure=block_map,
+        r=r,
+    )
+
+    # ── 3. Sign normalisation (Task 1) ────────────────────────────────────────
+    sign_out = normalize_signs(
+        theta=orth_out["theta_new"],
+        f_smooth=orth_out["f_smooth_new"],
+        P_smooth=orth_out["P_smooth_new"],
+        P_lag=orth_out["P_lag_new"],
         ref_series=ref_series,
-        block_map=block_map,
+        structure=block_map,       # FactorStructure (o dict serie->blocco via as_structure)
         ordered_cols=ordered_cols,
         r=r,
     )
@@ -2292,6 +2575,33 @@ def fit_dfm(
         P_lag=sign_out["P_lag_new"],
         r=r,
     )
+
+    # ── 4-bis. ASSE B: riattacca il blocco idiosincratico ────────────────────
+    #    Non e' stato toccato dall'identificazione (vedi sopra): torna nello
+    #    stato esattamente com'era, in coda al blocco dei fattori.
+    if _idio_tail is not None:
+        _cf = conv_out["f_smooth_new"]
+        _cP = conv_out["P_smooth_new"]
+        _cL = conv_out["P_lag_new"]
+        _n_e = _idio_tail["f"].shape[1]
+        _dim = _d_f + _n_e
+        _f = np.zeros((T, _dim))
+        _f[:, :_d_f] = _cf
+        _f[:, _d_f:] = _idio_tail["f"]
+        _P = np.zeros((T, _dim, _dim))
+        _P[:, :_d_f, :_d_f] = _cP
+        _P[:, _d_f:, _d_f:] = _idio_tail["P"]
+        _L = np.zeros((T, _dim, _dim))
+        _L[:, :_d_f, :_d_f] = _cL
+        _L[:, _d_f:, _d_f:] = _idio_tail["P_lag"]
+        conv_out["f_smooth_new"] = _f
+        conv_out["P_smooth_new"] = _P
+        conv_out["P_lag_new"] = _L
+        if "Sigma_0" in _idio_tail:
+            _th = conv_out["theta_new"]
+            _S = np.asarray(_idio_tail["Sigma_0"]).copy()
+            _S[:_d_f, :_d_f] = np.asarray(_th["Sigma_0"])
+            _th["Sigma_0"] = _S
 
     # ── 5. Assemble the canonical First-Stage result ──────────────────────────
     result: dict = {
@@ -2307,9 +2617,15 @@ def fit_dfm(
         "n_iter":                  em_out["n_iter"],
         "converged":               em_out["converged"],
         "monotonicity_violations": em_out["monotonicity_violations"],
+        # Uscita per stallo: da propagare, altrimenti chi chiama fit_dfm vede
+        # solo `converged=False` e la attribuisce a max_iter.
+        "stalled":                 em_out.get("stalled", False),
+        "best_loglik":             em_out.get("best_loglik"),
+        "best_iter":               em_out.get("best_iter"),
         # post-processing info
         "sign_flips":              sign_out["sign_flips"],
         "scale_factors":           conv_out["scale_factors"],
+        "leak_coef":               orth_out["leak_coef"],
         # raw E-step output (weights, log-weights, Lambda_tilde, ...) and
         # the raw fitted-value witness
         "e_step_output":           e_out_raw,
@@ -2497,60 +2813,95 @@ def load_dfm_fit(save_path: "str | pathlib.Path") -> dict:
 # ─── Self-test ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    # ─────────────────────────────────────────────────────────────────────────
+    # Self-test del loop EM, parametrico sulla struttura di fattore.
+    #
+    #     python -m em.em_main --spec fed_overlap [--max-iter N]
+    #     python -m em.em_main --spec diag4
+    #     python -m em.em_main --spec diag3
+    #
+    # I nomi dei fattori, r, e le serie di riferimento per la normalizzazione
+    # dei segni vengono TUTTI dalla mask: nessun 'real'/'financial'/'other',
+    # nessun r=3, nessuna serie cablata.
+    # ─────────────────────────────────────────────────────────────────────────
     import pathlib
     import sys
 
-    # ── parse config flag + optional --max-iter ───────────────────────────────
     _src_dir = str(pathlib.Path(__file__).resolve().parent.parent)
     if _src_dir not in sys.path:
         sys.path.insert(0, _src_dir)
-    from config_utils import parse_config_args, resolve_output_path, get_project_root
-
-    def _add_max_iter(p):
-        p.add_argument(
-            "--max-iter", type=int, default=250, dest="max_iter",
-            help="Max outer EM iterations (default 250; use 1-2 for a quick test).",
-        )
-    _args     = parse_config_args("em_main self-test — EM loop, normalisation, fit_dfm.", extra=_add_max_iter)
-    _cfg      = _args.config
-    _max_iter = _args.max_iter
-
-    # ── Locate project root & make sibling modules importable ────────────────
-    project_root = get_project_root()
-    src_dir = project_root / "src"
-    if str(src_dir) not in sys.path:
-        sys.path.insert(0, str(src_dir))
 
     # ── 0. Fingerprint helpers self-test (anti zombie-result) ────────────────
     _fingerprint_self_test()
 
-    from data_loader       import load_config as _dl_load_config   # noqa: E402
-    from em.em_e_step         import run_e_step                       # noqa: E402
-    from em.em_initialization import load_standardized_data           # noqa: E402
-    from em.em_m_step         import run_m_step                       # noqa: E402
-
-    _cfg_dict    = _dl_load_config(_cfg)
-    BLOCK        = _cfg_dict["BLOCK"]
-    FREQ         = _cfg_dict["FREQ"]
-    ORDERED_COLS = _cfg_dict["ORDERED_COLS"]
-
-    # ── 1. Load theta^(0) and Y (config-specific paths) ──────────────────────
-    npz_path  = resolve_output_path("processed", "theta_initial.npz", _cfg)
-    csv_path  = resolve_output_path("dataset", "", _cfg)
-    meta_path = resolve_output_path("processed", "theta_initial_metadata.json", _cfg)
-
-    print(f"Loading theta^(0) from: {npz_path}")
-    theta_0 = np.load(npz_path)
-
-    Y, mean_, std_, series_names = load_standardized_data(
-        dataset_path=str(csv_path),
-        metadata_path=str(meta_path),
+    from em.em_e_step import run_e_step                             # noqa: E402
+    from em.em_m_step import run_m_step                             # noqa: E402
+    from em.selftest_fixture import (                               # noqa: E402
+        SPEC_CHOICES, DEFAULT_SPEC, load_fixture, selftest_scratch,
     )
-    assert series_names == ORDERED_COLS, "Y columns not in ORDERED_COLS order"
-    freq_list = [FREQ[c] for c in ORDERED_COLS]
+
+    import argparse as _argparse
+    _ap = _argparse.ArgumentParser(
+        description="em_main self-test — loop EM, normalizzazione, fit_dfm.")
+    _ap.add_argument("--spec", choices=SPEC_CHOICES, default=DEFAULT_SPEC)
+    _ap.add_argument("--max-iter", type=int, default=250, dest="max_iter",
+                     help="Max iterazioni EM esterne (default 250; 1-2 per un test rapido).")
+    _args = _ap.parse_args()
+    _max_iter = _args.max_iter
+
+    fx = load_fixture(_args.spec)
+    fs = fx.structure
+
+    print("=" * 70)
+    print(fx.describe())
+    print("=" * 70)
+
+    theta_0 = fx.theta0
+    Y = fx.Y
+    series_names = ORDERED_COLS = fx.ordered_cols
+    freq_list = fx.freq_list
+    BLOCK = structure = fs        # la struttura passata come block_map
     T, M = Y.shape
-    r = int(theta_0["A"].shape[0])
-    print(f"Y shape: T={T}, M={M}   r={r}")
+    r = fs.r
+
+    # Serie di riferimento per la normalizzazione dei segni: una per fattore,
+    # scelta dalla mask (il membro con il caricamento iniziale piu' grande in
+    # valore assoluto -> il riferimento piu' informativo, non il primo per
+    # ordine alfabetico o di config).
+    _Lam0 = np.asarray(theta_0["Lambda"])
+    REF_SERIES = {}
+    for _j, _fname in enumerate(fs.factor_names):
+        _members = fs.members(_j)
+        _best = int(_members[int(np.argmax(np.abs(_Lam0[_members, _j])))])
+        REF_SERIES[_fname] = ORDERED_COLS[_best]
+    print("Serie di riferimento per i segni (dalla mask): "
+          + ", ".join(f"{k}->{v}" for k, v in REF_SERIES.items()))
+
+    # Output di questo self-test: cartella TEMPORANEA, cancellata all'uscita.
+    # NON deve toccare data/processed/final/<spec>/ ne' output/, dove vivono
+    # gli artefatti veri di run_final_artifacts.py (vedi selftest_scratch).
+    _OUT_DIR = pathlib.Path(selftest_scratch(f"em_main_{_args.spec}"))
+    print(f"  (output del self-test in una cartella temporanea: {_OUT_DIR})")
+
+    _MM_W = np.array([1.0 / 3.0, 2.0 / 3.0, 1.0, 2.0 / 3.0, 1.0 / 3.0])
+    _TGT_I = ORDERED_COLS.index(fx.target)
+
+    def _target_fitted(Lambda, f_aug):
+        """
+        Valore atteso della serie TARGET (trimestrale) via l'aggregatore MM.
+
+        Somma su TUTTI i fattori attivi della riga (uno per le spec diagonali,
+        due per fed_overlap: globale + locale). I test di invarianza devono
+        confrontare il valore atteso COMPLETO: prendere un solo addendo
+        passerebbe per le diagonali e mancherebbe meta' del modello per
+        fed_overlap.
+        """
+        Lambda = np.asarray(Lambda)
+        out = np.zeros(f_aug.shape[0])
+        for j in fs.factors_of_series(_TGT_I):
+            idx = np.array([l * r + int(j) for l in range(5)])
+            out += Lambda[_TGT_I, j] * (f_aug[:, idx] @ _MM_W)
+        return out
 
     print("\nRunning E-step at theta^(0) (verbose=False) ...")
     estep_0 = run_e_step(Y, theta_0, freq_list=freq_list, verbose=False)
@@ -2561,7 +2912,7 @@ if __name__ == "__main__":
         e_step_output=estep_0,
         theta_old=theta_0,
         freq_list=freq_list,
-        block_map=BLOCK,
+        block_map=structure,
         ordered_cols=ORDERED_COLS,
         freeze_nu_iters=0,
         current_iter=0,
@@ -2584,11 +2935,7 @@ if __name__ == "__main__":
     print("normalize_signs  (Task 1 — block-wise sign convention)")
     print("=" * 64)
 
-    ref_series = {
-        "real":      "PAYEMS",
-        "financial": "S&P 500",
-        "other":     "UMCSENTx",
-    }
+    ref_series = dict(REF_SERIES)
     print(f"\nReference series:")
     for block, name in ref_series.items():
         print(f"  {block:<10s} -> {name}")
@@ -2599,7 +2946,7 @@ if __name__ == "__main__":
     print(f"  {'block':<10s}  {'ref series':<14s}  {'j':>2s}  {'Lambda[i_ref, j]':>18s}")
     print("  " + "-" * 52)
     for block, name in ref_series.items():
-        j      = _BLOCK_TO_COL[block]
+        j      = fs.factor_col(block)
         i_ref  = ORDERED_COLS.index(name)
         lam_ref = Lambda_pre[i_ref, j]
         print(f"  {block:<10s}  {name:<14s}  {j:>2d}  {lam_ref:>+18.6f}")
@@ -2610,7 +2957,7 @@ if __name__ == "__main__":
         P_smooth=P_smooth,
         P_lag=P_lag,
         ref_series=ref_series,
-        block_map=BLOCK,
+        structure=structure,
         ordered_cols=ORDERED_COLS,
         r=r,
     )
@@ -2621,8 +2968,8 @@ if __name__ == "__main__":
     sign_flips   = result["sign_flips"]
 
     print(f"\nsign_flips returned by normalize_signs:")
-    for block in _BLOCK_ORDER:
-        print(f"  {block:<10s}  d[{_BLOCK_TO_COL[block]}] = {sign_flips[block]:+d}")
+    for block in fs.factor_names:
+        print(f"  {block:<10s}  d[{fs.factor_col(block)}] = {sign_flips[block]:+d}")
 
     # ── 3. Required-effect check: ref loadings are now non-negative ──────────
     Lambda_post = np.asarray(theta_n["Lambda"])
@@ -2630,7 +2977,7 @@ if __name__ == "__main__":
     print(f"  {'block':<10s}  {'ref series':<14s}  {'j':>2s}  {'Lambda[i_ref, j]':>18s}  {'flip':>5s}")
     print("  " + "-" * 60)
     for block, name in ref_series.items():
-        j       = _BLOCK_TO_COL[block]
+        j       = fs.factor_col(block)
         i_ref   = ORDERED_COLS.index(name)
         lam_ref = Lambda_post[i_ref, j]
         flip    = sign_flips[block]
@@ -2671,23 +3018,25 @@ if __name__ == "__main__":
     )
 
     # 5b. Quarterly fitted value via Mariano-Murasawa composite regressor.
-    # GDPC1 is the only quarterly series; its fitted value at the
-    # observed quarter-end months is Lambda[GDPC1, j_R] * phi^R_t where
+    # La serie TARGET e' trimestrale; il suo valore atteso nei mesi di fine
+    # trimestre osservati e' sum_j Lambda[target, j] * phi_j,t  dove
     # phi^R_t = (1/3, 2/3, 1, 2/3, 1/3)' @ f_aug[t, [j, r+j, 2r+j, 3r+j, 4r+j]].
     # We check that BOTH the monthly and quarterly fitted values are
     # invariant — confirming that the sign flip propagates correctly to
     # ALL FIVE lag blocks of the augmented state.
     MM = np.array([1.0/3.0, 2.0/3.0, 1.0, 2.0/3.0, 1.0/3.0])
-    gdp_idx     = ORDERED_COLS.index("GDPC1")
-    gdp_block_j = _BLOCK_TO_COL[BLOCK["GDPC1"]]               # 0 (real)
-    idx_lags    = np.array([l * r + gdp_block_j for l in range(5)])
-
-    phi_old = f_smooth   [:, idx_lags] @ MM    # (T,)
-    phi_new = f_smooth_n[:, idx_lags] @ MM    # (T,)
-    yhat_gdp_old = Lambda_old[gdp_idx, gdp_block_j]  * phi_old
-    yhat_gdp_new = Lambda_post[gdp_idx, gdp_block_j] * phi_new
+    gdp_idx = ORDERED_COLS.index(fx.target)
+    # Somma su TUTTI i fattori attivi della riga target (uno per le spec
+    # diagonali, due per fed_overlap): l'invarianza va verificata sul valore
+    # atteso COMPLETO, non su un solo addendo.
+    yhat_gdp_old = np.zeros(f_smooth.shape[0])
+    yhat_gdp_new = np.zeros(f_smooth.shape[0])
+    for _j in fs.factors_of_series(gdp_idx):
+        _idx = np.array([l * r + int(_j) for l in range(5)])
+        yhat_gdp_old += Lambda_old[gdp_idx, _j] * (f_smooth[:, _idx] @ MM)
+        yhat_gdp_new += Lambda_post[gdp_idx, _j] * (f_smooth_n[:, _idx] @ MM)
     max_diff_gdp = float(np.max(np.abs(yhat_gdp_old - yhat_gdp_new)))
-    print(f"[OK] invariance of quarterly (GDPC1) fitted values:")
+    print(f"[OK] invariance of quarterly ({fx.target}) fitted values:")
     print(f"     max |Lambda^Q phi^R  -  Lambda^Q_new phi^R_new|  =  {max_diff_gdp:.3e}")
     assert max_diff_gdp < 1e-10, (
         f"Sign normalisation broke quarterly fitted-value invariance: "
@@ -2737,16 +3086,14 @@ if __name__ == "__main__":
     # ── 8. Sign-flip behaviour at the (off-block) zero entries of Lambda ──────
     # Block-diagonal exclusion: every off-block entry of Lambda is exactly
     # zero before, and must remain exactly zero after, the sign flip.
-    off_block_max_post = 0.0
-    for i, col in enumerate(ORDERED_COLS):
-        j_allowed = _BLOCK_TO_COL[BLOCK[col]]
-        for jj in range(r):
-            if jj != j_allowed:
-                off_block_max_post = max(off_block_max_post,
-                                         abs(Lambda_post[i, jj]))
+    # Rispetto della MASK: le entrate fuori-mask sono esattamente zero
+    # prima e devono restarlo dopo (vale per le spec diagonali come per
+    # fed_overlap, dove la mask ha due entrate per riga).
+    _om = np.abs(np.asarray(Lambda_post)[fs.mask == 0])
+    off_block_max_post = float(_om.max()) if _om.size else 0.0
     assert off_block_max_post == 0.0
-    print(f"[OK] Lambda_new still exactly block-diagonal "
-          f"(max off-block |entry| = {off_block_max_post:.2e})")
+    print(f"[OK] Lambda_new rispetta ancora la mask "
+          f"(max |fuori-mask| = {off_block_max_post:.2e})")
 
     # ── 9. IDEMPOTENCE: applying normalize_signs again does nothing ──────────
     # Because the first call leaves all reference loadings non-negative, the
@@ -2760,32 +3107,30 @@ if __name__ == "__main__":
         P_smooth=P_smooth_n,
         P_lag=P_lag_n,
         ref_series=ref_series,
-        block_map=BLOCK,
+        structure=structure,
         ordered_cols=ORDERED_COLS,
         r=r,
     )
-    for block in _BLOCK_ORDER:
+    for block in fs.factor_names:
         assert result_2["sign_flips"][block] == +1, (
             f"Idempotence broken: second call flipped block '{block}' again"
         )
     assert np.max(np.abs(result_2["f_smooth_new"] - f_smooth_n)) == 0
     assert np.max(np.abs(np.asarray(result_2["theta_new"]["Lambda"])
                          - Lambda_post)) == 0
-    print(f"[OK] idempotence: a second normalize_signs is a no-op "
-          f"(sign_flips = {{'real': +1, 'financial': +1, 'other': +1}})")
+    print("[OK] idempotence: a second normalize_signs is a no-op "
+          f"(sign_flips = { {b: +1 for b in fs.factor_names} })")
 
     # ── 10. Final synoptic table ─────────────────────────────────────────────
     print("\n" + "-" * 70)
     print("  POST-NORMALISATION DIAGNOSTIC TABLE")
     print("-" * 70)
     print(f"  Sign flips applied   : "
-          f"{ {b: sign_flips[b] for b in _BLOCK_ORDER} }")
-    print(f"  Reference loadings   : "
-          f"PAYEMS  -> {Lambda_post[ORDERED_COLS.index('PAYEMS'), 0]:+.4f}")
-    print(f"                         "
-          f"S&P 500 -> {Lambda_post[ORDERED_COLS.index('S&P 500'), 1]:+.4f}")
-    print(f"                         "
-          f"UMCSENTx-> {Lambda_post[ORDERED_COLS.index('UMCSENTx'), 2]:+.4f}")
+          f"{ {b: sign_flips[b] for b in fs.factor_names} }")
+    print("  Reference loadings   : (serie di riferimento dalla mask)")
+    for _b, _name in REF_SERIES.items():
+        print(f"                         {_b:<4s} {_name:<20s} -> "
+              f"{Lambda_post[ORDERED_COLS.index(_name), fs.factor_col(_b)]:+.4f}")
     print(f"  Fitted-value diff    : monthly {max_diff_fitted:.2e}   "
           f"quarterly {max_diff_gdp:.2e}")
     print(f"  Spectral diff A      : {diff_eigA:.2e}    "
@@ -2831,7 +3176,7 @@ if __name__ == "__main__":
     print("  " + "-" * 84)
     for j in range(r):
         share_post = p_pre[j] / v_pre[j]
-        print(f"  {j:>2d}  {_BLOCK_ORDER[j]:<10s}  "
+        print(f"  {j:>2d}  {fs.factor_names[j]:<10s}  "
               f"{s_pre[j]:>12.6f}  {p_pre[j]:>14.6f}  "
               f"{v_pre[j]:>11.6f}  {np.sqrt(v_pre[j]):>15.6f}  "
               f"{share_post*100:>10.2f}%")
@@ -2861,7 +3206,7 @@ if __name__ == "__main__":
 
     print(f"\nNew (correct) scale_factors returned by apply_convention_1:")
     for j in range(r):
-        print(f"  scale[{j}] ({_BLOCK_ORDER[j]:<10s}) = {scale_factors[j]:.6f}     "
+        print(f"  scale[{j}] ({fs.factor_names[j]:<10s}) = {scale_factors[j]:.6f}     "
               f"(vs old, posterior-only: {scale_old_buggy[j]:.6f})")
     print("  The new scales are ~5-10x the old ones because the sample-variance")
     print("  term dominates the total variance.")
@@ -2873,7 +3218,7 @@ if __name__ == "__main__":
           f"{'mean post var':>14s}  {'total v_k':>11s}  {'|v - 1|':>14s}")
     print("  " + "-" * 78)
     for j in range(r):
-        print(f"  {j:>2d}  {_BLOCK_ORDER[j]:<10s}  "
+        print(f"  {j:>2d}  {fs.factor_names[j]:<10s}  "
               f"{s_post[j]:>12.6f}  {p_post[j]:>14.6f}  "
               f"{v_post[j]:>11.6f}  {abs(v_post[j] - 1.0):>14.3e}")
         assert abs(v_post[j] - 1.0) < 1e-8, (
@@ -2936,16 +3281,11 @@ if __name__ == "__main__":
 
     # Quarterly fitted value via Mariano-Murasawa composite regressor.
     MM = np.array([1.0/3.0, 2.0/3.0, 1.0, 2.0/3.0, 1.0/3.0])
-    gdp_idx     = ORDERED_COLS.index("GDPC1")
-    gdp_block_j = _BLOCK_TO_COL[BLOCK["GDPC1"]]               # 0 (real)
-    idx_lags    = np.array([l * r + gdp_block_j for l in range(5)])
-
-    phi_pre  = f_smooth_n[:, idx_lags] @ MM
-    phi_post = f_smooth_v[:, idx_lags] @ MM
-    yhat_gdp_pre  = Lambda_pre_v [gdp_idx, gdp_block_j] * phi_pre
-    yhat_gdp_post = Lambda_post_v[gdp_idx, gdp_block_j] * phi_post
+    gdp_idx = _TGT_I
+    yhat_gdp_pre  = _target_fitted(Lambda_pre_v,  f_smooth_n)
+    yhat_gdp_post = _target_fitted(Lambda_post_v, f_smooth_v)
     max_diff_gdp_v = float(np.max(np.abs(yhat_gdp_pre - yhat_gdp_post)))
-    print(f"[OK] invariance of quarterly (GDPC1) fitted values:")
+    print(f"[OK] invariance of quarterly ({fx.target}) fitted values:")
     print(f"     max |Lambda^Q phi  -  Lambda^Q_new phi_new|  =  {max_diff_gdp_v:.3e}")
     assert max_diff_gdp_v < 1e-10
 
@@ -2996,19 +3336,17 @@ if __name__ == "__main__":
     assert nu_u_diff_v   < 1e-12
     assert nu_eps_diff_v < 1e-12
 
-    # ── 6. Lambda still exactly block-diagonal ────────────────────────────────
+    # ── 6. Lambda rispetta ancora la mask ────────────────────────────────
     # Convention 1 only multiplies whole columns of Lambda by positive
     # scalars; zero entries stay exactly zero.
-    off_block_max_v = 0.0
-    for i, col in enumerate(ORDERED_COLS):
-        j_allowed = _BLOCK_TO_COL[BLOCK[col]]
-        for jj in range(r):
-            if jj != j_allowed:
-                off_block_max_v = max(off_block_max_v,
-                                      abs(Lambda_post_v[i, jj]))
+    # Rispetto della MASK: le entrate fuori-mask sono esattamente zero
+    # prima e devono restarlo dopo (vale per le spec diagonali come per
+    # fed_overlap, dove la mask ha due entrate per riga).
+    _om = np.abs(np.asarray(Lambda_post_v)[fs.mask == 0])
+    off_block_max_v = float(_om.max()) if _om.size else 0.0
     assert off_block_max_v == 0.0
-    print(f"[OK] Lambda_new still exactly block-diagonal "
-          f"(max off-block |entry| = {off_block_max_v:.2e})")
+    print(f"[OK] Lambda_new rispetta ancora la mask "
+          f"(max |fuori-mask| = {off_block_max_v:.2e})")
 
     # ── 7. IDEMPOTENCE: applying apply_convention_1 again does nothing ───────
     # After the first call, every factor has posterior variance 1, so
@@ -3060,7 +3398,7 @@ if __name__ == "__main__":
         P_smooth=P_smooth,
         P_lag=P_lag,
         ref_series=ref_series,
-        block_map=BLOCK,
+        structure=structure,
         ordered_cols=ORDERED_COLS,
         r=r,
     )
@@ -3077,7 +3415,7 @@ if __name__ == "__main__":
     # ── 1. Reference loadings positive ───────────────────────────────────────
     Lambda_final = np.asarray(theta_final["Lambda"])
     for block, name in ref_series.items():
-        j      = _BLOCK_TO_COL[block]
+        j      = fs.factor_col(block)
         i_ref  = ORDERED_COLS.index(name)
         lam    = Lambda_final[i_ref, j]
         assert lam >= 0.0, (
@@ -3110,12 +3448,10 @@ if __name__ == "__main__":
           f"max diff = {max_diff_combined:.3e}")
     assert max_diff_combined < 1e-10
 
-    phi_raw   = f_smooth      [:, idx_lags] @ MM
-    phi_final = f_smooth_final[:, idx_lags] @ MM
-    gdp_raw   = Lambda_raw  [gdp_idx, gdp_block_j] * phi_raw
-    gdp_final = Lambda_final[gdp_idx, gdp_block_j] * phi_final
+    gdp_raw   = _target_fitted(Lambda_raw,   f_smooth)
+    gdp_final = _target_fitted(Lambda_final, f_smooth_final)
     max_diff_gdp_combined = float(np.max(np.abs(gdp_raw - gdp_final)))
-    print(f"[OK] quarterly (GDPC1) fitted values invariant vs raw theta_1: "
+    print(f"[OK] quarterly ({fx.target}) fitted values invariant vs raw theta_1: "
           f"max diff = {max_diff_gdp_combined:.3e}")
     assert max_diff_gdp_combined < 1e-10
 
@@ -3135,13 +3471,13 @@ if __name__ == "__main__":
     print(f"  scale factors                 : {step_var['scale_factors']}")
     print(f"  reference loadings (positive) :")
     for block, name in ref_series.items():
-        j     = _BLOCK_TO_COL[block]
+        j     = fs.factor_col(block)
         i_ref = ORDERED_COLS.index(name)
         print(f"      {block:<10s} -> {name:<14s}  "
               f"Lambda[i_ref, {j}] = {Lambda_final[i_ref, j]:+.4f}")
     print(f"  total variance per factor     :")
     for j in range(r):
-        print(f"      f^{_BLOCK_ORDER[j][:3]:<3s}  (j={j})  "
+        print(f"      f^{fs.factor_names[j][:3]:<3s}  (j={j})  "
               f"sample_var + mean_post_var = "
               f"{s_fin[j]:.4f} + {p_fin[j]:.4f} = {v_final[j]:.6f}")
     print(f"  spectral radius A             : "
@@ -3175,7 +3511,7 @@ if __name__ == "__main__":
         Y=Y,
         theta_init=theta_0,
         freq_list=freq_list,
-        block_map=BLOCK,
+        block_map=structure,
         ordered_cols=ORDERED_COLS,
         tol_outer=1e-5,
         max_iter=_max_iter,
@@ -3277,12 +3613,11 @@ if __name__ == "__main__":
     assert nu_u_em < 1000.0 and nu_eps_em < 1000.0
 
     # Lambda block-diagonal.
-    off_block_max_em = 0.0
-    for i, col in enumerate(ORDERED_COLS):
-        j_allowed = _BLOCK_TO_COL[BLOCK[col]]
-        for jj in range(r):
-            if jj != j_allowed:
-                off_block_max_em = max(off_block_max_em, abs(Lambda_em[i, jj]))
+    # Rispetto della MASK: le entrate fuori-mask sono esattamente zero
+    # prima e devono restarlo dopo (vale per le spec diagonali come per
+    # fed_overlap, dove la mask ha due entrate per riga).
+    _om = np.abs(np.asarray(Lambda_em)[fs.mask == 0])
+    off_block_max_em = float(_om.max()) if _om.size else 0.0
     assert off_block_max_em == 0.0
     print(f"[OK] Converged theta valid: rho(A)={rho_A_em:.4f}, "
           f"min eig(Q)={eig_Q_em.min():.4e}, R>0, "
@@ -3322,7 +3657,7 @@ if __name__ == "__main__":
         matplotlib.use("Agg")            # non-interactive backend
         import matplotlib.pyplot as plt
 
-        fig_path = resolve_output_path("figures", "em_loglik_convergence.png", _cfg)
+        fig_path = _OUT_DIR / "em_loglik_convergence.png"
 
         fig, (ax1, ax2) = plt.subplots(
             2, 1, figsize=(9, 7), sharex=True,
@@ -3468,7 +3803,7 @@ if __name__ == "__main__":
     print("fit_dfm  (Task 4 — full First-Stage entry point)")
     print("=" * 64)
 
-    cache_path = resolve_output_path("processed", "fit_dfm_result.npz", _cfg)
+    cache_path = _OUT_DIR / "fit_dfm_result.npz"
     print(f"  Cache path: {cache_path}")
     used_cache = cache_path.exists()
     if used_cache:
@@ -3480,7 +3815,7 @@ if __name__ == "__main__":
         Y=Y,
         theta_init=theta_0,
         freq_list=freq_list,
-        block_map=BLOCK,
+        block_map=structure,
         ordered_cols=ORDERED_COLS,
         ref_series=ref_series,
         tol_outer=1e-5,
@@ -3547,17 +3882,16 @@ if __name__ == "__main__":
     assert 2.0 < nu_u_fd < 1000.0, f"nu_u out of bounds: {nu_u_fd}"
     assert 2.0 < nu_eps_fd < 1000.0, f"nu_eps out of bounds: {nu_eps_fd}"
 
-    off_block_max_fd = 0.0
-    for i, col in enumerate(ORDERED_COLS):
-        j_allowed = _BLOCK_TO_COL[BLOCK[col]]
-        for jj in range(r):
-            if jj != j_allowed:
-                off_block_max_fd = max(off_block_max_fd, abs(Lambda_fd[i, jj]))
+    # Rispetto della MASK: le entrate fuori-mask sono esattamente zero
+    # prima e devono restarlo dopo (vale per le spec diagonali come per
+    # fed_overlap, dove la mask ha due entrate per riga).
+    _om = np.abs(np.asarray(Lambda_fd)[fs.mask == 0])
+    off_block_max_fd = float(_om.max()) if _om.size else 0.0
     assert off_block_max_fd == 0.0
     print(f"[OK] theta valid: rho(A)={rho_A_fd:.4f}, "
           f"min eig(Q)={eig_Q_fd.min():.4e}, R>0, "
           f"nu_u={nu_u_fd:.3f}, nu_eps={nu_eps_fd:.3f}, "
-          f"Lambda block-diagonal (max off-block = {off_block_max_fd:.2e})")
+          f"Lambda rispetta la mask (max fuori-mask = {off_block_max_fd:.2e})")
 
     # ── 4. Convention 1: every factor has TOTAL variance == 1 ────────────────
     s_var_fd     = np.var(f_smooth_fd[:, :r], axis=0, ddof=0)
@@ -3573,7 +3907,7 @@ if __name__ == "__main__":
     # ── 5. Sign convention: reference loadings positive ──────────────────────
     print(f"\n[OK] reference loadings non-negative after sign normalisation:")
     for block, name in ref_series.items():
-        j      = _BLOCK_TO_COL[block]
+        j      = fs.factor_col(block)
         i_ref  = ORDERED_COLS.index(name)
         lam    = float(Lambda_fd[i_ref, j])
         assert lam >= 0.0, (
@@ -3601,17 +3935,14 @@ if __name__ == "__main__":
 
     # Quarterly fitted value via Mariano-Murasawa composite regressor.
     # We do NOT have the raw quarterly fitted value cached separately, but
-    # we can check internal consistency: GDPC1's fitted value via the MM
-    # aggregator should be finite and (since GDPC1 has nonzero loading on
+    # possiamo verificare la coerenza interna: il valore atteso del target via
+    # l'aggregatore MM deve essere finito e (avendo caricamento non nullo su
     # the real factor after sign-normalisation) of the expected sign.
     MM = np.array([1.0/3.0, 2.0/3.0, 1.0, 2.0/3.0, 1.0/3.0])
-    gdp_idx     = ORDERED_COLS.index("GDPC1")
-    gdp_block_j = _BLOCK_TO_COL[BLOCK["GDPC1"]]               # 0 (real)
-    idx_lags    = np.array([l * r + gdp_block_j for l in range(5)])
-    phi_final   = f_smooth_fd[:, idx_lags] @ MM
-    yhat_gdp    = float(Lambda_fd[gdp_idx, gdp_block_j]) * phi_final
+    gdp_idx  = _TGT_I
+    yhat_gdp = _target_fitted(Lambda_fd, f_smooth_fd)
     assert np.all(np.isfinite(yhat_gdp))
-    print(f"[OK] quarterly (GDPC1) fitted values finite "
+    print(f"[OK] quarterly ({fx.target}) fitted values finite "
           f"(range = [{yhat_gdp.min():+.3f}, {yhat_gdp.max():+.3f}])")
 
     # ── 7. Loaded == in-memory  (round-trip sanity if we just wrote) ─────────
@@ -3641,17 +3972,17 @@ if __name__ == "__main__":
           f"nu_eps = {nu_eps_fd:.3f}")
     print(f"  Spectral radius A      : rho(A) = {rho_A_fd:.4f}")
     print(f"  Sign flips applied     : "
-          f"{{ {', '.join(f'{b!r}: {sign_flips_fd[b]:+d}' for b in _BLOCK_ORDER)} }}")
+          f"{{ {', '.join(f'{b!r}: {sign_flips_fd[b]:+d}' for b in fs.factor_names)} }}")
     print(f"  Scale factors          : "
-          f"{ {_BLOCK_ORDER[j]: float(scale_fd[j]) for j in range(r)} }")
+          f"{ {fs.factor_names[j]: float(scale_fd[j]) for j in range(r)} }")
     print(f"  Reference loadings     :")
     for block, name in ref_series.items():
-        j     = _BLOCK_TO_COL[block]
+        j     = fs.factor_col(block)
         i_ref = ORDERED_COLS.index(name)
         print(f"      {block:<10s} -> {name:<14s}  "
               f"Lambda[i_ref, {j}] = {Lambda_fd[i_ref, j]:+.4f}")
     print(f"  Total variance / factor: "
-          f"{ {_BLOCK_ORDER[j]: float(v_total_fd[j]) for j in range(r)} }")
+          f"{ {fs.factor_names[j]: float(v_total_fd[j]) for j in range(r)} }")
     print(f"  Fitted-value invariance: monthly diff = {diff_monthly:.2e}")
     print("-" * 72)
     print(f"  First Stage completo — theta e fattori pronti per il Second Stage.")
@@ -3667,8 +3998,8 @@ if __name__ == "__main__":
         "nu_u":   round(float(nu_u_fd),   6),
         "nu_eps": round(float(nu_eps_fd), 6),
         "rho_A":  round(float(rho_A_fd),  6),
-        "sign_flips":   {b: int(sign_flips_fd[b]) for b in _BLOCK_ORDER},
-        "scale_factors": {_BLOCK_ORDER[j]: round(float(scale_fd[j]), 6)
+        "sign_flips":   {b: int(sign_flips_fd[b]) for b in fs.factor_names},
+        "scale_factors": {fs.factor_names[j]: round(float(scale_fd[j]), 6)
                           for j in range(r_fd)},
         "A": [[round(float(A_fd[i, j]), 8) for j in range(r_fd)]
               for i in range(r_fd)],
@@ -3702,10 +4033,10 @@ if __name__ == "__main__":
     print("Structure of em_main.py")
     print("=" * 64)
     print(
-        "\n  Module-level constants:\n"
-        "    _BLOCK_ORDER          canonical block ordering: real, financial, other.\n"
-        "    _BLOCK_TO_COL         block name -> factor-column index.\n"
-        "    _DEFAULT_REF_SERIES   default reference series for sign normalisation.\n"
+        "\n  Struttura di fattore (nessun nome cablato):\n"
+        "    factor_structure.build_loading_mask   spec -> mask M x r di 0/1.\n"
+        "    FactorStructure.factor_names / members / factors_of_series\n"
+        "    _default_ref_series   riferimento per fattore, derivato dalla mask.\n"
         "\n"
         "  Post-processing routines (Tasks 1-2):\n"
         "    normalize_signs       block-wise sign convention: flips each factor so\n"

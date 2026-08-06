@@ -1,0 +1,426 @@
+{
+  "description": "Strutture di fattore (maschere di loading Lambda) per il dataset final. Il DATO e' series_final.json (37 serie); qui SOLO come i fattori caricano. Consumato in fase di MODELLO (em/): la mask 0/1 M x r si costruisce da queste assegnazioni. Derivato da block_loadings di series_final.json.",
+  "series_config": "series_final.json",
+  "factor_column_order": {
+    "fed_overlap": [
+      "G",
+      "S",
+      "R",
+      "L"
+    ],
+    "diag4": [
+      "S",
+      "R",
+      "L",
+      "N"
+    ],
+    "diag3": [
+      "A",
+      "N",
+      "L"
+    ]
+  },
+  "specs": {
+    "fed_overlap": {
+      "n_factors": 4,
+      "diagonal": false,
+      "factors": {
+        "G": "global (tutte)",
+        "S": "soft/surveys",
+        "R": "real",
+        "L": "labor"
+      },
+      "description": "Replica NY Fed (Box et al. Tab.3): globale + soft/real/labor, OVERLAP. Ogni serie carica su G + il suo locale (i 7 prezzi solo su G). Lambda NON diagonale (2 entrate/riga, 1 per i prezzi).",
+      "assignments": {
+        "PAYEMS": [
+          "G",
+          "L"
+        ],
+        "CPIAUCSL": [
+          "G"
+        ],
+        "DGORDER": [
+          "G",
+          "R"
+        ],
+        "RSAFS": [
+          "G",
+          "R"
+        ],
+        "HSN1F": [
+          "G",
+          "R"
+        ],
+        "HOUST": [
+          "G",
+          "R"
+        ],
+        "UNRATE": [
+          "G",
+          "L"
+        ],
+        "INDPRO": [
+          "G",
+          "R"
+        ],
+        "PPIFIS": [
+          "G"
+        ],
+        "USPRIV": [
+          "G",
+          "L"
+        ],
+        "GACDISA066MSFRBNY": [
+          "G",
+          "S"
+        ],
+        "WHLSLRIMSA": [
+          "G",
+          "R"
+        ],
+        "TTLCONS": [
+          "G",
+          "R"
+        ],
+        "GACDFSA066MSFRBPHI": [
+          "G",
+          "S"
+        ],
+        "IR": [
+          "G"
+        ],
+        "PERMIT": [
+          "G",
+          "R"
+        ],
+        "TCU": [
+          "G",
+          "R"
+        ],
+        "PCEPILFE": [
+          "G"
+        ],
+        "CPILFESL": [
+          "G"
+        ],
+        "BUSINV": [
+          "G",
+          "R"
+        ],
+        "JTSJOL": [
+          "G",
+          "L"
+        ],
+        "PCEC96": [
+          "G",
+          "R"
+        ],
+        "PCEPI": [
+          "G"
+        ],
+        "IQ": [
+          "G"
+        ],
+        "AMDMVS": [
+          "G",
+          "R"
+        ],
+        "AMTMUO": [
+          "G",
+          "R"
+        ],
+        "AMDMTI": [
+          "G",
+          "R"
+        ],
+        "DSPIC96": [
+          "G",
+          "R"
+        ],
+        "BOPTEXP": [
+          "G",
+          "R"
+        ],
+        "BOPTIMP": [
+          "G",
+          "R"
+        ],
+        "ISM_PMI": [
+          "G",
+          "S"
+        ],
+        "ISM_PRICES": [
+          "G",
+          "S"
+        ],
+        "ISM_EMP": [
+          "G",
+          "S"
+        ],
+        "ISM_NMI": [
+          "G",
+          "S"
+        ],
+        "ULCNFB": [
+          "G",
+          "L"
+        ],
+        "A261RX1Q020SBEA": [
+          "G",
+          "R"
+        ],
+        "GDPC1": [
+          "G",
+          "R"
+        ]
+      }
+    },
+    "diag4": {
+      "n_factors": 4,
+      "diagonal": true,
+      "factors": {
+        "S": "soft/surveys",
+        "R": "real",
+        "L": "labor",
+        "N": "nominale/prezzi"
+      },
+      "description": "4 fattori DIAGONALE, niente globale. Ogni serie carica su UN solo fattore = il suo blocco locale; i 7 prezzi (ex puri-G) formano il fattore Nominale N. Lambda diagonale a blocchi (1 entrata/riga).",
+      "assignments": {
+        "PAYEMS": [
+          "L"
+        ],
+        "CPIAUCSL": [
+          "N"
+        ],
+        "DGORDER": [
+          "R"
+        ],
+        "RSAFS": [
+          "R"
+        ],
+        "HSN1F": [
+          "R"
+        ],
+        "HOUST": [
+          "R"
+        ],
+        "UNRATE": [
+          "L"
+        ],
+        "INDPRO": [
+          "R"
+        ],
+        "PPIFIS": [
+          "N"
+        ],
+        "USPRIV": [
+          "L"
+        ],
+        "GACDISA066MSFRBNY": [
+          "S"
+        ],
+        "WHLSLRIMSA": [
+          "R"
+        ],
+        "TTLCONS": [
+          "R"
+        ],
+        "GACDFSA066MSFRBPHI": [
+          "S"
+        ],
+        "IR": [
+          "N"
+        ],
+        "PERMIT": [
+          "R"
+        ],
+        "TCU": [
+          "R"
+        ],
+        "PCEPILFE": [
+          "N"
+        ],
+        "CPILFESL": [
+          "N"
+        ],
+        "BUSINV": [
+          "R"
+        ],
+        "JTSJOL": [
+          "L"
+        ],
+        "PCEC96": [
+          "R"
+        ],
+        "PCEPI": [
+          "N"
+        ],
+        "IQ": [
+          "N"
+        ],
+        "AMDMVS": [
+          "R"
+        ],
+        "AMTMUO": [
+          "R"
+        ],
+        "AMDMTI": [
+          "R"
+        ],
+        "DSPIC96": [
+          "R"
+        ],
+        "BOPTEXP": [
+          "R"
+        ],
+        "BOPTIMP": [
+          "R"
+        ],
+        "ISM_PMI": [
+          "S"
+        ],
+        "ISM_PRICES": [
+          "S"
+        ],
+        "ISM_EMP": [
+          "S"
+        ],
+        "ISM_NMI": [
+          "S"
+        ],
+        "ULCNFB": [
+          "L"
+        ],
+        "A261RX1Q020SBEA": [
+          "R"
+        ],
+        "GDPC1": [
+          "R"
+        ]
+      }
+    },
+    "diag3": {
+      "n_factors": 3,
+      "diagonal": true,
+      "factors": {
+        "A": "real+soft (attivita')",
+        "N": "nominale/prezzi",
+        "L": "labor"
+      },
+      "description": "3 fattori DIAGONALE. Real e Soft accorpati in A; prezzi in N; labor in L. Ogni serie un solo fattore. Baseline di ablazione minimale.",
+      "assignments": {
+        "PAYEMS": [
+          "L"
+        ],
+        "CPIAUCSL": [
+          "N"
+        ],
+        "DGORDER": [
+          "A"
+        ],
+        "RSAFS": [
+          "A"
+        ],
+        "HSN1F": [
+          "A"
+        ],
+        "HOUST": [
+          "A"
+        ],
+        "UNRATE": [
+          "L"
+        ],
+        "INDPRO": [
+          "A"
+        ],
+        "PPIFIS": [
+          "N"
+        ],
+        "USPRIV": [
+          "L"
+        ],
+        "GACDISA066MSFRBNY": [
+          "A"
+        ],
+        "WHLSLRIMSA": [
+          "A"
+        ],
+        "TTLCONS": [
+          "A"
+        ],
+        "GACDFSA066MSFRBPHI": [
+          "A"
+        ],
+        "IR": [
+          "N"
+        ],
+        "PERMIT": [
+          "A"
+        ],
+        "TCU": [
+          "A"
+        ],
+        "PCEPILFE": [
+          "N"
+        ],
+        "CPILFESL": [
+          "N"
+        ],
+        "BUSINV": [
+          "A"
+        ],
+        "JTSJOL": [
+          "L"
+        ],
+        "PCEC96": [
+          "A"
+        ],
+        "PCEPI": [
+          "N"
+        ],
+        "IQ": [
+          "N"
+        ],
+        "AMDMVS": [
+          "A"
+        ],
+        "AMTMUO": [
+          "A"
+        ],
+        "AMDMTI": [
+          "A"
+        ],
+        "DSPIC96": [
+          "A"
+        ],
+        "BOPTEXP": [
+          "A"
+        ],
+        "BOPTIMP": [
+          "A"
+        ],
+        "ISM_PMI": [
+          "A"
+        ],
+        "ISM_PRICES": [
+          "A"
+        ],
+        "ISM_EMP": [
+          "A"
+        ],
+        "ISM_NMI": [
+          "A"
+        ],
+        "ULCNFB": [
+          "L"
+        ],
+        "A261RX1Q020SBEA": [
+          "A"
+        ],
+        "GDPC1": [
+          "A"
+        ]
+      }
+    }
+  }
+}

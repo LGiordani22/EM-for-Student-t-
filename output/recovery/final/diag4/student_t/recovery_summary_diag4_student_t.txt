@@ -1,0 +1,35 @@
+==============================================================================
+  RECOVERY SUMMARY  —  comparison across sample sizes
+  Generated 2026-07-25 10:46:43
+  NOTE: rel.err is relative to theta_star.
+  Improvement indicator: rel.err should DECREASE as T grows.
+==============================================================================
+
+  metric                                             T=500        T=2000
+  ----------------------------------------------------------------------
+  nu_u          star                                3.8682        3.8682
+  nu_u          hat                                 3.8754        4.3703
+  nu_u          rel.err                             0.0018        0.1298
+  nu_eps        star                                6.4263        6.4263
+  nu_eps        hat                                 5.9885        6.3246
+  nu_eps        rel.err                             0.0681        0.0158
+  rho(A)        star                                0.9404        0.9404
+  rho(A)        hat                                 0.9231        0.9336
+  rho(A)        rel.err                             0.0184        0.0072
+  Lambda relerr (normalised)                        0.4059        0.4131
+  Lambda relerr (Proc.free)                         0.4059        0.4131
+  Lambda relerr (Proc.block)                        0.0656        0.0357
+  |corr(f_S, F_true_S)|                             0.9947        0.9943
+  |corr(f_R, F_true_R)|                             0.9890        0.9907
+  |corr(f_L, F_true_L)|                             0.9953        0.9957
+  |corr(f_N, F_true_N)|                             0.9896        0.9947
+  corr(w_u_hat,   w_u_true)                         0.5573        0.6112
+  corr(w_eps_hat, w_eps_true)                       0.8915        0.8906
+  R median rel.err                                  0.0455        0.0251
+  R max rel.err                                     0.8169        0.3794
+  diag(Q)[0=S] rel.err                              0.0585        0.0337
+  diag(Q)[1=R] rel.err                              1.0492        1.3090
+  diag(Q)[2=L] rel.err                             18.6166       19.2462
+  diag(Q)[3=N] rel.err                              0.0650        0.2417
+
+==============================================================================

@@ -34,24 +34,22 @@ This module is a PURE ENGINE
 It owns only the generic Monte Carlo machinery: simulate-then-estimate,
 parallel replication, aggregation, and grid I/O.  It contains **no**
 experiment-specific logic (no calibrated DGP construction, no per-experiment
-reporting).  The three thesis experiments are thin wrappers that configure
-this engine via :func:`run_grid`:
+reporting).  It supports the three canonical thesis experiment designs by
+configuration of :func:`run_grid`:
 
-    * ``run_experiment_a.py`` — DGP Student-t (calibrated, nu ~ 4).  Both
-      estimators; the Student-t estimator is expected to beat the Gaussian
-      one (the latter, lacking weight-attenuation, inflates Q / R under the
-      heavy-tailed DGP).
-    * ``run_experiment_b.py`` — DGP Gaussian (theta_star with nu → ∞).
-      Nesting check: the two estimators should coincide (loglik gap ~ 0).
-    * ``run_experiment_c.py`` — contamination robustness (pi > 0).
-      Implemented: each observation is contaminated with probability *pi*
-      (Bernoulli indicator z_t); contaminated observations replace their
-      idiosyncratic shock with a draw from t_{nu_contam}(0, kappa^2 R)
-      (factor signal left intact).  The simulator returns ``contam_mask``
-      (binary ground-truth vector); :func:`compute_contamination_detection`
-      computes detection rates from it.
+    * **A** — DGP Student-t (calibrated, nu ~ 4).  Both estimators; the
+      Student-t estimator is expected to beat the Gaussian one (the latter,
+      lacking weight-attenuation, inflates Q / R under the heavy-tailed DGP).
+    * **B** — DGP Gaussian (theta_star with nu → ∞).  Nesting check: the two
+      estimators should coincide (loglik gap ~ 0).
+    * **C** — contamination robustness (pi > 0).  Each observation is
+      contaminated with probability *pi* (Bernoulli indicator z_t);
+      contaminated observations replace their idiosyncratic shock with a draw
+      from t_{nu_contam}(0, kappa^2 R) (factor signal left intact).  The
+      simulator returns ``contam_mask`` (binary ground-truth vector);
+      :func:`compute_contamination_detection` computes detection rates from it.
 
-Each wrapper loads the calibrated ``theta_star``, optionally transforms it
+Each design loads the calibrated ``theta_star``, optionally transforms it
 (B sets nu = inf; A leaves it unchanged), and calls :func:`run_grid` with its
 own ``output_dir``.  The ``__main__`` of this module is only an engine
 smoke-test (a single small replication), never an experiment.
@@ -88,7 +86,6 @@ _SRC_DIR      = _PROJECT_ROOT / "src"
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
-from data_loader  import BLOCK, FREQ, ORDERED_COLS                  # noqa: E402
 from em.em_main      import fit_dfm, load_dfm_fit, _theta_fingerprint  # noqa: E402
 from simulate_dfm import simulate_dfm                               # noqa: E402
 
@@ -101,10 +98,7 @@ from monte_carlo_recovery import (                                  # noqa: E402
     compute_outlier_rank_overlap,
     compute_contamination_detection,
 )
-
-
-_BLOCK_ORDER:  list[str]      = ["real", "financial", "other"]
-_BLOCK_TO_COL: dict[str, int] = {b: j for j, b in enumerate(_BLOCK_ORDER)}
+from em.factor_structure import as_structure                        # noqa: E402
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -159,6 +153,8 @@ def run_one_replication(
     max_iter: int = 200,
     tol_outer: float = 1e-5,
     verbose_em: bool = False,
+    structure=None,
+    per_series_weights: bool = False,
 ) -> dict[str, Any]:
     r"""
     Execute one Monte Carlo replication and return a compact scalar
@@ -215,9 +211,10 @@ def run_one_replication(
         Scale multiplier of the contaminating shock (covariance
         ``kappa^2 R``, ≈ 25x the baseline at the default).  Exposed for
         the Experiment-C wrapper; ignored when ``π = 0``.
-    freq_list, block_map, ordered_cols, r
-        Panel metadata.  ``None`` defaults are loaded from
-        :mod:`data_loader`.
+    freq_list, ordered_cols
+        Panel metadata (mondo 'final'), obbligatori.  ``block_map`` e' opzionale
+        (solo per le stampe; l'algebra passa da ``structure``); ``r`` si deduce
+        da ``theta_star`` se ``None``.
     max_iter : int
         EM outer iteration budget.  Default 200 (enough for the
         synthetic panels at the empirical sample lengths; the real
@@ -239,11 +236,28 @@ def run_one_replication(
             f"estimator must be 'student_t' or 'gaussian'; got {estimator!r}."
         )
 
-    # ── Defaults from data_loader ────────────────────────────────────────────
-    if freq_list    is None: freq_list    = [FREQ[c] for c in ORDERED_COLS]
-    if block_map    is None: block_map    = BLOCK
-    if ordered_cols is None: ordered_cols = ORDERED_COLS
+    # ── Panel metadata (mondo 'final'): richiesti dal chiamante ───────────────
+    # I default da data_loader (small/big) sono stati rimossi: senza un pannello
+    # non esiste un default sensato. I chiamanti reali passano ordered_cols,
+    # freq_list e structure da em.selftest_fixture.load_fixture. `block_map` e'
+    # solo decorativo qui (l'algebra passa da `structure`) e puo' restare None.
+    if ordered_cols is None or freq_list is None:
+        raise ValueError(
+            "run_one_replication: `ordered_cols` e `freq_list` sono obbligatori "
+            "(pannello 'final' via em.selftest_fixture.load_fixture); il default "
+            "da data_loader e' stato rimosso."
+        )
     if r            is None: r            = int(np.asarray(theta_star["A"]).shape[0])
+
+    # `structure` (mask-driven) ha la precedenza: sotto una spec non diagonale
+    # un block_map degraderebbe il modello a diagonale in silenzio.
+    _struct = structure if structure is not None else block_map
+    # L'Asse B si legge da theta_star, non da un flag da tenere allineato.
+    _idio_ar1 = "rho" in set(theta_star.keys())
+    # freq_map coerente col freq_list EFFETTIVO: prima si usava la costante
+    # globale FREQ, che con un freq_list passato dal chiamante poteva riferirsi
+    # a un pannello diverso.
+    _freq_map = dict(zip(ordered_cols, freq_list))
 
     # ── 1. Simulate the synthetic panel ──────────────────────────────────────
     # pi / nu_contam / kappa drive the Experiment-C additive-outlier injection.
@@ -255,6 +269,7 @@ def run_one_replication(
         ordered_cols=ordered_cols, r=r,
         seed=seed,
         pi=pi, nu_contam=nu_contam, kappa=kappa,
+        per_series_weights=per_series_weights,
     )
     Y          = sim["Y"]
     F_true     = sim["F"]
@@ -265,8 +280,11 @@ def run_one_replication(
     # ── 2. Fresh PCA init on the synthetic panel ─────────────────────────────
     theta_0, _ = init_theta_from_synthetic(
         Y,
-        ordered_cols=ordered_cols, block_map=block_map, freq_map=FREQ,
+        ordered_cols=ordered_cols, block_map=block_map, freq_map=_freq_map,
+        structure=structure, idio_ar1=_idio_ar1,
     )
+    if per_series_weights:
+        theta_0["per_series_weights"] = True
 
     # ── 3. Re-fit with the chosen estimator ──────────────────────────────────
     gaussian_flag = (estimator == "gaussian")
@@ -274,7 +292,7 @@ def run_one_replication(
         Y=Y,
         theta_init=theta_0,
         freq_list=freq_list,
-        block_map=block_map,
+        block_map=_struct,
         ordered_cols=ordered_cols,
         max_iter=max_iter,
         tol_outer=tol_outer,
@@ -306,6 +324,7 @@ def run_one_replication(
         w_eps_true=w_eps_true,
         ordered_cols=ordered_cols,
         block_map=block_map,
+        structure=structure,
         # Experiments A / B (pi=0) pass None so no detection keys are produced;
         # Experiment C (pi>0) passes the binary ground-truth mask.  (At pi=0 the
         # mask is all-False anyway — None is the explicit "not applicable".)
@@ -356,6 +375,7 @@ def compute_replication_metrics(
     w_eps_true: np.ndarray,
     ordered_cols: list[str],
     block_map: dict[str, str],
+    structure=None,
     contam_mask: np.ndarray | None = None,
 ) -> dict[str, Any]:
     r"""
@@ -374,23 +394,26 @@ def compute_replication_metrics(
         - ``lambda_relerr_procrustes_blockdiag`` — same after the
           block-diagonal Procrustes rescaling (the primary
           loadings metric, see monte_carlo_recovery.py (self-recovery test)).
-        - ``H_block_diag`` — vector ``(h_R, h_F, h_X)``.
-        - ``diagQ_star``, ``diagQ_hat``, ``diagQ_relerr`` (per block).
+        - ``H_block_diag`` — vector ``(h_j)`` of length ``r``, one
+          block-Procrustes scale per factor.
+        - ``diagQ_star``, ``diagQ_hat``, ``diagQ_relerr`` — length ``r``,
+          one entry per factor.
         - ``R_median_relerr``, ``R_max_relerr``.
+        - ``factor_names`` — the ``r`` factor names of the spec, used
+          downstream to name the per-factor sub-keys (not a metric).
 
     Factor recovery
-        - ``factor_abscorr`` — ``(|corr_R|, |corr_F|, |corr_X|)``,
-          the within-block factor correlation (the thesis prescribes
-          a Pearson correlation here, and ``|·|`` neutralises the
-          sign / scale ambiguity that survives Convention 1 on
-          finite samples).
-        - ``factor_crosscorr`` — 3 cross-block correlations
-          ``(|corr(f_R, F_F)|, |corr(f_R, F_X)|, |corr(f_F, F_X)|)``,
-          which should be near zero under correct block
+        - ``factor_abscorr`` — ``(|corr_j|)`` of length ``r``, the
+          within-factor correlation (the thesis prescribes a Pearson
+          correlation here, and ``|·|`` neutralises the sign / scale
+          ambiguity that survives Convention 1 on finite samples).
+        - ``factor_crosscorr`` — the ``C(r, 2)`` cross-factor
+          correlations ``|corr(f_i, F_j)|`` over all pairs ``i < j``,
+          which should be near zero under correct factor
           identification (thesis line ~12707).
         - ``factor_rmse_traj`` — RMSE of the smoothed factor
-          trajectory against the truth, per block (computed *after*
-          rescaling the truth by the block-Procrustes ``h_b`` and
+          trajectory against the truth, per factor (computed *after*
+          rescaling the truth by the block-Procrustes ``h_j`` and
           sign-aligning, so the comparison is on a common scale).
 
     Weight recovery (Student-t specific)
@@ -431,6 +454,14 @@ def compute_replication_metrics(
     R_hat       = np.asarray(theta_hat["R"])
     r           = int(Lambda_star.shape[1])
 
+    # Struttura di fattore per il naming per-fattore e per il Procrustes a
+    # blocchi. Mask-driven: sotto una spec non diagonale i membri di ciascun
+    # fattore vengono dalla mask, non da un block_map che degraderebbe a
+    # diagonale. `as_structure` accetta sia una FactorStructure sia un dict.
+    _struct  = as_structure(structure if structure is not None else block_map,
+                            ordered_cols)
+    _fnames  = list(_struct.factor_names)
+
     # ── (a) Sign-align the loadings per factor ────────────────────────────────
     d_sign = align_sign_per_factor(Lambda_hat, Lambda_star)
     D      = np.diag(d_sign.astype(float))
@@ -446,7 +477,7 @@ def compute_replication_metrics(
     )
     H_block = procrustes_block_diagonal(
         Lambda_hat, Lambda_star,
-        ordered_cols=ordered_cols, block_map=block_map,
+        ordered_cols=ordered_cols, block_map=block_map, structure=_struct,
     )
     Lambda_proc_block = Lambda_hat @ H_block
     lambda_relerr_procrustes_blockdiag = float(
@@ -477,8 +508,9 @@ def compute_replication_metrics(
         _abs_corr(f_hat_now[:, j], F_true[:, j]) for j in range(r)
     ])
     # Cross-block (off-diagonal) — should be near 0 under correct block
-    # identification (thesis line ~12707).
-    cross_pairs = [(0, 1), (0, 2), (1, 2)]
+    # identification (thesis line ~12707). Tutte le C(r,2) coppie, non tre
+    # cablate: su r=4 le coppie sono 6, e cablarne 3 perdeva il quarto fattore.
+    cross_pairs = [(i, j) for i in range(r) for j in range(i + 1, r)]
     factor_crosscorr = np.array([
         _abs_corr(f_hat_now[:, i], F_true[:, j]) for (i, j) in cross_pairs
     ])
@@ -516,6 +548,9 @@ def compute_replication_metrics(
     detection = compute_contamination_detection(w_eps_hat, contam_mask)
 
     metrics_out = {
+        # Nomi dei fattori della spec: servono all'espansione r-generica delle
+        # metriche per-fattore in aggregate_replications (non e' una metrica).
+        "factor_names":     _fnames,
         "nu_u_star":        float(theta_star["nu_u"]),
         "nu_u_hat":         float(theta_hat["nu_u"]),
         "nu_u_relerr":      abs(float(theta_hat["nu_u"]) - float(theta_star["nu_u"]))
@@ -576,7 +611,8 @@ def _mc_worker(args: tuple):
     :func:`run_one_replication` and ignored there when ``pi = 0`` (A / B).
     """
     (seed, theta_star, T, estimator, pi, nu_contam, kappa,
-     freq_list, block_map, ordered_cols, r, max_iter, tol) = args
+     freq_list, block_map, ordered_cols, r, max_iter, tol,
+     structure, per_series_weights) = args
     try:
         return run_one_replication(
             seed=seed,
@@ -593,6 +629,8 @@ def _mc_worker(args: tuple):
             max_iter=max_iter,
             tol_outer=tol,
             verbose_em=False,
+            structure=structure,
+            per_series_weights=per_series_weights,
         )
     except Exception as exc:
         print(
@@ -606,24 +644,21 @@ def _mc_worker(args: tuple):
 # ── Metric classification tables ─────────────────────────────────────────────
 
 # Estimate-type keys: paired with their true-value key for bias / RMSE.
+# Le chiavi diagQ per-fattore (`diagQ_hat_<f>` -> `diagQ_star_<f>`) NON stanno
+# qui: sono appaiate DINAMICAMENTE in aggregate_replications, perche' i nomi dei
+# fattori dipendono dalla spec (r-generico) e cablarli perdeva il 4o fattore.
 _ESTIMATE_TO_TRUE: dict[str, str] = {
     "nu_u_hat":        "nu_u_star",
     "nu_eps_hat":      "nu_eps_star",
     "rho_A_hat":       "rho_A_star",
-    # Expanded Q-diagonal keys (after array expansion below):
-    "diagQ_hat_real":  "diagQ_star_real",
-    "diagQ_hat_fin":   "diagQ_star_fin",
-    "diagQ_hat_other": "diagQ_star_other",
 }
 
 # Error-type keys: already deviations from truth; RMSE = sqrt(mean(x^2)).
 # Matched by substring: any key whose name contains one of these patterns.
 _ERROR_PATTERNS: tuple[str, ...] = ("relerr", "err_norm")
 
-_BLOCK_NAMES: tuple[str, ...] = ("real", "fin", "other")
-_CROSS_NAMES: tuple[str, ...] = ("RF", "RX", "FX")
-
-# Array keys of shape (r,) that expand to one scalar per block:
+# Array keys of shape (r,) that expand to one scalar per factor, named by the
+# spec's `factor_names` (mask-driven), NOT by three hard-coded block labels.
 _ARRAY_BLOCK_KEYS: frozenset[str] = frozenset({
     "factor_abscorr", "factor_rmse_traj", "H_block_diag",
     "diagQ_star", "diagQ_hat", "diagQ_relerr",
@@ -632,23 +667,44 @@ _ARRAY_BLOCK_KEYS: frozenset[str] = frozenset({
 
 def _expand_one_rep(d: dict) -> dict:
     """
-    Flatten array-valued entries in a single-replica dict to scalar sub-keys.
+    Flatten array-valued entries in a single-replica dict to scalar sub-keys,
+    r-GENERICO: espande array di QUALSIASI lunghezza, non solo ``len == 3``.
 
-    ``factor_abscorr`` (shape (3,)) → ``factor_abscorr_real``,
-    ``factor_abscorr_fin``, ``factor_abscorr_other``.
-    Strings are kept as-is; other non-numeric types are dropped.
+    Le chiavi in ``_ARRAY_BLOCK_KEYS`` (shape ``(r,)``) diventano un sub-key per
+    fattore, nominato dai ``factor_names`` della spec quando presenti nel dict
+    (es. ``factor_abscorr_G``), altrimenti posizionale (``factor_abscorr_f0``).
+    ``factor_crosscorr`` (shape ``C(r,2)``) usa i nomi delle coppie ``i<j``.
+    ``factor_names`` e' metadato: consumato qui, non emesso come metrica.
+    Le stringhe si tengono; gli altri tipi non-numerici si scartano.
     """
+    fnames = d.get("factor_names")
+
+    def _lab(n: int) -> list[str]:
+        if fnames is not None and len(fnames) == n:
+            return [str(b) for b in fnames]
+        return [f"f{j}" for j in range(n)]
+
     out: dict = {}
     for k, v in d.items():
-        if isinstance(v, np.ndarray) and v.ndim == 1 and len(v) == 3:
+        if k == "factor_names":
+            continue
+        if isinstance(v, np.ndarray) and v.ndim == 1:
+            n = len(v)
             if k in _ARRAY_BLOCK_KEYS:
-                for j, b in enumerate(_BLOCK_NAMES):
+                for j, b in enumerate(_lab(n)):
                     out[f"{k}_{b}"] = float(v[j])
             elif k == "factor_crosscorr":
-                for j, n in enumerate(_CROSS_NAMES):
-                    out[f"{k}_{n}"] = float(v[j])
+                pairs = ([(i, j) for i in range(len(fnames))
+                          for j in range(i + 1, len(fnames))]
+                         if fnames is not None else [])
+                if fnames is not None and len(pairs) == n:
+                    for idx, (i, j) in enumerate(pairs):
+                        out[f"{k}_{fnames[i]}_{fnames[j]}"] = float(v[idx])
+                else:
+                    for idx in range(n):
+                        out[f"{k}_{idx}"] = float(v[idx])
             else:
-                for j in range(3):
+                for j in range(n):
                     out[f"{k}_{j}"] = float(v[j])
         elif isinstance(v, (int, float, bool, np.integer, np.floating)):
             out[k] = float(v)
@@ -688,6 +744,16 @@ def aggregate_replications(replications: list[dict]) -> dict:
     expanded = [_expand_one_rep(d) for d in replications]
     numeric_keys = [k for k, v in expanded[0].items() if isinstance(v, float)]
 
+    # Appaiamento estimate->true r-generico per i diagQ per-fattore: ogni
+    # `diagQ_hat_<f>` si accoppia col suo `diagQ_star_<f>` (nomi dei fattori
+    # dalla spec, non cablati). Gli scalari nu/rho_A stanno gia' nella mappa.
+    est_to_true = dict(_ESTIMATE_TO_TRUE)
+    for key in numeric_keys:
+        if key.startswith("diagQ_hat_"):
+            star = "diagQ_star_" + key[len("diagQ_hat_"):]
+            if star in expanded[0]:
+                est_to_true[key] = star
+
     agg: dict[str, dict] = {}
     for key in numeric_keys:
         vals   = np.array([d[key] for d in expanded if key in d], dtype=float)
@@ -702,8 +768,8 @@ def aggregate_replications(replications: list[dict]) -> dict:
             "q05":    float(np.quantile(finite, 0.05)),
             "q95":    float(np.quantile(finite, 0.95)),
         }
-        if key in _ESTIMATE_TO_TRUE:
-            star_key = _ESTIMATE_TO_TRUE[key]
+        if key in est_to_true:
+            star_key = est_to_true[key]
             star_val = float(expanded[0][star_key])
             stats["bias"] = stats["mean"] - star_val
             stats["rmse"] = float(np.sqrt(np.mean((finite - star_val) ** 2)))
@@ -743,6 +809,13 @@ def print_aggregate_table(
         parts.append(f"  [{s['q05']:.3f}, {s['q95']:.3f}]")
         return "".join(parts)
 
+    # Nomi dei fattori e chiavi cross-coppia dalla spec, ricavati dalle chiavi
+    # aggregate (r-generico): niente etichette real/fin/other cablate, e nessun
+    # fattore perso quando r != 3.
+    _fac = [k[len("factor_abscorr_"):] for k in agg
+            if k.startswith("factor_abscorr_")]
+    _cross = [k for k in agg if k.startswith("factor_crosscorr_")]
+
     groups = [
         ("Heavy-tail parameters (estimates)", [
             ("nu_u_hat",       "nu_u  (true = nu_u_star)"),
@@ -761,34 +834,19 @@ def print_aggregate_table(
             ("lambda_relerr_normalised",
              "Lambda relerr (sign-normalised only)"),
         ]),
-        ("Block-diagonal Procrustes scale factors", [
-            ("H_block_diag_real",  "h_real"),
-            ("H_block_diag_fin",   "h_financial"),
-            ("H_block_diag_other", "h_other"),
-        ]),
-        ("Q diagonal per block", [
-            ("diagQ_hat_real",   "diag(Q) estimate [real]"),
-            ("diagQ_hat_fin",    "diag(Q) estimate [financial]"),
-            ("diagQ_hat_other",  "diag(Q) estimate [other]"),
-            ("diagQ_relerr_real",  "diag(Q) rel.err  [real]"),
-            ("diagQ_relerr_fin",   "diag(Q) rel.err  [financial]"),
-            ("diagQ_relerr_other", "diag(Q) rel.err  [other]"),
-        ]),
+        ("Block-diagonal Procrustes scale factors",
+         [(f"H_block_diag_{b}", f"h_{b}") for b in _fac]),
+        ("Q diagonal per factor",
+         [(f"diagQ_hat_{b}", f"diag(Q) estimate [{b}]") for b in _fac]
+         + [(f"diagQ_relerr_{b}", f"diag(Q) rel.err  [{b}]") for b in _fac]),
         ("R (idiosyncratic variances)", [
             ("R_median_relerr", "R rel.err  (median over series)"),
             ("R_max_relerr",    "R rel.err  (max over series)"),
         ]),
-        ("Factor recovery", [
-            ("factor_abscorr_real",    "|corr| factor  [real]"),
-            ("factor_abscorr_fin",     "|corr| factor  [financial]"),
-            ("factor_abscorr_other",   "|corr| factor  [other]"),
-            ("factor_crosscorr_RF",    "|cross-corr|  real–financial"),
-            ("factor_crosscorr_RX",    "|cross-corr|  real–other"),
-            ("factor_crosscorr_FX",    "|cross-corr|  financial–other"),
-            ("factor_rmse_traj_real",  "RMSE trajectory  [real]"),
-            ("factor_rmse_traj_fin",   "RMSE trajectory  [financial]"),
-            ("factor_rmse_traj_other", "RMSE trajectory  [other]"),
-        ]),
+        ("Factor recovery",
+         [(f"factor_abscorr_{b}", f"|corr| factor  [{b}]") for b in _fac]
+         + [(k, f"|cross-corr|  {k[len('factor_crosscorr_'):]}") for k in _cross]
+         + [(f"factor_rmse_traj_{b}", f"RMSE trajectory  [{b}]") for b in _fac]),
         ("Weight recovery (Student-t specific)", [
             ("w_u_corr",          "corr(w_u_hat,   w_u_true)"),
             ("w_eps_corr",        "corr(w_eps_hat, w_eps_true)"),
@@ -844,6 +902,8 @@ def run_monte_carlo(
     base_seed: int = 1000,
     max_iter: int = 200,
     tol: float = 1e-5,
+    structure=None,
+    per_series_weights: bool = False,
 ) -> dict:
     r"""
     Run *S* independent Monte Carlo replications in parallel and aggregate
@@ -860,8 +920,9 @@ def run_monte_carlo(
         Synthetic panel length in months.
     estimator : {"student_t", "gaussian"}
         Estimator applied to each synthetic panel.
-    freq_list, block_map, ordered_cols, r
-        Panel metadata.  ``None`` → defaults from :mod:`data_loader`.
+    freq_list, ordered_cols
+        Panel metadata (mondo 'final'), obbligatori.  ``block_map`` opzionale
+        (solo stampe); ``r`` dedotto da ``theta_star`` se ``None``.
     pi : float, default 0.0
         Contamination fraction (Experiment C).  When pi > 0 the simulator
         injects idiosyncratic contamination (Bernoulli z_t, heavy-tailed
@@ -901,9 +962,12 @@ def run_monte_carlo(
     ``wall_time_seconds``
         Total wall-clock time of the parallel run.
     """
-    if freq_list    is None: freq_list    = [FREQ[c] for c in ORDERED_COLS]
-    if block_map    is None: block_map    = BLOCK
-    if ordered_cols is None: ordered_cols = ORDERED_COLS
+    if ordered_cols is None or freq_list is None:
+        raise ValueError(
+            "run_monte_carlo: `ordered_cols` e `freq_list` sono obbligatori "
+            "(pannello 'final' via em.selftest_fixture.load_fixture); il default "
+            "da data_loader e' stato rimosso."
+        )
     if r            is None: r            = int(np.asarray(theta_star["A"]).shape[0])
     if n_jobs is None:
         n_jobs = max(1, min(multiprocessing.cpu_count() - 1, 6))
@@ -916,7 +980,8 @@ def run_monte_carlo(
 
     args_list = [
         (base_seed + s, theta_star, T, estimator, pi, nu_contam, kappa,
-         freq_list, block_map, ordered_cols, r, max_iter, tol)
+         freq_list, block_map, ordered_cols, r, max_iter, tol,
+         structure, per_series_weights)
         for s in range(S)
     ]
 
@@ -1124,6 +1189,8 @@ def run_grid(
     tol: float = 1e-5,
     output_dir: str | pathlib.Path = "data/processed/mc_results",
     resume: bool = True,
+    structure=None,
+    per_series_weights: bool = False,
 ) -> dict:
     r"""
     Iterate :func:`run_monte_carlo` over the Cartesian product
@@ -1268,6 +1335,7 @@ def run_grid(
             ordered_cols=ordered_cols, r=r,
             n_jobs=n_jobs, base_seed=base_seed,
             max_iter=max_iter, tol=tol,
+            structure=structure, per_series_weights=per_series_weights,
         )
         elapsed = time.perf_counter() - t0
         _save_scenario(scen_path, mc_result)
@@ -1337,44 +1405,55 @@ if __name__ == "__main__":
     # ── ENGINE SMOKE-TEST ────────────────────────────────────────────────────
     # This is NOT an experiment.  It runs a single small replication just to
     # confirm the engine wires together end-to-end (simulate -> PCA init ->
-    # fit -> metrics) without crashing.  The three thesis experiments live in
-    # run_experiment_a.py / run_experiment_b.py / run_experiment_c.py and drive
-    # this engine through run_grid.
+    # fit -> metrics) without crashing.  The three thesis experiment designs
+    # (A/B/C) are driven through run_grid by configuring theta_star / pi.
     #
     # No caching, no parallel pool, no grid — just one cheap replication at a
     # small T with a fixed seed.
-    from config_utils import parse_config_args
-    from data_loader  import load_config as _load_config
+    from config_utils import parse_spec_variant_args, resolve_final_path
+    from em.selftest_fixture import load_fixture
+    from run_final_artifacts import VARIANTS as _V, load_final_fit
 
     try:
         sys.stdout.reconfigure(encoding="utf-8")    # type: ignore[attr-defined]
     except Exception:
         pass
 
-    _args = parse_config_args("monte_carlo.py engine smoke-test (not an experiment).")
-    _cfg  = _args.config
+    _args = parse_spec_variant_args(
+        "monte_carlo.py engine smoke-test (not an experiment).")
+    _spec, _variant = _args.spec, _args.variant
 
     print("=" * 72)
-    print(f"  monte_carlo.py  —  ENGINE SMOKE-TEST (not an experiment)  [{_cfg}]")
+    print(f"  monte_carlo.py  —  ENGINE SMOKE-TEST (not an experiment)  "
+          f"[{_spec}/{_variant}]")
     print("=" * 72)
 
-    fit_path = _PROJECT_ROOT / "data" / "processed" / _cfg / "fit_dfm_result.npz"
+    fit_path = resolve_final_path("processed", "fit_dfm_result.npz",
+                                  _spec, _variant, mkdir=False)
     print(f"Loading calibrated theta_star from: {fit_path}")
-    real_fit   = load_dfm_fit(fit_path)
-    theta_star = real_fit["theta"]
+    # load_final_fit, NON load_dfm_fit: formati diversi, stesso nome di file.
+    theta_star = load_final_fit(_spec, _variant)["theta"]
 
-    cfg_data     = _load_config(_cfg)
-    ordered_cols = cfg_data["ORDERED_COLS"]
-    block_map    = cfg_data["BLOCK"]
-    freq_list    = [cfg_data["FREQ"][c] for c in ordered_cols]
+    _fx          = load_fixture(_spec)
+    ordered_cols = _fx.ordered_cols
+    structure    = _fx.structure
+    block_map    = structure.display_block_map()   # solo per le stampe
+    freq_list    = _fx.freq_list
+
+    _vc = _V[_variant]
+    # L'estimator segue la variante: le due varianti *_ar1 differiscono nel DGP
+    # (theta_star porta rho), non nell'asse gaussian/student_t.
+    _estimator = "gaussian" if _vc["gaussian"] else "student_t"
 
     SEED = 0
     T    = 100
-    print(f"\nRunning one student_t replication  (seed={SEED}, T={T}) ...")
+    print(f"\nRunning one {_estimator} replication  (seed={SEED}, T={T}) ...")
     m = run_one_replication(
         seed=SEED, theta_star=theta_star, T=T,
-        estimator="student_t", pi=0.0, max_iter=200, verbose_em=False,
+        estimator=_estimator, pi=0.0, max_iter=200, verbose_em=False,
         freq_list=freq_list, block_map=block_map, ordered_cols=ordered_cols,
+        structure=structure,
+        per_series_weights=bool(_vc.get("per_series_weights", False)),
     )
 
     print("\n[smoke-test OK] engine ran end-to-end.  A few sanity scalars:")

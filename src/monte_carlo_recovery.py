@@ -51,8 +51,10 @@ WHAT THIS SCRIPT DOES
 
 Each call to :func:`run_recovery` runs the EM once on a synthetic panel
 and so takes several minutes.  Two replicas are produced in
-``__main__`` (``T=497`` and ``T=2000``); results are persisted to
-``data/processed/mc_recovery_T*.npz`` for later inspection.
+``__main__`` at the lengths in ``T_GRID`` (currently ``T=500`` and
+``T=2000``); results are persisted per cell to
+``output/recovery/final/<spec>/<variant>/mc_recovery_T*.npz`` for later
+inspection.
 
 Thesis references
 -----------------
@@ -81,7 +83,6 @@ _SRC_DIR      = _PROJECT_ROOT / "src"
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
-from data_loader        import BLOCK, FREQ, ORDERED_COLS                 # noqa: E402
 from em.em_initialization  import (                                         # noqa: E402
     standardize,
     mm_fill_quarterly,
@@ -95,6 +96,32 @@ from simulate_dfm       import simulate_dfm                              # noqa:
 
 _BLOCK_ORDER:  list[str]      = ["real", "financial", "other"]
 _BLOCK_TO_COL: dict[str, int] = {b: j for j, b in enumerate(_BLOCK_ORDER)}
+
+# Etichette dei fattori usate nelle tabelle. `_BLOCK_ORDER` sopra e' il default
+# a tre blocchi (real/financial/other); con le spec nominate i fattori sono in
+# numero e nome diversi, e le funzioni di stampa ricevono `factor_names`.
+_FACTOR_NAMES: list[str] | None = None
+
+
+def _r_of(metrics: dict) -> int:
+    """Numero di fattori dedotto dai metrics, senza cablare r da nessuna parte."""
+    return int(np.asarray(metrics["diagQ_star"]).ravel().size)
+
+
+def _labels(r: int, factor_names: list[str] | None = None) -> list[str]:
+    """
+    Nomi degli `r` fattori per le tabelle.
+
+    Ordine di preferenza: l'argomento esplicito, poi il default di modulo, poi
+    il vecchio `_BLOCK_ORDER`. Se dopo tutto questo i nomi sono meno di `r`
+    (spec con piu' fattori dei tre blocchi di base) si completa con `f{j}`
+    invece di sollevare: un'etichetta generica in una tabella e' preferibile a
+    un report che non viene prodotto.
+    """
+    names = list(factor_names or _FACTOR_NAMES or _BLOCK_ORDER)
+    if len(names) < r:
+        names += [f"f{j}" for j in range(len(names), r)]
+    return names[:r]
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -119,11 +146,13 @@ def _synthetic_monthly_index(T: int, start: str = "1985-01-31") -> pd.DatetimeIn
 def init_theta_from_synthetic(
     Y_sim: np.ndarray,
     *,
-    ordered_cols: list[str] = ORDERED_COLS,
-    block_map: dict[str, str] = BLOCK,
-    freq_map: dict[str, str] = FREQ,
+    ordered_cols: list[str] | None = None,
+    block_map: dict[str, str] | None = None,
+    freq_map: dict[str, str] | None = None,
     nu_init: float = 10.0,
     random_state: int = 42,
+    structure=None,
+    idio_ar1: bool = False,
 ) -> tuple[dict, np.ndarray]:
     """
     Replicate :func:`em_initialization.initialize_theta` on a synthetic
@@ -140,6 +169,20 @@ def init_theta_from_synthetic(
 
     Returns ``(theta_0, F_pca)`` where ``F_pca`` is the PCA factor matrix
     (used only to compute ``theta_0``; the EM does not need it again).
+
+    Parameters (oltre a quelli evidenti)
+    ------------------------------------
+    structure : FactorStructure or None
+        Struttura di caricamento. Se fornita ha la **precedenza** su
+        `block_map`, e va usata per ogni spec non diagonale: un dict
+        serie->blocco puo' rappresentare solo un caricamento per serie, quindi
+        passare `block_map` sotto `fed_overlap` degraderebbe la struttura a
+        diagonale **in silenzio**, e la recovery misurerebbe un modello diverso
+        da quello simulato.
+    idio_ar1 : bool
+        Se True `theta^(0)` include `rho` (e `sigma2`), cioe' l'inizializzazione
+        e' quella dell'Asse B. Deve corrispondere al DGP: simulare con `rho` e
+        inizializzare senza (o viceversa) non e' una recovery.
     """
     T = Y_sim.shape[0]
     df = pd.DataFrame(
@@ -163,11 +206,19 @@ def init_theta_from_synthetic(
     # 3. Gaussian-fill any remaining NaN (ragged edge + boundary NaN)
     Y_filled = gaussian_fill_ragged(Y_mm, random_state=random_state)
 
-    # 4. Block-by-block PCA
-    F_pca, _info = pca_initialization(Y_filled, block_map)
+    # 4. PCA guidata dalla struttura (la mask, non una mappa a blocchi)
+    _struct = structure if structure is not None else block_map
+
+    F_pca, _info = pca_initialization(Y_filled, _struct)
 
     # 5. Closed-form theta^(0)
-    theta_0 = compute_theta_initial(Y_filled, F_pca, block_map, nu_init=nu_init)
+    _kw = {"nu_init": nu_init}
+    if idio_ar1:
+        # `freq_list` serve perche' sotto AR(1) le trimestrali portano 5 slot
+        # idiosincratici nello stato invece di 1.
+        _kw["idio_ar1"] = True
+        _kw["freq_list"] = [freq_map[c] for c in ordered_cols]
+    theta_0 = compute_theta_initial(Y_filled, F_pca, _struct, **_kw)
 
     return theta_0, F_pca
 
@@ -238,8 +289,9 @@ def procrustes_block_diagonal(
     Lambda_hat: np.ndarray,
     Lambda_star: np.ndarray,
     *,
-    ordered_cols: list[str] = ORDERED_COLS,
-    block_map: dict[str, str] = BLOCK,
+    ordered_cols: list[str] | None = None,
+    block_map: dict[str, str] | None = None,
+    structure=None,
 ) -> np.ndarray:
     r"""
     Block-restricted Procrustes: find the *diagonal* matrix
@@ -273,8 +325,15 @@ def procrustes_block_diagonal(
     """
     r       = Lambda_hat.shape[1]
     H_diag  = np.zeros(r)
-    for j, b in enumerate(_BLOCK_ORDER):
-        rows = [i for i, c in enumerate(ordered_cols) if block_map.get(c) == b]
+    _st = structure if structure is not None else None
+    for j in range(r):
+        if _st is not None:
+            # Mask-driven: i membri del fattore j sono quelli che ci caricano
+            # davvero, anche quando una serie carica su piu' fattori.
+            rows = [int(i) for i in _st.members(j)]
+        else:
+            b = _labels(r)[j]
+            rows = [i for i, c in enumerate(ordered_cols) if block_map.get(c) == b]
         lh   = Lambda_hat[rows, j]
         ls   = Lambda_star[rows, j]
         denom = float(lh @ lh)
@@ -342,29 +401,50 @@ def _sorted_eigvals(A: np.ndarray) -> np.ndarray:
     return w[np.argsort(-np.abs(w))]
 
 
-def _abs_corr(x: np.ndarray, y: np.ndarray) -> float:
-    """|Pearson correlation|, NaN-aware via mean / std with ddof=0."""
+def _corr(x: np.ndarray, y: np.ndarray) -> float:
+    """
+    Correlazione di Pearson (con segno), calcolata sugli array APPIATTITI.
+
+    L'appiattimento non e' una comodita': coi pesi PER SERIE `w^eps` e' una
+    matrice (T, M), non un vettore (T,), e la versione precedente faceva
+    `xz @ yz` — un prodotto matriciale che su due (T, M) fallisce con un errore
+    di dimensione. Appiattire e' la generalizzazione naturale: la correlazione
+    e' fra le coppie (periodo, serie) di peso stimato e peso vero, che e'
+    esattamente la domanda a cui la metrica deve rispondere. Sui pesi condivisi
+    (T,) l'appiattimento e' l'identita', quindi i risultati sui pesi condivisi
+    non cambiano.
+
+    Richiede che le due forme coincidano: correlare un peso per-serie con uno
+    condiviso sarebbe un confronto fra oggetti diversi, e va segnalato.
+    """
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
-    xz = x - x.mean()
-    yz = y - y.mean()
-    sx = float(np.sqrt((xz ** 2).sum()))
-    sy = float(np.sqrt((yz ** 2).sum()))
-    if sx == 0 or sy == 0:
+    if x.shape != y.shape:
+        raise ValueError(
+            f"forme incompatibili: {x.shape} vs {y.shape}. Stimatore e DGP "
+            f"devono usare lo stesso schema di pesi (per-serie o condiviso).")
+    x = x.ravel()
+    y = y.ravel()
+    ok = np.isfinite(x) & np.isfinite(y)
+    if ok.sum() < 2:
         return float("nan")
-    return float(abs((xz @ yz) / (sx * sy)))
-
-
-def _signed_corr(x: np.ndarray, y: np.ndarray) -> float:
-    x = np.asarray(x, dtype=float)
-    y = np.asarray(y, dtype=float)
-    xz = x - x.mean()
-    yz = y - y.mean()
+    xz = x[ok] - x[ok].mean()
+    yz = y[ok] - y[ok].mean()
     sx = float(np.sqrt((xz ** 2).sum()))
     sy = float(np.sqrt((yz ** 2).sum()))
     if sx == 0 or sy == 0:
         return float("nan")
     return float((xz @ yz) / (sx * sy))
+
+
+def _abs_corr(x: np.ndarray, y: np.ndarray) -> float:
+    """|Pearson correlation|. Vedi `_corr` per il trattamento delle forme."""
+    c = _corr(x, y)
+    return float("nan") if np.isnan(c) else float(abs(c))
+
+
+def _signed_corr(x: np.ndarray, y: np.ndarray) -> float:
+    return _corr(x, y)
 
 
 def compute_recovery_metrics(
@@ -377,8 +457,9 @@ def compute_recovery_metrics(
     w_u_true: np.ndarray,
     w_eps_hat: np.ndarray,
     w_eps_true: np.ndarray,
-    ordered_cols: list[str] = ORDERED_COLS,
-    block_map: dict[str, str] = BLOCK,
+    ordered_cols: list[str] | None = None,
+    block_map: dict[str, str] | None = None,
+    structure=None,
 ) -> dict[str, Any]:
     r"""
     Compute every recovery diagnostic described in the docstring of
@@ -478,7 +559,7 @@ def compute_recovery_metrics(
     # because Procrustes naturally absorbs any sign ambiguity.
     H_block = procrustes_block_diagonal(
         Lambda_hat, Lambda_star,
-        ordered_cols=ordered_cols, block_map=block_map,
+        ordered_cols=ordered_cols, block_map=block_map, structure=structure,
     )
     Lambda_proc_free  = Lambda_hat @ H_free
     Lambda_proc_block = Lambda_hat @ H_block
@@ -556,11 +637,12 @@ def print_recovery_table(
     metrics: dict[str, Any],
     *,
     label: str,
-    ordered_cols: list[str] = ORDERED_COLS,
-    block_map: dict[str, str] = BLOCK,
+    ordered_cols: list[str] | None = None,
+    block_map: dict[str, str] | None = None,
     series_highlight: tuple[str, ...] = ("INDPRO", "PAYEMS", "S&P 500",
                                          "BAAFFM", "CPIAUCSL", "GDPC1",
                                          "UMCSENTx", "NFCI"),
+    factor_names: list[str] | None = None,
 ) -> None:
     """Print a human-readable recovery table for a single replica."""
     bar = "=" * 76
@@ -589,13 +671,13 @@ def print_recovery_table(
     print(f"\n  diag(Q):")
     print(f"    {'block':<12s}  {'theta_star':>12s}  {'theta_hat':>12s}  {'rel.err':>10s}")
     print("    " + "-" * 50)
-    for j, b in enumerate(_BLOCK_ORDER):
+    for j, b in enumerate(_labels(_r_of(metrics), factor_names)):
         print(f"    {b:<12s}  {metrics['diagQ_star'][j]:>12.4f}  "
               f"{metrics['diagQ_hat'][j]:>12.4f}  {metrics['diagQ_relerr'][j]:>10.2%}")
 
     # ── Sign alignment ───────────────────────────────────────────────────────
     print(f"\n  Sign alignment per factor (theta_hat vs theta_star, expected +1):")
-    for j, b in enumerate(_BLOCK_ORDER):
+    for j, b in enumerate(_labels(_r_of(metrics), factor_names)):
         print(f"    factor {j} ({b:<10s}):  d = {int(metrics['sign_flips'][j]):+d}")
 
     # ── Lambda recovery — selected series after sign alignment ───────────────
@@ -639,12 +721,12 @@ def print_recovery_table(
     print(f"\n  Block-diagonal H = diag(h_R, h_F, h_X):")
     H_block = np.asarray(metrics["H_block"])
     h_diag = np.diag(H_block)
-    for j, b in enumerate(_BLOCK_ORDER):
+    for j, b in enumerate(_labels(_r_of(metrics), factor_names)):
         print(f"    h_{b:<10s} = {h_diag[j]:>+8.4f}")
 
     # ── Factor and weight correlations ───────────────────────────────────────
     print(f"\n  Latent-path recovery — correlations:")
-    for j, b in enumerate(_BLOCK_ORDER):
+    for j, b in enumerate(_labels(_r_of(metrics), factor_names)):
         print(f"    |corr(f_hat_{j}, F_true_{j})|  "
               f"[{b:<10s}]  = {metrics['factor_abscorr'][j]:.4f}")
     print(f"    corr(w_u_hat,   w_u_true)               "
@@ -672,13 +754,39 @@ def run_recovery(
     seed: int,
     verbose_em: bool = False,
     max_iter: int = 500,
+    # `tol_outer` e' ESPOSTA perche' il criterio di arresto e' RELATIVO
+    # (|dL|/|L| < tol_outer) mentre |L| cresce con T: a parita' di `tol_outer`
+    # la soglia ASSOLUTA sul guadagno per iterazione e' proporzionale a T, cioe'
+    # l'EM si ferma prima su pannelli lunghi. Misurato su queste celle: a T=500
+    # l'ultimo passo vale ~0.14, a T=2000 ~0.55, con lo STESSO numero di
+    # iterazioni. Chi confronta due lunghezze campionarie sta quindi
+    # confrontando anche due gradi di convergenza diversi, e i parametri lenti
+    # (`nu_u`, `nu_eps`) restano piu' vicini al loro valore iniziale sul
+    # pannello lungo — che con `nu_init = 10` significa distorti verso l'ALTO.
+    # Per un confronto a convergenza equivalente si passa una `tol_outer`
+    # riscalata di |L(T=500)|/|L(T)| ~ 500/T.
+    tol_outer: float = 1e-5,
     save_path: str | pathlib.Path | None = None,
-    ordered_cols: list[str] = ORDERED_COLS,
-    block_map: dict[str, str] = BLOCK,
-    freq_map: dict[str, str] = FREQ,
+    ordered_cols: list[str] | None = None,
+    block_map: dict[str, str] | None = None,
+    freq_map: dict[str, str] | None = None,
+    structure=None,
+    gaussian: bool = False,
+    per_series_weights: bool = False,
 ) -> dict[str, Any]:
     """
     One full recovery replica: simulate, init from scratch, re-fit, score.
+
+    **La variante non si passa: si deduce da `theta_star`.**  Se `theta_star`
+    porta `rho`, il DGP e' idio-AR(1) e lo stimatore viene inizializzato di
+    conseguenza; altrimenti no.  E' l'unico modo di garantire che simulatore e
+    stimatore parlino dello stesso modello — un disallineamento qui non
+    darebbe un errore, darebbe una recovery che "fallisce" per un motivo che
+    non c'entra con la stima.  `gaussian` e `per_series_weights`, che non sono
+    leggibili da `theta_star`, restano espliciti.
+
+    `structure` (FactorStructure) ha la precedenza su `block_map` e va sempre
+    passata per le spec non diagonali: vedi `init_theta_from_synthetic`.
 
     Returns the metrics dict together with the simulated panel and the
     EM result (for further inspection).  ``save_path`` writes a flat
@@ -690,7 +798,14 @@ def run_recovery(
     print("#" * 76)
 
     # ── 1. Simulate the synthetic panel from theta_star ──────────────────────
+    # La variante del DGP e' scritta dentro theta_star: `rho` presente =>
+    # idiosincratico AR(1) (con l'aggregazione MM anche dell'idio per le
+    # trimestrali). Non c'e' un flag da tenere in sincronia a mano.
+    _idio_ar1 = "rho" in set(theta_star.keys())
+    _struct = structure if structure is not None else block_map
     print("\n[1/4] Simulating synthetic panel from theta_star ...")
+    print(f"  DGP: idio_ar1={_idio_ar1}, gaussian={gaussian}, "
+          f"per_series_weights={per_series_weights}")
     sim = simulate_dfm(
         theta=theta_star, T=T,
         freq_list=[freq_map[c] for c in ordered_cols],
@@ -698,6 +813,7 @@ def run_recovery(
         ordered_cols=ordered_cols,
         r=int(np.asarray(theta_star["A"]).shape[0]),
         seed=seed,
+        per_series_weights=per_series_weights,
     )
     Y_sim, F_true       = sim["Y"], sim["F"]
     w_u_true, w_eps_true = sim["w_u_true"], sim["w_eps_true"]
@@ -712,7 +828,11 @@ def run_recovery(
         ordered_cols=ordered_cols,
         block_map=block_map,
         freq_map=freq_map,
+        structure=structure,
+        idio_ar1=_idio_ar1,
     )
+    if per_series_weights:
+        theta_0["per_series_weights"] = True
     rho_init = float(max(abs(np.linalg.eigvals(theta_0["A"]))))
     print(f"  theta_0: rho(A_init) = {rho_init:.4f}, "
           f"nu_u_init = {theta_0['nu_u']:.2f}, "
@@ -725,12 +845,14 @@ def run_recovery(
         Y=Y_sim,
         theta_init=theta_0,
         freq_list=[freq_map[c] for c in ordered_cols],
-        block_map=block_map,
+        block_map=_struct,
         ordered_cols=ordered_cols,
         verbose=verbose_em,
         save_path=None,
         max_iter=max_iter,
+        tol_outer=tol_outer,
         use_full_elbo=True,
+        gaussian=gaussian,
     )
     theta_hat    = result["theta"]
     f_smooth_hat = np.asarray(result["f_smooth"])
@@ -752,7 +874,7 @@ def run_recovery(
           f"{result['loglik_history'][-1]:.2f}")
 
     # NOTE — Monotonicity violations: synthetic vs real data (empirical observation)
-    # On the synthetic panels tested here (T=497 and T=2000, seed 42) the EM
+    # On the synthetic panels tested here (T=500 and T=2000, seed 42) the EM
     # converged with ZERO monotonicity violations, whereas fitting on the real
     # dataset produced 1 transient violation.  The reason is NOT that synthetic
     # data are immune by construction: any dataset *could* trigger a violation.
@@ -779,6 +901,7 @@ def run_recovery(
         w_eps_true=w_eps_true,
         ordered_cols=ordered_cols,
         block_map=block_map,
+        structure=structure,
     )
 
     # Attach pre-aligned and aligned Lambda for the pretty printer.
@@ -1334,12 +1457,13 @@ def write_recovery_txt(
     *,
     T: int,
     out_path: pathlib.Path,
-    ordered_cols: list[str] = ORDERED_COLS,
-    block_map: dict[str, str] = BLOCK,
+    ordered_cols: list[str] | None = None,
+    block_map: dict[str, str] | None = None,
     series_highlight: tuple[str, ...] = (
         "INDPRO", "PAYEMS", "S&P 500", "BAAFFM", "CPIAUCSL",
         "GDPC1", "UMCSENTx", "NFCI",
     ),
+    factor_names: list[str] | None = None,
 ) -> None:
     """Write a plain-text recovery table to ``out_path``."""
     import datetime
@@ -1393,7 +1517,7 @@ def write_recovery_txt(
     w(f"  {'block':<12s}  {'theta_star':>12s}  {'theta_hat':>12s}  "
       f"{'bias':>12s}  {'rel.err':>8s}")
     w("  " + "-" * 60)
-    for j, b in enumerate(_BLOCK_ORDER):
+    for j, b in enumerate(_labels(_r_of(metrics), factor_names)):
         ds = float(metrics["diagQ_star"][j])
         dh = float(metrics["diagQ_hat"][j])
         re = float(metrics["diagQ_relerr"][j])
@@ -1441,7 +1565,7 @@ def write_recovery_txt(
     # ── 7. Factor and weight correlations ────────────────────────────────────
     w()
     w("  LATENT-PATH RECOVERY")
-    for j, b in enumerate(_BLOCK_ORDER):
+    for j, b in enumerate(_labels(_r_of(metrics), factor_names)):
         w(f"  |corr(f_hat_{j}, F_true_{j})|  [{b:<10s}]  = "
           f"{float(metrics['factor_abscorr'][j]):.4f}")
     w(f"  corr(w_u_hat,   w_u_true)                       "
@@ -1460,6 +1584,7 @@ def write_recovery_txt(
 def write_recovery_summary(
     cases: list[tuple[int, dict[str, Any]]],
     out_path: pathlib.Path,
+    factor_names: list[str] | None = None,
 ) -> None:
     """Write side-by-side recovery summary comparing multiple T values."""
     import datetime
@@ -1507,12 +1632,34 @@ def write_recovery_summary(
          lambda m: float(m["Lambda_relerr_norm_proc_free"])),
         ("Lambda relerr (Proc.block)",
          lambda m: float(m["Lambda_relerr_norm_proc_block"])),
-        ("|corr(f_R, F_true_R)|",
-         lambda m: float(np.asarray(m["factor_abscorr"])[0])),
-        ("|corr(f_F, F_true_F)|",
-         lambda m: float(np.asarray(m["factor_abscorr"])[1])),
-        ("|corr(f_X, F_true_X)|",
-         lambda m: float(np.asarray(m["factor_abscorr"])[2])),
+    ]
+
+    # Righe PER FATTORE. Generate su `r` letto dai metrics, NON cablate a 3.
+    #
+    # Erano tre righe fisse con etichette `f_R`/`f_F`/`f_X` e `[0=real]`/
+    # `[1=fin.]`/`[2=other]`, cioe' i nomi dei tre blocchi di base. Con le spec
+    # nominate questo sbagliava due volte: i nomi non corrispondevano ai fattori
+    # veri, e su ogni spec con r > 3 il quarto fattore veniva SILENZIOSAMENTE
+    # omesso dal summary. Non era cosmetico: su `fed_overlap` (r=4) il quarto
+    # fattore e' quello con la correlazione peggiore (0.74) e il quarto elemento
+    # di Q e' il piu' fuori scala della cella (5.4x) — leggendo il summary quella
+    # cella sembrava la piu' sana delle tre, mentre e' quella con il problema.
+    # Il resto del file usava gia' `_labels()`; solo questa tabella era rimasta
+    # indietro.
+    _r = _r_of(cases[0][1])
+    _lab = _labels(_r, factor_names)
+    _w = max(len(b) for b in _lab)
+
+    for j, b in enumerate(_lab):
+        metric_rows.append((
+            f"|corr(f_{b}, F_true_{b})|",
+            # `j=j` lega l'indice alla DEFINIZIONE della lambda. Senza, tutte
+            # le chiusure vedrebbero l'ultimo `j` del ciclo e ogni riga
+            # stamperebbe il medesimo fattore.
+            lambda m, j=j: float(np.asarray(m["factor_abscorr"])[j]),
+        ))
+
+    metric_rows += [
         ("corr(w_u_hat,   w_u_true)",
          lambda m: float(m["w_u_corr"])),
         ("corr(w_eps_hat, w_eps_true)",
@@ -1521,13 +1668,13 @@ def write_recovery_summary(
          lambda m: float(np.median(np.asarray(m["R_relerr"])))),
         ("R max rel.err",
          lambda m: float(np.max(np.asarray(m["R_relerr"])))),
-        ("diag(Q)[0=real]  rel.err",
-         lambda m: float(np.asarray(m["diagQ_relerr"])[0])),
-        ("diag(Q)[1=fin.]  rel.err",
-         lambda m: float(np.asarray(m["diagQ_relerr"])[1])),
-        ("diag(Q)[2=other] rel.err",
-         lambda m: float(np.asarray(m["diagQ_relerr"])[2])),
     ]
+
+    for j, b in enumerate(_lab):
+        metric_rows.append((
+            f"diag(Q)[{j}={b:<{_w}s}] rel.err",
+            lambda m, j=j: float(np.asarray(m["diagQ_relerr"])[j]),
+        ))
 
     for label, fn in metric_rows:
         row = f"  {label:<42s}"
@@ -1554,156 +1701,153 @@ def write_recovery_summary(
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 if __name__ == "__main__":
-    # Manual override: set True (or env MC_RECOVERY_FORCE=1) to ignore the cache
-    # and recompute both replicas from scratch.
-    force_recompute = os.environ.get("MC_RECOVERY_FORCE", "0") == "1"
+    # ── Recovery su TUTTE le celle del dataset `final` ───────────────────────
+    # Per ogni cella (spec x variante) si simula dal theta stimato su quella
+    # cella e si ri-stima da zero, a due lunghezze campionarie. Gli artefatti
+    # vanno in output/recovery/final/<spec>/<variante>/.
+    #
+    # NIENTE E' CABLATO SU r: i fattori si contano dalla struttura, e le
+    # tabelle usano i nomi della spec. La versione precedente indicizzava
+    # `factor_abscorr[0..2]` e avrebbe perso il quarto fattore delle spec a
+    # r = 4 senza dare errore.
+    import itertools
 
-    from config_utils import parse_config_args, resolve_output_path
-    from data_loader  import load_config as _load_config
-    args = parse_config_args("Monte Carlo self-recovery test")
-    cfg  = args.config
-    print(f"Config: {cfg!r}")
+    from config_utils import parse_spec_variant_args, SPECS, VARIANTS as _VNAMES
+    from em.selftest_fixture import load_fixture
+    from run_final_artifacts import VARIANTS as _V, load_final_fit
 
-    _cfg_meta    = _load_config(cfg)
-    ordered_cols = _cfg_meta["ORDERED_COLS"]
-    block_map    = _cfg_meta["BLOCK"]
-    freq_map     = _cfg_meta["FREQ"]
-    print(f"  M = {len(ordered_cols)} series,  blocks: "
-          + ", ".join(f"{b}={sum(1 for c in ordered_cols if block_map[c]==b)}"
-                      for b in ("real", "financial", "other")))
+    T_GRID = (500, 2000)
+    SEED = 42
 
-    fit_path = resolve_output_path("processed", "fit_dfm_result.npz", cfg)
-    out_dir  = _PROJECT_ROOT / "output" / "recovery" / cfg
-    out_dir.mkdir(parents=True, exist_ok=True)
+    def _extra(ap):
+        ap.add_argument("--all", action="store_true",
+                        help=f"tutte le {len(SPECS) * len(_VNAMES)} celle "
+                             f"(ignora --spec/--variant)")
+        ap.add_argument("--force", action="store_true",
+                        help="ignora la cache e ricalcola")
 
-    print(f"Loading theta_star (real-data EM fit) from: {fit_path}")
-    fit_real    = load_dfm_fit(fit_path)
-    theta_star  = fit_real["theta"]
-    rho_star    = float(max(abs(np.linalg.eigvals(np.asarray(theta_star["A"])))))
-    print(f"  theta_star: rho(A) = {rho_star:.4f}, "
-          f"nu_u = {theta_star['nu_u']:.4f}, "
-          f"nu_eps = {theta_star['nu_eps']:.4f}")
-    print(f"  real-data EM: converged={fit_real['converged']}, "
-          f"n_iter={fit_real['n_iter']}")
+    args = parse_spec_variant_args(
+        "Recovery Monte Carlo sulle celle del dataset final.", extra=_extra)
+    force_recompute = bool(args.force) or os.environ.get("MC_RECOVERY_FORCE") == "1"
 
-    # ── Replica 1: T = 497 (same length as the real panel) ───────────────────
-    path_497 = out_dir / "mc_recovery_T497.npz"
-    if _recovery_cache_valid(path_497, theta_star, T=497, seed=42,
-                            force_recompute=force_recompute):
-        print(f"\n[reusing] {path_497} (fingerprint + T + seed verified) — "
-              f"loading metrics without re-running the EM.")
-        m497 = load_recovery_metrics(path_497)
-    else:
-        out_497 = run_recovery(
-            theta_star,
-            T=497, seed=42,
-            verbose_em=False,
-            save_path=path_497,
-            ordered_cols=ordered_cols,
-            block_map=block_map,
-            freq_map=freq_map,
-        )
-        m497 = out_497["metrics"]
-    print_recovery_table(m497, label="T = 497 (real-panel length)",
-                         ordered_cols=ordered_cols, block_map=block_map)
-    write_recovery_txt(
-        m497, T=497,
-        out_path=out_dir / f"recovery_T497_{cfg}.txt",
-        ordered_cols=ordered_cols, block_map=block_map,
-    )
+    celle = (list(itertools.product(SPECS, _VNAMES)) if args.all
+             else [(args.spec, args.variant)])
 
-    # ── Replica 2: T = 2000 (more data => tighter recovery) ──────────────────
-    path_2000 = out_dir / "mc_recovery_T2000.npz"
-    if _recovery_cache_valid(path_2000, theta_star, T=2000, seed=42,
-                            force_recompute=force_recompute):
-        print(f"\n[reusing] {path_2000} (fingerprint + T + seed verified) — "
-              f"loading metrics without re-running the EM.")
-        m2000 = load_recovery_metrics(path_2000)
-    else:
-        out_2000 = run_recovery(
-            theta_star,
-            T=2000, seed=42,
-            verbose_em=False,
-            save_path=path_2000,
-            ordered_cols=ordered_cols,
-            block_map=block_map,
-            freq_map=freq_map,
-        )
-        m2000 = out_2000["metrics"]
-    print_recovery_table(m2000, label="T = 2000 (long sample)",
-                         ordered_cols=ordered_cols, block_map=block_map)
-    write_recovery_txt(
-        m2000, T=2000,
-        out_path=out_dir / f"recovery_T2000_{cfg}.txt",
-        ordered_cols=ordered_cols, block_map=block_map,
-    )
+    print("=" * 78)
+    print(f"  RECOVERY — {len(celle)} cella/e x {len(T_GRID)} lunghezze "
+          f"(T = {', '.join(str(t) for t in T_GRID)}), seed = {SEED}")
+    print("=" * 78)
 
-    # ── Side-by-side summary ─────────────────────────────────────────────────
-    print("\n" + "=" * 76)
-    print("  SIDE-BY-SIDE SUMMARY")
-    print("=" * 76)
-    rows = [
-        ("nu_u rel.err",                   m497["nu_u_relerr"],
-                                          m2000["nu_u_relerr"]),
-        ("nu_eps rel.err",                 m497["nu_eps_relerr"],
-                                          m2000["nu_eps_relerr"]),
-        ("rho(A) rel.err",                 m497["rho_A_relerr"],
-                                          m2000["rho_A_relerr"]),
-        ("Lambda rel.err  (normalised)",   m497["Lambda_relerr_norm"],
-                                          m2000["Lambda_relerr_norm"]),
-        ("Lambda rel.err  (Procrustes free)",
-                                          m497["Lambda_relerr_norm_proc_free"],
-                                          m2000["Lambda_relerr_norm_proc_free"]),
-        ("Lambda rel.err  (Procrustes block)",
-                                          m497["Lambda_relerr_norm_proc_block"],
-                                          m2000["Lambda_relerr_norm_proc_block"]),
-        ("|corr(f_R, F_true_R)|",          m497["factor_abscorr"][0],
-                                          m2000["factor_abscorr"][0]),
-        ("|corr(f_F, F_true_F)|",          m497["factor_abscorr"][1],
-                                          m2000["factor_abscorr"][1]),
-        ("|corr(f_X, F_true_X)|",          m497["factor_abscorr"][2],
-                                          m2000["factor_abscorr"][2]),
-        ("corr(w_u_hat, w_u_true)",        m497["w_u_corr"],
-                                          m2000["w_u_corr"]),
-        ("corr(w_eps_hat, w_eps_true)",    m497["w_eps_corr"],
-                                          m2000["w_eps_corr"]),
-    ]
-    print(f"\n  {'metric':<40s}  {'T=497':>12s}  {'T=2000':>12s}")
-    print("  " + "-" * 68)
-    for name, v1, v2 in rows:
-        print(f"  {name:<40s}  {v1:>12.4f}  {v2:>12.4f}")
+    esiti: list[tuple] = []
+    for spec, variant in celle:
+        print("\n" + "#" * 78)
+        print(f"#  {spec} / {variant}")
+        print("#" * 78)
 
-    write_recovery_summary(
-        [(497, m497), (2000, m2000)],
-        out_path=out_dir / f"recovery_summary_{cfg}.txt",
-    )
+        try:
+            theta_star = load_final_fit(spec, variant)["theta"]
+        except FileNotFoundError as exc:
+            print(f"  [salto] {exc}".splitlines()[0])
+            esiti.append((spec, variant, None, "cella non stimata"))
+            continue
 
-    # ── Outlier rank-overlap diagnostic ──────────────────────────────────────
-    # Reuse the weights persisted by run_recovery (no EM re-execution).
-    def _load_weights(path: pathlib.Path) -> tuple[np.ndarray, ...]:
-        arc = np.load(path)
-        return (
-            np.asarray(arc["w_u_hat"]),
-            np.asarray(arc["w_u_true"]),
-            np.asarray(arc["w_eps_hat"]),
-            np.asarray(arc["w_eps_true"]),
-        )
+        fx = load_fixture(spec)
+        ordered_cols = fx.ordered_cols
+        structure    = fx.structure
+        block_map    = structure.display_block_map()     # solo per le tabelle
+        freq_map     = dict(zip(ordered_cols, fx.freq_list))
+        factor_names = list(structure.factor_names)
+        _vcfg = _V[variant]
 
-    if path_497.exists() and path_2000.exists():
-        w497  = _load_weights(path_497)
-        w2000 = _load_weights(path_2000)
-        outlier_cases = [
-            ("T = 497",
-                w497[0],  w497[1],  w497[2],  w497[3],
-                m497["w_u_corr"],   m497["w_eps_corr"]),
-            ("T = 2000",
-                w2000[0], w2000[1], w2000[2], w2000[3],
-                m2000["w_u_corr"],  m2000["w_eps_corr"]),
+        out_dir = _PROJECT_ROOT / "output" / "recovery" / "final" / spec / variant
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        print(f"  r = {structure.r}, fattori = {factor_names}, "
+              f"{'diagonale' if structure.diagonal else 'NON diagonale'}")
+        print(f"  DGP: idio_ar1={'rho' in theta_star}, "
+              f"gaussian={_vcfg['gaussian']}, "
+              f"per_series_weights={_vcfg.get('per_series_weights', False)}")
+        print(f"  output -> {out_dir}")
+
+        per_T: list[tuple[int, dict]] = []
+        for T in T_GRID:
+            npz = out_dir / f"mc_recovery_T{T}.npz"
+            if _recovery_cache_valid(npz, theta_star, T=T, seed=SEED,
+                                     force_recompute=force_recompute):
+                print(f"\n  [riuso] {npz.name} (fingerprint + T + seed verificati)")
+                m = load_recovery_metrics(npz)
+            else:
+                m = run_recovery(
+                    theta_star, T=T, seed=SEED, verbose_em=False,
+                    save_path=npz,
+                    ordered_cols=ordered_cols, block_map=block_map,
+                    freq_map=freq_map, structure=structure,
+                    gaussian=_vcfg["gaussian"],
+                    per_series_weights=_vcfg.get("per_series_weights", False),
+                )["metrics"]
+            per_T.append((T, m))
+
+            print_recovery_table(m, label=f"T = {T}  [{spec}/{variant}]",
+                                 ordered_cols=ordered_cols, block_map=block_map,
+                                 factor_names=factor_names)
+            write_recovery_txt(
+                m, T=T,
+                out_path=out_dir / f"recovery_T{T}_{spec}_{variant}.txt",
+                ordered_cols=ordered_cols, block_map=block_map,
+                factor_names=factor_names,
+            )
+
+        # ── Confronto fianco a fianco fra le lunghezze ───────────────────────
+        # Le righe per-fattore sono generate da `r`, non elencate a mano.
+        righe = [
+            ("nu_u rel.err",                     "nu_u_relerr"),
+            ("nu_eps rel.err",                   "nu_eps_relerr"),
+            ("rho(A) rel.err",                   "rho_A_relerr"),
+            ("Lambda rel.err (normalised)",      "Lambda_relerr_norm"),
+            ("Lambda rel.err (Procr. free)",     "Lambda_relerr_norm_proc_free"),
+            ("Lambda rel.err (Procr. block)",    "Lambda_relerr_norm_proc_block"),
         ]
-        print_outlier_overlap_tables(outlier_cases, k_fracs=(0.05, 0.10))
-    else:
-        print("\n[skip] outlier rank-overlap diagnostic — weights not saved.")
+        print("\n" + "=" * 78)
+        print(f"  CONFRONTO  {spec}/{variant}")
+        print("=" * 78)
+        intest = "  " + f"{'metric':<38s}" + "".join(f"{'T='+str(t):>13s}" for t, _ in per_T)
+        print(intest)
+        print("  " + "-" * (38 + 13 * len(per_T)))
+        for nome, chiave in righe:
+            vals = "".join(f"{float(m[chiave]):>13.4f}" for _, m in per_T)
+            print(f"  {nome:<38s}{vals}")
+        for j in range(structure.r):
+            nome = f"|corr(f_{factor_names[j]}, F_true)|"
+            vals = "".join(f"{float(np.asarray(m['factor_abscorr'])[j]):>13.4f}"
+                           for _, m in per_T)
+            print(f"  {nome:<38s}{vals}")
+        for nome, chiave in (("corr(w_u_hat, w_u_true)", "w_u_corr"),
+                             ("corr(w_eps_hat, w_eps_true)", "w_eps_corr")):
+            vals = "".join(f"{float(m[chiave]):>13.4f}" for _, m in per_T)
+            print(f"  {nome:<38s}{vals}")
 
-    print("\n" + "=" * 76)
-    print("  Monte Carlo self-recovery test  —  finished")
-    print("=" * 76)
+        write_recovery_summary(
+            per_T,
+            out_path=out_dir / f"recovery_summary_{spec}_{variant}.txt",
+            factor_names=factor_names,
+        )
+        esiti.append((spec, variant, per_T, "ok"))
+
+    # ── Riepilogo finale ────────────────────────────────────────────────────
+    print("\n" + "=" * 78)
+    print("  RIEPILOGO RECOVERY")
+    print("=" * 78)
+    print(f"  {'cella':<32s}" + "".join(f"{'Lam relerr T='+str(t):>20s}"
+                                        for t in T_GRID))
+    print("  " + "-" * (32 + 20 * len(T_GRID)))
+    for spec, variant, per_T, stato in esiti:
+        if per_T is None:
+            print(f"  {spec+'/'+variant:<32s}  {stato}")
+            continue
+        vals = "".join(
+            f"{float(m['Lambda_relerr_norm_proc_block']):>20.4f}"
+            for _, m in per_T)
+        print(f"  {spec+'/'+variant:<32s}{vals}")
+    print("\n  (Lambda rel.err Procruste-block: piu' basso = recupero migliore;")
+    print("   deve CALARE al crescere di T se il modello e' identificato)")
+    print("=" * 78)
