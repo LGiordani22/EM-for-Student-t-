@@ -250,58 +250,14 @@ log "FASE 1/7 — guardie"
   || fail "test_common_sample fallito: il vincolo di campione comune non scatta."
 
 # =============================================================================
-#  FASE 2 — DIMENSIONAMENTO MISURATO
+#  FASE 2 — DIMENSIONAMENTO FISSO
 # =============================================================================
-log "FASE 2/7 — dimensionamento (misura, non stima)"
-
-if [[ -n "$SMOKE_DRAWS" ]]; then
-  THREADS_PER_JOB=1; SECS_PER_BLOCK=600
-  echo "  SMOKE: dimensionamento saltato (1 thread). Misurarlo su due mesi"
-  echo "  non direbbe niente sulla passata vera."
-elif [[ -f "$SIZING" ]]; then
-  # shellcheck disable=SC1090
-  source "$SIZING"
-  echo "  gia' misurato in una passata precedente (cancella $SIZING per rifarlo):"
-  echo "    thread per processo : $THREADS_PER_JOB"
-  echo "    secondi per blocco  : $SECS_PER_BLOCK"
-else
-  echo "  giro lo stesso blocco corto con 1, 2, 4, 8, 16 thread e misuro."
-  echo "  criterio: CORE-SECONDI per blocco (thread x tempo), cioe' il"
-  echo "  rendimento per core — con 224 core e ~92 unita' indipendenti e'"
-  echo "  quello che decide il tempo totale, non il tempo del singolo blocco."
-  best_t=1; best_cost=""; best_wall=""
-  for t in 1 2 4 8 16; do
-    (( t > N_CORES )) && continue
-    probe="$ROOT/output/_pilot_sizing/t$t"
-    rm -rf "$probe"; mkdir -p "$probe"
-    s=$(date +%s)
-    OMP_NUM_THREADS=$t OPENBLAS_NUM_THREADS=$t MKL_NUM_THREADS=$t \
-      "$PYTHON" -m src.bvar.evaluate \
-        --start 2009-01-02 --end 2009-01-23 --draws 100 --fresh \
-        --output-root "$probe" > "$LOGS/sizing_t$t.log" 2>&1 \
-      || fail "il blocco di dimensionamento e' fallito con $t thread; vedi $LOGS/sizing_t$t.log"
-    wall=$(( $(date +%s) - s ))
-    cost=$(( wall * t ))
-    printf '    %2d thread  ->  %4d s di parete   %5d core-secondi\n' "$t" "$wall" "$cost"
-    if [[ -z "$best_cost" || $cost -lt $best_cost ]]; then
-      best_cost=$cost; best_t=$t; best_wall=$wall
-    fi
-  done
-  rm -rf "$ROOT/output/_pilot_sizing"
-  # Il blocco di prova e' a 100 estrazioni; la passata vera ne usa il pieno.
-  # Il fattore si legge dai DRAWS del modulo invece di inventarlo qui.
-  full_draws=$("$PYTHON" -c "from src.bvar.evaluate import DRAWS; print(max(DRAWS.values()))")
-  scale=$(( full_draws / 100 )); (( scale < 1 )) && scale=1
-  {
-    echo "THREADS_PER_JOB=$best_t"
-    echo "SECS_PER_BLOCK=$(( best_wall * scale ))"
-    echo "PROBE_SECS=$best_wall"
-    echo "DRAWS_SCALE=$scale"
-  } > "$SIZING"
-  # shellcheck disable=SC1090
-  source "$SIZING"
-  echo "  scelto: $THREADS_PER_JOB thread per processo (minimo core-secondi)"
-fi
+# Si evita il pilota di benchmark: il parallelismo e' fra celle DFM e blocchi
+# BVAR indipendenti, quindi ogni processo usa un solo thread BLAS.
+log "FASE 2/7 — dimensionamento fisso (nessuna misura)"
+THREADS_PER_JOB=1
+SECS_PER_BLOCK=600
+echo "  1 thread per processo; il parallelismo e' fra lavori indipendenti."
 
 # ─── LA VALVOLA SULLA MEMORIA ────────────────────────────────────────────────
 # `WORKERS` esce dai CORE, e QUI NESSUNO GUARDA LA RAM: non c'e' un solo punto
@@ -356,7 +312,7 @@ cat <<PREVENTIVO
 
   ── PREVENTIVO ────────────────────────────────────────────────────────────
     core disponibili      : $N_CORES
-    thread per processo   : $THREADS_PER_JOB   (misurati, non assunti)
+    thread per processo   : $THREADS_PER_JOB   (fisso)
     processi in parallelo : $WORKERS$([[ -n "${MAX_WORKERS:-}" ]] && echo "   (limitati a mano con MAX_WORKERS)")
     picco vero            : $(( WORKERS < N_BVAR_BLOCKS ? WORKERS : N_BVAR_BLOCKS )) processi in fase 5, $(( WORKERS < N_DFM_CELLS ? WORKERS : N_DFM_CELLS )) in fase 3
                             (nessuno guarda la RAM: se serve, MAX_WORKERS=N)

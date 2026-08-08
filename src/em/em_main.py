@@ -105,6 +105,8 @@ TASK 4 — full First-Stage entry point  (this file):
     EM by calling :func:`load_dfm_fit` instead.
 """
 
+from __future__ import annotations
+
 import hashlib
 
 import numpy as np
