@@ -95,6 +95,7 @@ from __future__ import annotations
 import argparse
 import os
 import time
+from collections import Counter
 
 import numpy as np
 import pandas as pd
@@ -134,6 +135,158 @@ _KEY = ("as_of", "target_quarter", "spec", "variant")
 #: senza toccare il codice (disco lento -> alzarli; run fragile -> abbassarli).
 _SAVE_EVERY_ROWS = int(os.environ.get("WEEKLY_SAVE_EVERY_ROWS", "100"))
 _SAVE_EVERY_SECONDS = float(os.environ.get("WEEKLY_SAVE_EVERY_SECONDS", "120"))
+
+
+# ─── IL REFERTO DI CELLA: distinguere "non ha prodotto" da "ha faticato" ──────
+#
+#  QUESTA E' LA GUARDIA CHE MANCAVA, e la sua assenza e' costata una passata
+#  intera sul server: tutte e 15 le celle hanno sollevato un'eccezione a OGNI
+#  chiamata di `nowcast()` — 34 155 righe con `n_iter=-1` e i campi vuoti — e
+#  il processo e' comunque uscito con codice 0.  `run_all.sh` ha percio'
+#  creduto riuscita la fase 3, la fase 4 ha raccolto CSV vuoti, e il guasto e'
+#  emerso solo giorni dopo guardando i file a mano.
+#
+#  LA DISTINZIONE CHE CONTA, e che questo referto tiene separata con cura:
+#
+#    GUASTO   `n_iter == -1`.  E' scritto in un punto solo del file (il ramo
+#             `except` del ciclo) e nessun percorso riuscito puo' produrlo:
+#             significa che `nowcast()` ha sollevato e non c'era un theta
+#             precedente su cui ripiegare.  Non c'e' un numero, non c'e' un
+#             modello: non c'e' niente.  Questo va fatto fallire.
+#
+#    NON e' un guasto   `converged == False` con `n_iter >= 0`.  L'EM ha
+#             girato e ha prodotto un nowcast, ma ha esaurito `max_iter` prima
+#             della soglia — oppure si e' fermato su un massimo locale.  E' un
+#             RISULTATO, discutibile quanto si vuole ma da leggere nel merito,
+#             non un guasto d'impianto.  Si conta e si stampa, e non fa
+#             fallire niente: farlo fallire vorrebbe dire buttare una passata
+#             per una proprieta' del modello.
+#
+#  Il referto stampa entrambi i conteggi, sempre, cosi' la differenza resta
+#  visibile invece di dover essere ricostruita dal CSV.
+#
+#: Sopra quale frazione di righe in errore una cella si considera rotta anche
+#: se qualcosa ha prodotto.  Serve perche' "zero nowcast" non e' l'unico modo
+#: di essere rotti: una cella che fallisce diciotto anni su diciannove passa
+#: il test dello zero e resta inservibile lo stesso.
+#:
+#: IL DEFAULT E' ZERO: una sola riga in errore basta.  Sembra severo e non lo
+#: e', per tre ragioni verificate e non supposte.
+#:
+#:  1. IL TRANSITORIO NON ARRIVA MAI FIN QUI.  Il ripiego poco piu' sotto (nel
+#:     ciclo, ramo `except`) rifiltra col theta della stima precedente quando
+#:     la ri-stima EM fallisce; se riesce, la riga esce con un nowcast valido e
+#:     `n_iter >= 0`, e questo conteggio non la vede nemmeno.  `n_iter == -1`
+#:     resta solo dove il ripiego NON C'ERA (prima settimana della cella, o
+#:     ripresa senza theta) o e' fallito a sua volta — cioe' dove il modello
+#:     non riesce a filtrare nemmeno con parametri gia' noti buoni.  Non e' una
+#:     settimana sfortunata: e' un guasto.
+#:
+#:  2. I FALLIMENTI PREVISTI DA `nowcast()` SONO STRUTTURALI, NON SPORADICI.
+#:     Sono cinque (spec ignota, variante ignota, serie senza frequenza, serie
+#:     target assente, pannello non esteso fino al trimestre) e falliscono
+#:     TUTTE le settimane in modo identico.  Non esiste, nel codice, un modo
+#:     progettato di rompersi a un venerdi' si' e a uno no — quindi non c'e'
+#:     niente da tollerare.
+#:
+#:  3. NON SI BUTTA VIA LAVORO.  `run_pool` non aborta in corsa: aspetta che
+#:     tutte le celle finiscano e solo dopo raccoglie i codici d'uscita.  Una
+#:     cella rotta ferma la PASSATA, non le altre quattordici, e la ripresa
+#:     riparte da dove si era arrivati.
+#:
+#: Si allenta dall'ambiente se una passata dimostrera' il contrario — ma vada
+#: allentata sull'evidenza di quella passata, non per prudenza a priori:
+#:     WEEKLY_MAX_ERROR_FRAC=0.10 ./scripts/run_all.sh
+_MAX_ERROR_FRAC = float(os.environ.get("WEEKLY_MAX_ERROR_FRAC", "0.0"))
+
+
+def cell_health(rows: list[dict] | pd.DataFrame) -> list[dict]:
+    """
+    Un referto per cella (spec, variante) sulle righe prodotte.
+
+    I benchmark sono esclusi: non fanno EM, hanno `n_iter=0` per definizione e
+    un loro fallimento non e' il fallimento di un DFM.
+
+    Ritorna una lista di dizionari con `n`, `n_ok`, `n_err`, `n_noconv`,
+    `frac_err` e `rotta` (bool).  `rotta` e' vera quando la cella non ha
+    prodotto NIENTE, oppure quando ha sbagliato piu' di `_MAX_ERROR_FRAC`.
+    """
+    df = pd.DataFrame(rows, columns=COLUMNS) if not isinstance(rows, pd.DataFrame) else rows
+    if not len(df):
+        return []
+    df = df[df["spec"] != BENCHMARK_SPEC]
+    if not len(df):
+        return []
+
+    out: list[dict] = []
+    for (spec, variant), g in df.groupby(["spec", "variant"], sort=True):
+        n = len(g)
+        n_iter = pd.to_numeric(g["n_iter"], errors="coerce")
+        n_err = int((n_iter == -1).sum())
+        n_ok = int(pd.to_numeric(g["nowcast_bea"], errors="coerce").notna().sum())
+        # "non converge" si conta SOLO fra le righe che un nowcast ce l'hanno:
+        # le righe in errore hanno converged=False per forza, e sommarle qui
+        # confonderebbe le due categorie che tutto questo blocco separa.
+        n_noconv = int((~g["converged"].astype(str).str.lower().isin(["true", "1"])
+                        & (n_iter >= 0)).sum())
+        frac = n_err / n if n else 0.0
+        out.append({
+            "spec": spec, "variant": variant, "n": n, "n_ok": n_ok,
+            "n_err": n_err, "n_noconv": n_noconv, "frac_err": frac,
+            "rotta": (n_ok == 0) or (frac > _MAX_ERROR_FRAC),
+        })
+    return out
+
+
+def report_health(rows: list[dict] | pd.DataFrame,
+                  err_msgs: dict | None = None) -> list[dict]:
+    """
+    Stampa il referto e ritorna le celle rotte (lista vuota = tutto bene).
+
+    Stampa ANCHE i messaggi d'eccezione distinti raccolti durante la corsa:
+    senza, l'unica traccia di un guasto sistematico sono decine di migliaia di
+    righe di log identiche, che e' esattamente il modo in cui il guasto e'
+    passato inosservato.
+    """
+    health = cell_health(rows)
+    if not health:
+        return []
+
+    rotte = [h for h in health if h["rotta"]]
+    print(f"\n{'=' * 78}\n  REFERTO DELLE CELLE\n{'=' * 78}")
+    print(f"  {'cella':<38} {'righe':>6} {'con nowcast':>12} "
+          f"{'ERRORE':>8} {'non conv.':>10}")
+    for h in health:
+        cella = f"{h['spec']}/{h['variant']}"
+        marca = "  <-- ROTTA" if h["rotta"] else ""
+        print(f"  {cella:<38} {h['n']:>6} {h['n_ok']:>12} "
+              f"{h['n_err']:>8} {h['n_noconv']:>10}{marca}")
+
+    print("\n  'non conv.' NON e' un guasto: l'EM ha girato e ha prodotto un")
+    print("  nowcast, esaurendo max_iter o fermandosi su un massimo locale.")
+    print("  'ERRORE' (n_iter=-1) invece e' un'eccezione: nessun numero prodotto.")
+
+    if err_msgs:
+        print(f"\n  ── Eccezioni distinte ──────────────────────────────────────")
+        for (spec, variant), cnt in sorted(err_msgs.items()):
+            for msg, k in cnt.most_common(3):
+                print(f"  {spec}/{variant}  x{k}  {msg}")
+
+    if rotte:
+        print(f"\n  {'!' * 74}")
+        for h in rotte:
+            # Il conteggio, non solo la percentuale: a soglia zero una riga su
+            # 2277 stamperebbe "0% di righe in errore (soglia 0%)", che si
+            # legge come "nessun errore" ed e' il contrario di cio' che dice.
+            motivo = ("non ha prodotto NESSUN nowcast" if h["n_ok"] == 0
+                      else f"{h['n_err']} righe su {h['n']} in errore "
+                           f"({h['frac_err']:.1%}; soglia "
+                           f"{_MAX_ERROR_FRAC:.1%})")
+            print(f"  !!  {h['spec']}/{h['variant']}: {motivo}")
+        print(f"  {'!' * 74}")
+    else:
+        print("\n  Tutte le celle hanno prodotto nowcast.")
+    return rotte
 
 
 # ─── Persistenza atomica + ripresa ────────────────────────────────────────────
@@ -308,6 +461,16 @@ def run_weekly_nowcast(
     n_em = 0
     t_start = time.perf_counter()
 
+    # I messaggi d'eccezione, contati per cella e per testo.  Si raccolgono qui
+    # e non si leggono dal CSV perche' il CSV non li conserva: `n_iter=-1` dice
+    # CHE e' fallito, non PERCHE'.  Tre righe di referto a fine corsa valgono
+    # piu' di trentamila righe di log identiche.
+    err_msgs: dict[tuple[str, str], Counter] = {}
+
+    def _note_err(spec: str, variant: str, exc: BaseException) -> None:
+        msg = f"{type(exc).__name__}: {exc}"
+        err_msgs.setdefault((spec, variant), Counter())[msg] += 1
+
     # Un'interruzione (Ctrl-C, o il gestore di coda del server) non deve
     # buttare via il blocco in corso: il `finally` scrive quel che c'e' in
     # memoria prima di uscire.  Non e' cio' che rende corretta la RIPRESA —
@@ -440,10 +603,12 @@ def run_weekly_nowcast(
                                     liv = bea = z = sd = float("nan")
                                     n_it, conv, reest = -1, False, False
                                     status = f"ERRORE ({type(exc2).__name__}: {exc2})"
+                                    _note_err(spec, variant, exc2)
                             else:
                                 liv = bea = z = sd = float("nan")
                                 n_it, conv, reest = -1, False, False
                                 status = f"ERRORE ({type(exc).__name__}: {exc})"
+                                _note_err(spec, variant, exc)
 
                         real_lvl, real_bea = _realised(panel, q, target_series)
                         rows.append({
@@ -489,6 +654,7 @@ def run_weekly_nowcast(
         _atomic_write(rows, path)
         print(f"\n  salvate {len(df)} righe -> {path}")
     print(f"  {n_em} stime EM in {time.perf_counter() - t_start:.1f}s")
+    report_health(df, err_msgs)
     return df
 
 
@@ -521,12 +687,30 @@ def main() -> None:
     print("\n" + "=" * 78)
     print(f"  NOWCAST SETTIMANALE  {a.start} .. {a.end}")
     print("=" * 78)
-    run_weekly_nowcast(
+    df = run_weekly_nowcast(
         a.start, a.end, specs=specs, variants=variants,
         em_frequency=a.em_frequency, n_ahead=a.n_ahead, max_iter=a.max_iter,
         benchmarks=not a.no_benchmarks,
         output_dir=a.output_dir, save=not a.no_save, verbose_em=a.verbose_em,
     )
+
+    # ── SI ESCE CON ERRORE SE UNA CELLA NON HA PRODOTTO ──────────────────────
+    # Prima si usciva SEMPRE con 0, qualunque cosa fosse successo, perche' le
+    # eccezioni del ciclo sono gia' catturate riga per riga (e devono restarlo:
+    # una settimana storta non deve buttare diciannove anni di lavoro).  Ma
+    # "nessuna riga ha fatto saltare il processo" non vuol dire "il processo ha
+    # prodotto qualcosa", e su quella differenza `run_all.sh` ha tirato avanti
+    # per sette fasi con quindici CSV vuoti in mano.
+    #
+    # Il codice d'uscita e' l'unico segnale che l'orchestratore guarda:
+    # `run_pool` raccoglie gli stati e la fase 3 chiama `fail`.  Da qui in poi
+    # una cella vuota ferma la passata dove e' rotta, invece che alla fine.
+    #
+    # Il referto l'ha gia' stampato `run_weekly_nowcast` (con i messaggi
+    # d'eccezione, che qui non sono piu' disponibili): qui si rilegge solo il
+    # verdetto, in silenzio, per decidere con che codice uscire.
+    if [h for h in cell_health(df) if h["rotta"]]:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

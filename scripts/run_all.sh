@@ -359,6 +359,13 @@ run_pool "$WORKERS" "${cmds[@]}" \
 # =============================================================================
 #  Si COPIA, non si sposta: il file nella cartella della cella e' lo stato di
 #  ripresa di quella cella.  Spostandolo, un rilancio ripartirebbe da zero.
+#
+#  L'ESISTENZA DEL FILE NON E' LA PRESENZA DI UN RISULTATO.  Questa fase
+#  controllava solo `[[ -f "$src" ]]`, e il file c'era sempre: la passata del
+#  server ha raccolto quindici CSV con l'intestazione giusta, 2277 righe
+#  ciascuno e NESSUN numero dentro — un'eccezione a ogni chiamata, `n_iter=-1`
+#  su tutte e 34 155 le righe.  La raccolta e' passata, e con lei le fasi 5, 6
+#  e 7.  La guardia in fondo alla fase e' cio' che oggi lo impedisce.
 # =============================================================================
 log "FASE 4/7 — raccolta dei CSV del DFM"
 n=0
@@ -371,6 +378,19 @@ for s in "${SPECS[@]}"; do
   done
 done
 echo "  $n CSV raccolti in $OUT/csv/dfm/"
+
+# La guardia: ogni cella ha prodotto dei nowcast?  Distingue un GUASTO (nessun
+# numero: `n_iter=-1`, l'eccezione) da un EM che ha semplicemente FATICATO
+# (`converged=False` con un nowcast in mano — massimo locale o max_iter
+# esaurito).  Il secondo caso e' un risultato da leggere nel merito, non
+# ferma niente; il primo ferma qui, prima che figure e tabelle lavorino sul
+# vuoto.
+"$PYTHON" -m src.forecast.test_cells_produced --expect "$N_DFM_CELLS" \
+  || fail "il DFM non ha prodotto nowcast: le celle rotte sono elencate qui
+           sopra, e i messaggi d'eccezione stanno in $LOGS/dfm_*.log.  I CSV
+           dei BVAR e dei benchmark restano validi: si ripara la causa e si
+           rilancia — ma PRIMA vanno cancellati i CSV vuoti del DFM, altrimenti
+           la ripresa li considera 'gia' fatti' e li salta."
 
 # =============================================================================
 #  FASE 5 — BVAR, un blocco per STIMA PIENA in parallelo
