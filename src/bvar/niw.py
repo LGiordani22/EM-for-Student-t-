@@ -134,7 +134,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.linalg import cho_factor, cho_solve, cholesky, eigvalsh
+from scipy.linalg import eigvalsh
 from scipy.special import multigammaln
 
 from src.bvar.dummies import minnesota_omega_diag, minnesota_prior_mean
@@ -234,6 +234,75 @@ class NIWPosterior:
     resid: np.ndarray          # (T, n)   residui a posteriori, per diagnostica
 
 
+#: Soglia RELATIVA sotto la quale un autovalore si considera nullo in
+#: `robust_sqrt`.  Vedi la sua docstring per perche' relativa e non assoluta
+#: come negli autori.
+_EIG_RTOL = 1e-12
+
+
+def robust_sqrt(S: np.ndarray, *, rtol: float = _EIG_RTOL) -> np.ndarray:
+    """
+    Radice quadrata simmetrica: ritorna C con ``C @ C.T == S``.
+
+    STESSO CONTRATTO di ``cholesky(S, lower=True)``, che sostituisce: chi la
+    usa non cambia una riga.  Ma non puo' fallire, ed e' tutta la differenza.
+
+    PERCHE' NON LA CHOLESKY
+    -----------------------
+    La matrice che serve qui — ``prec = X'X + Omega^-1`` e le sue derivate —
+    e' definita positiva PER COSTRUZIONE: ``X'X`` e' semidefinita e
+    ``Omega^-1`` e' diagonale strettamente positiva.  In doppia precisione
+    pero' non lo resta: l'header di questo file segnala che Omega ha elementi
+    da ~1e-4 a ~1e8, dodici ordini di grandezza, e le osservazioni del 2020
+    gonfiano ``X'X`` di altri due.  Il condizionamento sfonda il doppio e la
+    Cholesky si arresta a meta' matrice:
+
+        LinAlgError: 122-th leading minor of the array is not positive definite
+
+    Non e' un caso di scuola: e' cio' che ha ucciso i due blocchi BVAR
+    2020-07-31 e 2020-10-30 della passata, i primi due il cui campione di
+    stima contiene il crollo e il rimbalzo del PIL Covid.
+
+    GLI AUTORI CI SONO ARRIVATI PRIMA.  In `logMLVAR_formcmc.m` (pacchetto di
+    replica CGLMS, `functionsGMS/fromGLP/`) le due righe con `chol` ci sono
+    ancora, COMMENTATE, e sotto c'e' `cholred` — eig con gli autovalori
+    tagliati.  Hanno sbattuto sullo stesso muro e hanno cambiato strada.
+
+    NON SI PERDE NIENTE IN CORRETTEZZA.  La radice di una covarianza non e'
+    unica: per estrarre da N(0,S) serve una qualsiasi C con ``C C' = S``.  La
+    Cholesky ne da' una triangolare, questa una simmetrica; dove S e' sana
+    sono entrambe esatte e le estrazioni hanno la stessa distribuzione.  La
+    Cholesky e' piu' VELOCE, non piu' CORRETTA.
+
+    UNA DEVIAZIONE DAGLI AUTORI, VOLUTA: LA SOGLIA E' RELATIVA
+    ----------------------------------------------------------
+    `cholred` taglia in ASSOLUTO (``dd(dd<1e-12)=0``).  Qui no, e la ragione
+    e' che le nostre matrici non vivono tutte sulla stessa scala.
+    ``omega_bar`` e' l'inversa di ``prec``, che con i numeri veri e' enorme:
+    i suoi autovalori possono stare legittimamente sotto 1e-12 senza essere
+    affatto nulli.  Una soglia assoluta li azzererebbe e butterebbe via
+    incertezza a posteriori VERA, in silenzio — un errore peggiore di quello
+    che stiamo riparando, perche' non si vede.  Si taglia quindi rispetto
+    all'autovalore piu' grande della matrice stessa, che e' anche cio' che fa
+    `numpy.linalg.pinv` col suo `rcond`.
+
+    Il taglio resta un'approssimazione e va dichiarato: le direzioni quasi
+    nulle vengono scartate invece di far fermare il conto.  Su una matrice
+    ben condizionata non ne viene tagliata nessuna, ed e' cio' che verifica
+    `test_niw_robust.py`.
+    """
+    S = np.asarray(S, dtype=float)
+    S = 0.5 * (S + S.T)                    # simmetria numerica, poi eigh
+    d, V = np.linalg.eigh(S)
+    if d.size:
+        # `eigh` ordina crescente: l'ultimo e' il massimo.  Un massimo <= 0
+        # vuol dire matrice nulla o tutta negativa: si azzera tutto e si
+        # lascia che sia il chiamante a trovarsi una C nulla, invece di
+        # inventare una scala di riferimento.
+        d = np.where(d < rtol * max(d[-1], 0.0), 0.0, d)
+    return V * np.sqrt(d)                  # == V @ diag(sqrt(d))
+
+
 def niw_posterior(Y: np.ndarray, X: np.ndarray, prior: NIWPrior) -> NIWPosterior:
     """
     Il posterior coniugato — GLP (A.8)-(A.9).
@@ -261,9 +330,15 @@ def niw_posterior(Y: np.ndarray, X: np.ndarray, prior: NIWPrior) -> NIWPosterior
     prec = xtx + np.diag(om_inv)                         # (k, k)
     rhs = X.T @ Y + om_inv[:, None] * prior.b
 
-    c = cho_factor(prec, lower=True)
-    b_bar = cho_solve(c, rhs)
-    omega_bar = cho_solve(c, np.eye(prior.k))
+    # SOLVE LU, NON CHOLESKY.  `prec` e' definita positiva in teoria e non in
+    # doppia precisione (vedi `robust_sqrt`): `cho_factor` qui si arrestava con
+    # "122-th leading minor ... not positive definite" sui blocchi 2020, e
+    # portava giu' l'intero blocco.  `np.linalg.solve` fattorizza con LU e
+    # pivoting parziale, non pretende la definita positivita' e non solleva: e'
+    # esattamente il backslash che usano gli autori sulla stessa identica
+    # matrice (`(xTx+diag(1./omega))\eye(k)`, logMLVAR_formcmc.m r.184).
+    b_bar = np.linalg.solve(prec, rhs)
+    omega_bar = np.linalg.solve(prec, np.eye(prior.k))
     omega_bar = 0.5 * (omega_bar + omega_bar.T)          # simmetria numerica
 
     resid = Y - X @ b_bar
@@ -295,10 +370,14 @@ def draw(post: NIWPosterior, rng: np.random.Generator, n_draws: int = 1):
     (B, Sigma) : (S, k, n) e (S, n, n)
     """
     n, k = post.psi_bar.shape[0], post.b_bar.shape[0]
-    L_om = cholesky(post.omega_bar, lower=True)
+    # `robust_sqrt` al posto di `cholesky(..., lower=True)`: stesso contratto
+    # (C C' = S), ma non si arresta quando la matrice perde la definita
+    # positivita' in doppia precisione.  Sono le due radici che gli autori
+    # affidano a `cholred` — `cholZZinv` e `cholSIGMA`.
+    L_om = robust_sqrt(post.omega_bar)
     # IW: Sigma = (W)^-1 con W ~ Wishart(dof, psi_bar^-1).  Si estrae via
     # Bartlett sulla scala inversa, che e' numericamente piu' stabile.
-    c_psi = cholesky(post.psi_bar, lower=True)
+    c_psi = robust_sqrt(post.psi_bar)
 
     B = np.empty((n_draws, k, n))
     S = np.empty((n_draws, n, n))
@@ -314,7 +393,7 @@ def draw(post: NIWPosterior, rng: np.random.Generator, n_draws: int = 1):
         Sigma = Linv.T @ Linv
         Sigma = 0.5 * (Sigma + Sigma.T)
         S[s] = Sigma
-        L_sig = cholesky(Sigma, lower=True)
+        L_sig = robust_sqrt(Sigma)
         Z = rng.standard_normal((k, n))
         B[s] = post.b_bar + L_om @ Z @ L_sig.T
     return B, S
@@ -371,9 +450,12 @@ def log_ml(Y: np.ndarray, X: np.ndarray, prior: NIWPrior, *, stable: bool = True
 
     xtx = X.T @ X if xtx is None else xtx
     prec = xtx + np.diag(om_inv)
-    c = cho_factor(prec, lower=True)
-    b_hat = cho_solve(c, (X.T @ Y if xty is None else xty)
-                      + om_inv[:, None] * prior.b)
+    # Solve LU e non Cholesky, per la stessa ragione di `niw_posterior`: qui
+    # `prec` e' la stessa matrice, e la stessa perdita di definita positivita'
+    # fermerebbe anche il calcolo della verosimiglianza marginale — cioe' il
+    # Metropolis sugli iperparametri, non solo l'estrazione di (B, Sigma).
+    b_hat = np.linalg.solve(prec, (X.T @ Y if xty is None else xty)
+                            + om_inv[:, None] * prior.b)
     eps = Y - X @ b_hat
     dev = b_hat - prior.b
     S = eps.T @ eps + dev.T @ (om_inv[:, None] * dev)          # (n, n)
@@ -470,6 +552,7 @@ __all__ = [
     "build_prior",
     "niw_posterior",
     "draw",
+    "robust_sqrt",
     "log_ml",
     "log_ml_with_dummies",
 ]

@@ -19,10 +19,19 @@ EM budget (``max_iter`` ≈ 50, ``tol`` ≈ 1e-4).  We are testing the *plumbing
 the statistical quality of the estimator, so a coarse fit is sufficient and the
 whole suite finishes in a few minutes.
 
-All artefacts go into a DEDICATED TEMPORARY directory
-``data/processed/_engine_test/`` which is wiped at the start (so the resume
-tests always begin from a clean slate) and removed again at the end.  The real
+All artefacts go into a PER-PROCESS TEMPORARY directory (``selftest_scratch``,
+the same helper the EM self-tests use), wiped at the start — so the resume
+tests always begin from a clean slate — and removed again at the end.  The real
 experiment output dirs (``mc_results_expA`` …) are never touched.
+
+Why per-process and not a fixed path: this used to be
+``data/processed/_engine_test/``, i.e. a FIXED directory inside the tracked
+tree, one metre from the real artefacts in ``data/processed/final/`` — against
+the rule in CLAUDE.md that a self-test verifies and never writes among the real
+outputs.  Being shared, it was also the cause of the flaky A3: the directory is
+wiped at start-up, so two concurrent runs (or the leftovers of a killed one)
+trod on each other's resume cache and A3 alone failed.  A private directory per
+process removes both problems at once.
 
 Run
 ---
@@ -48,6 +57,7 @@ if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
 from config_utils import parse_spec_variant_args                # noqa: E402
+from em.selftest_fixture import selftest_scratch                # noqa: E402
 from em.em_main import load_dfm_fit, _theta_fingerprint            # noqa: E402
 from monte_carlo import (                                        # noqa: E402
     run_one_replication,
@@ -68,7 +78,19 @@ TOL        = 1e-4         # looser outer tolerance -> fewer iterations -> faster
 BASE_SEED  = 1000
 PI_TEST    = 0.05         # contamination fraction for the single-rep C tests
 
-_TEST_DIR  = _PROJECT_ROOT / "data" / "processed" / "_engine_test"
+#: Spazio di lavoro dei test, PRIVATO DI QUESTO PROCESSO.  Creato pigramente
+#: (importare questo modulo non deve avere effetti sul disco) e cancellato
+#: all'uscita da `selftest_scratch`.  Vedi il docstring del modulo per perche'
+#: non e' piu' un path fisso dentro `data/processed/`.
+_TEST_DIR: pathlib.Path | None = None
+
+
+def _test_dir() -> pathlib.Path:
+    """La cartella di lavoro del processo, creata alla prima richiesta."""
+    global _TEST_DIR
+    if _TEST_DIR is None:
+        _TEST_DIR = pathlib.Path(selftest_scratch("mc_engine"))
+    return _TEST_DIR
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -157,7 +179,7 @@ def test_A2_parallel_vs_serial(ctx: dict) -> str:
 def test_A3_resume(ctx: dict) -> str:
     """Full resume (skip all) and partial resume (recompute one only)."""
     theta = ctx["theta_star"]
-    out = _TEST_DIR / "A3_resume"
+    out = _test_dir() / "A3_resume"
     _clean_dir(out)
 
     mc_kw = ctx.get("mc_kw", {})
@@ -202,7 +224,7 @@ def test_A3_resume(ctx: dict) -> str:
 def test_A4_fingerprint_anti_zombie(ctx: dict) -> str:
     """A changed theta_star invalidates the cache (fingerprint mismatch)."""
     theta = ctx["theta_star"]
-    out = _TEST_DIR / "A4_fingerprint"
+    out = _test_dir() / "A4_fingerprint"
     _clean_dir(out)
 
     mc_kw = ctx.get("mc_kw", {})
@@ -469,7 +491,7 @@ def main(spec: str = "fed_overlap", variant: str = "gaussian") -> int:
     print(bar)
 
     # ── Fresh temp workspace (resume tests must start from zero) ──────────────
-    _clean_dir(_TEST_DIR)
+    _clean_dir(_test_dir())
 
     fx = load_fixture(spec)
     _vc = _V[variant]
@@ -527,7 +549,7 @@ def main(spec: str = "fed_overlap", variant: str = "gaussian") -> int:
         _run(name, fn, ctx, results)
 
     # ── Cleanup the temporary workspace ───────────────────────────────────────
-    shutil.rmtree(_TEST_DIR, ignore_errors=True)
+    shutil.rmtree(_test_dir(), ignore_errors=True)
 
     # ── Summary ───────────────────────────────────────────────────────────────
     n_pass = sum(ok for _, ok in results)
