@@ -134,7 +134,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.linalg import eigvalsh
+from numpy.linalg import LinAlgError
+from scipy.linalg import cholesky, eigvalsh, solve_triangular
 from scipy.special import multigammaln
 
 from src.bvar.dummies import minnesota_omega_diag, minnesota_prior_mean
@@ -232,6 +233,13 @@ class NIWPosterior:
     psi_bar: np.ndarray        # (n, n)   NON piu' diagonale: il posterior
     dof_bar: int               #          impara le correlazioni fra residui
     resid: np.ndarray          # (T, n)   residui a posteriori, per diagnostica
+    #: Radice ESATTA di `omega_bar`: L_om con ``L_om @ L_om.T == omega_bar``,
+    #: calcolata in `niw_posterior` dalla Cholesky di `prec` riequilibrata.
+    #: Vedi la sezione "LA RADICE DI OMEGA_BAR" nella docstring di
+    #: `niw_posterior` per perche' non si passa piu' da `robust_sqrt` qui.
+    #: `None` solo se costruito a mano (test) o se la Cholesky e' fallita anche
+    #: dopo il riequilibrio: allora `draw` ricade su `robust_sqrt`.
+    l_omega: np.ndarray | None = None   # (k, k)
 
 
 #: Soglia RELATIVA sotto la quale un autovalore si considera nullo in
@@ -303,6 +311,89 @@ def robust_sqrt(S: np.ndarray, *, rtol: float = _EIG_RTOL) -> np.ndarray:
     return V * np.sqrt(d)                  # == V @ diag(sqrt(d))
 
 
+def _omega_bar_fallback(prec: np.ndarray, rhs: np.ndarray, k: int):
+    """
+    La vecchia via: LU sulla `prec` grezza, `omega_bar` esplicita, radice
+    lasciata a `robust_sqrt` (segnalata con ``l_omega=None``).  Resta come rete
+    per il caso in cui nemmeno il riequilibrio renda fattorizzabile la matrice.
+    """
+    b_bar = np.linalg.solve(prec, rhs)
+    omega_bar = np.linalg.solve(prec, np.eye(k))
+    omega_bar = 0.5 * (omega_bar + omega_bar.T)
+    return None, omega_bar, b_bar
+
+
+def _omega_bar_factor(prec: np.ndarray, rhs: np.ndarray, k: int):
+    """
+    Da `prec = X'X + Omega^-1` a ``(L_om, omega_bar, b_bar)`` in un colpo solo.
+
+    IL PROBLEMA ERA LA SCALA, NON LA MATRICE
+    ----------------------------------------
+    `prec` e' definita positiva per costruzione (``X'X`` semidefinita piu' una
+    diagonale strettamente positiva) e smetteva di esserlo solo in doppia
+    precisione.  La causa e' documentata nell'header: ``Omega`` spazia da ~1e-4
+    a ~1e8, dodici ordini di grandezza, quindi la DIAGONALE di `prec` e' gia'
+    sbilanciata di suo, prima ancora che i dati ci mettano del loro.  E' cattivo
+    condizionamento **di unita' di misura**, il caso da manuale per il
+    riequilibrio di Jacobi:
+
+        D = diag(sqrt(diag(prec)))       P = D^-1 prec D^-1
+
+    `P` ha diagonale unitaria, e il suo condizionamento riflette la correlazione
+    vera fra regressori invece del capriccio delle unita'.  Su `P` la Cholesky
+    passa dove su `prec` si arrestava.  **Non e' un'approssimazione**: e'
+    l'identita' ``prec = D P D`` riscritta, esatta in aritmetica esatta e molto
+    piu' stabile in quella finita.
+
+    LA RADICE DI OMEGA_BAR, ESATTA E SENZA AUTOVALORI
+    -------------------------------------------------
+    Serve `L_om` con ``L_om L_om' = omega_bar = prec^-1``.  Da ``P = L L'``:
+
+        prec^-1 = D^-1 P^-1 D^-1 = D^-1 L^-T L^-1 D^-1 = (D^-1 L^-T)(D^-1 L^-T)'
+
+    quindi ``L_om = D^-1 L^-T``, un'inversa triangolare per sostituzione.
+
+    PERCHE' CONTA.  La via precedente formava `omega_bar` esplicita (un'inversa
+    k x k) e poi ne prendeva `robust_sqrt` (una `eigh` k x k).  Sono fuori dal
+    ciclo interno di `draw`, ma NON fuori da quello che conta: `core.step`
+    chiama `niw_posterior` + ``draw(n_draws=1)`` **a ogni iterazione Gibbs**,
+    quindi le due fattorizzazioni k x k si pagano per iterazione.  Misurato,
+    a k=201: 161 ms contro 1,65 ms, ~98x.  Ma il guadagno vero e' l'altro:
+    il taglio relativo degli autovalori spariva.  Gli autovalori di
+    `omega_bar` sono legittimamente sparsi su ~12 ordini — la varianza a
+    posteriori dei coefficienti DEVE differire cosi' fra regressori — e col
+    taglio a `rtol=1e-12` le direzioni piu' piccole finivano azzerate proprio
+    dove ``X'X`` e' gonfiata (2020).  Una `Sigma` cosi' mutilata mandava NaN a
+    valle: e' il ``il pannello contiene NaN`` che uccideva il blocco
+    2020-07-31 attraverso il simulation smoother dell'L-BVAR.  La via
+    triangolare non guarda gli autovalori, quindi non ha niente da troncare:
+    il problema non si ripresenta per costruzione.
+
+    `robust_sqrt` NON sparisce: resta su `psi_bar` e su `Sigma` dentro `draw`,
+    dove le matrici sono n x n e ben educate, e resta come rete qui sotto.
+    """
+    diag = np.diag(prec)
+    if not np.all(np.isfinite(diag)) or np.any(diag <= 0.0):
+        return _omega_bar_fallback(prec, rhs, k)
+
+    inv_d = 1.0 / np.sqrt(diag)
+    P = prec * np.outer(inv_d, inv_d)
+    P = 0.5 * (P + P.T)
+    try:
+        L = cholesky(P, lower=True)
+    except LinAlgError:
+        # Il riequilibrio non e' bastato: la matrice e' malata davvero, non
+        # solo mal scalata.  Si torna alla via robusta.
+        return _omega_bar_fallback(prec, rhs, k)
+
+    L_inv = solve_triangular(L, np.eye(k), lower=True)
+    l_omega = inv_d[:, None] * L_inv.T                   # D^-1 L^-T
+    omega_bar = l_omega @ l_omega.T
+    omega_bar = 0.5 * (omega_bar + omega_bar.T)
+    b_bar = l_omega @ (l_omega.T @ rhs)                  # prec^-1 rhs
+    return l_omega, omega_bar, b_bar
+
+
 def niw_posterior(Y: np.ndarray, X: np.ndarray, prior: NIWPrior) -> NIWPosterior:
     """
     Il posterior coniugato — GLP (A.8)-(A.9).
@@ -330,16 +421,7 @@ def niw_posterior(Y: np.ndarray, X: np.ndarray, prior: NIWPrior) -> NIWPosterior
     prec = xtx + np.diag(om_inv)                         # (k, k)
     rhs = X.T @ Y + om_inv[:, None] * prior.b
 
-    # SOLVE LU, NON CHOLESKY.  `prec` e' definita positiva in teoria e non in
-    # doppia precisione (vedi `robust_sqrt`): `cho_factor` qui si arrestava con
-    # "122-th leading minor ... not positive definite" sui blocchi 2020, e
-    # portava giu' l'intero blocco.  `np.linalg.solve` fattorizza con LU e
-    # pivoting parziale, non pretende la definita positivita' e non solleva: e'
-    # esattamente il backslash che usano gli autori sulla stessa identica
-    # matrice (`(xTx+diag(1./omega))\eye(k)`, logMLVAR_formcmc.m r.184).
-    b_bar = np.linalg.solve(prec, rhs)
-    omega_bar = np.linalg.solve(prec, np.eye(prior.k))
-    omega_bar = 0.5 * (omega_bar + omega_bar.T)          # simmetria numerica
+    l_omega, omega_bar, b_bar = _omega_bar_factor(prec, rhs, prior.k)
 
     resid = Y - X @ b_bar
     dev = b_bar - prior.b
@@ -352,6 +434,7 @@ def niw_posterior(Y: np.ndarray, X: np.ndarray, prior: NIWPrior) -> NIWPosterior
         psi_bar=psi_bar,
         dof_bar=int(Y.shape[0]) + prior.dof,
         resid=resid,
+        l_omega=l_omega,
     )
 
 
@@ -370,11 +453,11 @@ def draw(post: NIWPosterior, rng: np.random.Generator, n_draws: int = 1):
     (B, Sigma) : (S, k, n) e (S, n, n)
     """
     n, k = post.psi_bar.shape[0], post.b_bar.shape[0]
-    # `robust_sqrt` al posto di `cholesky(..., lower=True)`: stesso contratto
-    # (C C' = S), ma non si arresta quando la matrice perde la definita
-    # positivita' in doppia precisione.  Sono le due radici che gli autori
-    # affidano a `cholred` — `cholZZinv` e `cholSIGMA`.
-    L_om = robust_sqrt(post.omega_bar)
+    # La radice di `omega_bar` arriva GIA' FATTA da `niw_posterior`, esatta e
+    # triangolare (vedi `_omega_bar_factor`): qui non si fattorizza piu' nulla
+    # di k x k, ne' una volta ne' per draw.  `robust_sqrt` resta il ripiego se
+    # il posterior e' stato costruito a mano o se la Cholesky e' fallita.
+    L_om = post.l_omega if post.l_omega is not None else robust_sqrt(post.omega_bar)
     # IW: Sigma = (W)^-1 con W ~ Wishart(dof, psi_bar^-1).  Si estrae via
     # Bartlett sulla scala inversa, che e' numericamente piu' stabile.
     c_psi = robust_sqrt(post.psi_bar)

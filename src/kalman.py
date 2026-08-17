@@ -946,6 +946,35 @@ def kalman_filter(
 
 # ─── 9. Rauch-Tung-Striebel backward smoother + lag-one covariance ──────────
 
+def _smoother_gains(A_tilde, P_filt, P_pred, T, jitter, I_dim):
+    """
+    I guadagni ``J_t = P_filt[t] A' P_pred[t+1]^-1`` per t = 0 .. T-2, in blocco.
+
+    Ritorna un array ``(T-1, dim, dim)``.  Vedi il commento nel chiamante per
+    perche' si puo' fare fuori dalla ricorsione e perche' conviene.
+    """
+    if T < 2:
+        return np.zeros((0, I_dim.shape[0], I_dim.shape[0]))
+
+    rhs = A_tilde @ P_filt[: T - 1]                 # (T-1, dim, dim)
+    if jitter > 0.0:
+        reg = P_pred[1:T] + jitter * I_dim
+        return P_filt[: T - 1] @ A_tilde.T @ np.linalg.inv(reg)
+    try:
+        return np.linalg.solve(P_pred[1:T], rhs).transpose(0, 2, 1)
+    except LinAlgError:
+        # Almeno una `P_pred` non e' invertibile: si torna al per-passo, che
+        # isola la matrice malata e le applica `pinvh` senza contagiare le altre.
+        out = np.empty_like(rhs)
+        for t in range(T - 1):
+            try:
+                c = cho_factor(P_pred[t + 1], lower=True, check_finite=False)
+                out[t] = cho_solve(c, rhs[t], check_finite=False).T
+            except LinAlgError:
+                out[t] = P_filt[t] @ A_tilde.T @ pinvh(P_pred[t + 1])
+        return out
+
+
 def kalman_smoother(
     filter_out: dict,
     A_tilde: np.ndarray,
@@ -1124,24 +1153,30 @@ def kalman_smoother(
     f_smooth[T - 1] = f_filt[T - 1]
     P_smooth[T - 1] = P_filt[T - 1]
 
+    # ── I guadagni J_t, TUTTI IN UN COLPO ────────────────────────────────────
+    # `J_t` dipende solo da `P_filt[t]` e `P_pred[t+1]`, cioe' da uscite del
+    # FILTRO, gia' tutte disponibili qui: non partecipa alla ricorsione
+    # all'indietro, che riguarda `f_smooth`/`P_smooth`.  Quindi non c'e' motivo
+    # di calcolarlo un t alla volta, ed e' l'unica parte dello smoother che si
+    # possa sollevare fuori dal ciclo.
+    #
+    # CONTAVA.  Nel profilo di una stima `student_t_ar1` (T=291, d=64) le
+    # `cho_solve`/`cho_factor` per-passo erano 50.170 chiamate e 9,6 s su 38,4:
+    # un quarto del tempo speso in overhead di chiamata su matrici piccole.  La
+    # versione in blocco fa la stessa algebra in una chiamata sola per passata.
+    #
+    # `np.linalg.solve` in batch fattorizza con LU invece che con Cholesky.  Su
+    # una matrice definita positiva le due danno lo stesso risultato a meno
+    # dell'arrotondamento — verificato contro la versione per-passo, accordo a
+    # precisione di macchina — e la Cholesky qui era stata scelta per il COSTO
+    # contro `pinv`, non per una ragione semantica (vedi Notes).  Se `P_pred`
+    # non e' invertibile la `LinAlgError` fa ricadere sul ciclo per-passo, che
+    # conserva il ripiego `pinvh` matrice per matrice.
+    J_arr[: T - 1] = _smoother_gains(A_tilde, P_filt, P_pred, T, jitter, I_dim)
+
     # ── Backward recursion: t = T-2, T-3, ..., 0 ─────────────────────────────
     for t in range(T - 2, -1, -1):
-        if jitter > 0.0:
-            J_t = P_filt[t] @ A_tilde.T @ np.linalg.inv(P_pred[t + 1]
-                                                        + jitter * I_dim)
-        else:
-            # J_t = P_filt A' P_pred^{-1}  <==>  P_pred J_t.T = A P_filt
-            # (P_pred e P_filt sono simmetriche, quindi il membro destro e'
-            # A @ P_filt, non A @ P_filt.T).  Nessuna inversa viene formata.
-            rhs = A_tilde @ P_filt[t]
-            try:
-                c = cho_factor(P_pred[t + 1], lower=True, check_finite=False)
-                J_t = cho_solve(c, rhs, check_finite=False).T
-            except LinAlgError:
-                # P_pred non PD: ripiega sulla pseudo-inversa simmetrica.
-                J_t = P_filt[t] @ A_tilde.T @ pinvh(P_pred[t + 1])
-
-        J_arr[t] = J_t
+        J_t = J_arr[t]
 
         # Smoothed mean and covariance.
         f_smooth[t] = f_filt[t] + J_t @ (f_smooth[t + 1] - f_pred[t + 1])

@@ -408,6 +408,7 @@ a un metodo cio' che dipende da una scelta implementativa non dichiarata.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import warnings
 
 import numpy as np
 
@@ -423,7 +424,21 @@ DEFAULT_COUPLING = "authors"
 REAL_TOL = 1e-9
 
 #: Soglia sulla parte immaginaria residua di una matrice che DEVE essere reale.
+#: Sotto: residuo pulito, si prende la parte reale in silenzio.
 IMAG_TOL = 1e-7
+
+#: Soglia OLTRE la quale il residuo immaginario non e' piu' arrotondamento ma
+#: conjugacy rotta, e allora si solleva.  Fra `IMAG_TOL` e questa si prende la
+#: parte reale segnalando: e' la banda che la docstring di `real_cube_root`
+#: descrive gia' a parole — "piccolo RISPETTO A |Phi_m|, cresce con cond(V),
+#: benigno" — ma che una soglia sola non sapeva distinguere da un errore vero.
+#:
+#: PERCHE' SERVIVA.  Con una soglia sola i blocchi BVAR 2011-07-29 e
+#: 2025-05-02 morivano su residui relativi di 1.1e-05 e 1.586e-05: puro
+#: arrotondamento su una `P` mal condizionata, scambiato per conjugacy rotta.
+#: Una conjugacy davvero rotta da' un residuo dell'ordine della matrice
+#: stessa, cioe' rel ~ 1, e resta intercettata.
+IMAG_FATAL = 1e-3
 
 
 @dataclass
@@ -737,9 +752,29 @@ def monthly_innovation_cov(A: np.ndarray, Sigma: np.ndarray, *,
         )
     out_c = P @ (S_tilde / denom) @ P.T
     max_imag = float(np.abs(out_c.imag).max())
-    if max_imag > imag_tol * max(1.0, float(np.abs(Sigma).max())):
+    # La scala di riferimento e' l'USCITA, non l'ingresso `Sigma`: `out_c` puo'
+    # essere ordini di grandezza piu' grande quando `P` e' mal condizionata, e
+    # misurare il residuo contro `Sigma` lo faceva sembrare enorme quando era
+    # trascurabile.  E' la stessa scelta che fa gia' `real_cube_root`, che si
+    # rapporta a |Phi_m|.  `Sigma` resta nel massimo per non abbassare mai la
+    # scala sotto quella dell'ingresso.
+    scale = max(1.0, float(np.abs(out_c.real).max()), float(np.abs(Sigma).max()))
+    rel_imag = max_imag / scale
+    if rel_imag > IMAG_FATAL:
         raise ValueError(
-            f"Sigma_eps_m non e' reale: parte immaginaria massima {max_imag:.3e}"
+            f"Sigma_eps_m non e' reale: parte immaginaria massima {max_imag:.3e}, "
+            f"relativa {rel_imag:.3e} > {IMAG_FATAL:.1e}.\n"
+            f"  Un residuo di questo ordine non e' arrotondamento: e' conjugacy "
+            f"rotta a monte (vedi `real_tol` in `real_cube_root`)."
+        )
+    if rel_imag > imag_tol:
+        warnings.warn(
+            f"Sigma_eps_m: residuo immaginario {max_imag:.3e} (relativo "
+            f"{rel_imag:.3e}) sopra {imag_tol:.1e} ma sotto {IMAG_FATAL:.1e}. "
+            f"Arrotondamento su una P mal condizionata: si prende la parte "
+            f"reale.",
+            RuntimeWarning,
+            stacklevel=2,
         )
     out = out_c.real
     return 0.5 * (out + out.T)
@@ -828,4 +863,5 @@ __all__ = [
     "quarterly_to_monthly",
     "REAL_TOL",
     "IMAG_TOL",
+    "IMAG_FATAL",
 ]

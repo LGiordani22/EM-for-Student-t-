@@ -5,7 +5,9 @@
 > trasformate, quando diventano note. Descrive lo stato dei fatti, non un piano.
 >
 > **Fonte.** Bok, Caratelli, Giannone, Sbordone, Tambalotti (2018), *Macroeconomic
-> Nowcasting with Big Data*, in `docs/Box Giannone - NY FED nowcasting.pdf` —
+> Nowcasting with Big Data*, in
+> `docs/Paper tesi/Bok, Caratelli, Giannone, Sbordone, Tambalotti.pdf`
+> (cartella locale, non versionata) —
 > **Tabella 3** (serie, loadings, Units) pp. 631-632; **Tabella 2** (release e
 > ritardi di pubblicazione) pp. 623-624.
 >
@@ -75,7 +77,7 @@ campione dal 1985-01, le 3 trimestrali dal 1985-03.
 | 17 | Capacity utilization | GR | M | `TCU` | diff_ppt | 17 | 1m | 1985-01 | 0.2 |
 | 18 | Core PCE: chain price index | G | M | `PCEPILFE` | MoM_log | 30 | 1m | 1985-01 | 0.4 |
 | 19 | CPI-U less food & energy | G | M | `CPILFESL` | MoM_log | 18 | 1m | 1985-01 | 0.6 |
-| 20 | Inventories: total business | GR | M | `BUSINV` | MoM_log | 44 | 1m | 1992-02 | 17.4 |
+| 20 | Inventories: total business | GR | M | `BUSINV` | MoM_log | 44 | 2m | 1992-02 | 17.4 |
 | 21 | JOLTS: job openings: total | GL | M | `JTSJOL` | diff_level | 42 | 2m | 2001-01 | 38.9 |
 | 22 | Real personal consumption expend. | GR | M | `PCEC96` | MoM_log | 30 | 1m | **2007-02** | 53.5 |
 | 23 | PCE: chain price index | G | M | `PCEPI` | MoM_log | 30 | 1m | 1985-01 | 0.4 |
@@ -283,7 +285,7 @@ pannello poggia sulle 17 serie lunghe.
 
 | Voce | Cosa | Perché è così |
 |---|---|---|
-| `BUSINV` | delay **44** con reference **1m_prior** | sono i valori di Tabella 2 ("Manufacturing and Trade Inventories"), verificati alla fonte. È una stranezza interna del paper: la riproduciamo, non la correggiamo |
+| `BUSINV` | delay **44** del paper, reference **corretto** da `1m_prior` a `2m_prior` il **2026-08-11** | la riga di Tabella 2 ("Manufacturing and Trade Inventories") non regge internamente: prima settimana piena del mese su dati del mese prima farebbe ~7 giorni, non 44. La realtà Census è metà mese su dati di **due** mesi prima (31-gen + 44 = 16-mar). Teniamo il delay del paper (che è il campo giusto) e allineiamo il reference. **Non cambia una cella**: `as_of`/`release_date` usano solo il delay |
 | `BOPTEXP` / `BOPTIMP` | mappate a *US International Trade in Goods & Services* (35 gg, 2m_prior) | sono BEA goods+services, BOP basis. Il rilascio più tempestivo (*Advance Economic Indicators*, 28 gg, 1m) è Census **goods-only**: serie diversa, non usata |
 | Ordini/inventari manifatturieri | #3/#25/#27 → *Advance Durable Goods* (26 gg); #26 → *M3 full* (35 gg); #20 → *Manufacturing and Trade Inventories* (44 gg); #12 → *Wholesale Trade* (37 gg) | assegnazione advance-vs-full scelta a favore del report più tempestivo dove il paper lascia ambiguità |
 

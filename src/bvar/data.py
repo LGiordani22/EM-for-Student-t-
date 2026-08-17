@@ -319,8 +319,9 @@ def drop_empty_series(panel: pd.DataFrame, spec: BVARSpec
 
     Restituisce `(pannello ridotto, spec ristretto)`, allineati.  Serve
     all'L-BVAR in real time, dove l'insieme delle serie esistenti dipende dalla
-    data: misurato, `n` vale 35 all'inizio del 2007, 36 dal 2007-06 al 2010-01, e 37
-    da 2010-04 in poi.
+    data: misurato al mese, `n` vale 35 dal 2001-12, 36 dal 2007-06 e 37 dal
+    2010-03 in poi (e 33/34 piu' indietro, quando anche Empire e JOLTS
+    mancavano).
 
     ================================================================================
     PERCHE' SERVE — e NON e' lo smoother che si rompe
@@ -381,7 +382,7 @@ def drop_empty_series(panel: pd.DataFrame, spec: BVARSpec
     la stessa regola, applicata alla data invece che al profilo.
 
     DA DICHIARARE IN TESI: `n` varia nel tempo (35 -> 36 -> 37 fra il 2007 e il
-    2010, poi stabile).  Non
+    2010, poi stabile) — detto in sezione 2.5 della tesi.  Non
     e' un compromesso ne' un ripiego, e' la ricostruzione onesta del real-time.
 
     ================================================================================

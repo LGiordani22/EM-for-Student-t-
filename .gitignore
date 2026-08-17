@@ -1,14 +1,12 @@
-# ── Virtual environment ───────────────────────────────────────────────────────
+# ── Ambiente e segreti ────────────────────────────────────────────────────────
 .venv/
 venv/
 ENV/
-
-# ── Secrets / credenziali ──────────────────────────────────────────────────────
 .env
 *.key
 *.pem
 
-# ── Python build artifacts ─────────────────────────────────────────────────────
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
@@ -18,79 +16,60 @@ __pycache__/
 .pytest_cache/
 dist/
 build/
-
-# ── Jupyter ────────────────────────────────────────────────────────────────────
 .ipynb_checkpoints/
 
-# ── Archivi di lavoro (non rilevanti per la tesi) ──────────────────────────────
-_archive_pre_config/
-_archive_second_stage/
-
-# ── Claude Code (config locale dell'AI assistant) ─────────────────────────────
-.claude/
-
-# ── OS / IDE ───────────────────────────────────────────────────────────────────
+# ── OS / IDE / assistente ─────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 desktop.ini
 .vscode/
 .idea/
+.claude/
 
-# ── LaTeX — file ausiliari di compilazione (mai in repo) ──────────────────────
-# NB: il SORGENTE docs/*.tex e il PDF docs/*.pdf NON sono esclusi → vanno in repo.
+# ── LaTeX: solo gli ausiliari di compilazione ─────────────────────────────────
 *.aux
 *.log
 *.out
 *.toc
 *.synctex.gz
 *.bbl
+*.bbl-SAVE-ERROR
 *.blg
+*.bcf
+*.run.xml
 *.fls
 *.fdb_latexmk
 *.lof
 *.lot
 
-# ── Figure rigenerabili dai notebook ──────────────────────────────────────────
-results/figures/
+# ── Archivi: restano in locale, fuori dalla consegna ──────────────────────────
+_archive_pre_config/
+_archive_second_stage/
+_archive_mcmc/
+_archive_mc_diagnostics/
+_archive_notebooks/
 
-# ── Stato di lavoro delle passate: MAI nel repo ───────────────────────────────
-# `output/` e' incluso di proposito (vedi sotto), quindi senza queste righe la
-# cache di checkpoint del BVAR — 127 MB per un blocco di tre settimane, e c'e'
-# un blocco per invocazione — verrebbe committata e clonata da chi prende il
-# repo.  Le cartelle con `_` iniziale sono per convenzione stato di lavoro, non
-# risultati: checkpoint di ripresa, probe e cartelle dei test.
+# ── docs/: vive in locale. Solo tre file vanno in repo ────────────────────────
+# `docs/*` e non `docs/`, altrimenti git non scende e le eccezioni non valgono.
+docs/*
+!docs/DATASET_MAP.md
+!docs/FORECAST_CALENDAR_CHECK.md
+!docs/Variabili NYFED.docx
+
+# ── output/: i risultati SI, lo stato di lavoro NO ────────────────────────────
+# Le cartelle con `_` iniziale sono stato della macchina su cui si e' girato:
+# checkpoint di ripresa (centinaia di MB), log di fase, probe, test.
 output/_checkpoint/
+output/_logs*/
+output/_sizing.env
 output/_test_*/
 output/_diag_*/
-# I due prefissi si scrivono ANCHE come prefisso, non solo come suffisso:
-# `output/_*_probe/` non copriva `_probe_backcast`, e `_pilot_bvar` non era
-# coperto da niente.  Sono passati fra le maglie per mesi perche' finche' una
-# cartella non viene aggiunta al repo la mancanza non si vede.
 output/_*_probe/
 output/_probe_*/
 output/_pilot_*/
-# Prodotti da scripts/run_all.sh: i log di fase e la misura del
-# dimensionamento.  Sono stato di lavoro della macchina su cui si e' girato,
-# non risultati — e il file di dimensionamento sarebbe attivamente dannoso
-# altrove, perche' la prossima macchina lo rileggerebbe invece di misurare.
-output/_logs*/
-output/_sizing.env
+output/forecast_weekly/.run_all_par.lock
+output/final/
+output/recovery/
 
-# ── Materiale pesante che sta in LOCALE e non in repo ────────────────────────
-# `docs/BVARs/` sono 59 MB di codice di replica di Cimadomo, Giannone, Lenza,
-# Monti e Sokol, scaricato dal Journal of Econometrics.  Restano sul disco —
-# la regola di CLAUDE.md («leggere il codice degli autori prima di implementare
-# in src/bvar/») vale ancora e si applica ai file locali — ma fuori dal repo:
-# e' materiale di altri, e ripubblicarlo su una repository PUBBLICA e' una
-# ridistribuzione che la licenza della rivista non autorizza necessariamente.
-# Chi clona e ne ha bisogno lo scarica dalla rivista.
-docs/BVARs/
-# I notebook sono esplorativi e parlano ancora del binario small/big: 3.8 MB di
-# output incorporati che nessuna parte della pipeline legge.
-notebooks/
-
-# ── INCLUSI ESPLICITAMENTE (override, non escludere) ──────────────────────────
-# data/raw/     → 293 MB, 323 vintage FRED-MD, nessun file > 100 MB → inclusi
-# data/processed/ → 8 MB → inclusi
-# output/       → 14 MB → inclusi
-# results/      → escluso results/figures/ (rigenerabili), resto incluso
+# ── Figure rigenerabili ───────────────────────────────────────────────────────
+results/figures/

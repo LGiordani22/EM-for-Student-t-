@@ -18,7 +18,7 @@ PERMIT,Building permits,fred,M,GR,diff_level,inv_diff,16,1m_prior,New Residentia
 TCU,Capacity utilization,fred,M,GR,diff_ppt,inv_diff,17,1m_prior,Industrial Production & Capacity Utilization,1985-01-31,0.2,
 PCEPILFE,Core PCE: chain price index,fred,M,G,MoM_log,inv_MoM_log,30,1m_prior,Personal Income and Outlays,1985-01-31,0.4,
 CPILFESL,Core CPI: all items less food & energy,fred,M,G,MoM_log,inv_MoM_log,18,1m_prior,Consumer Price Index,1985-01-31,0.6,
-BUSINV,Inventories: total business,fred,M,GR,MoM_log,inv_MoM_log,44,1m_prior,Manufacturing and Trade Inventories,1992-02-29,17.4,"delay 44 + 1m_prior = valori del paper (Tab.2), non refuso; parte 1992"
+BUSINV,Inventories: total business,fred,M,GR,MoM_log,inv_MoM_log,44,2m_prior,Manufacturing and Trade Inventories,1992-02-29,17.4,"delay 44 = valore del paper (Tab.2); reference corretto da 1m_prior a 2m_prior (vedi notes.businv_delay), campo di sola documentazione; parte 1992"
 JTSJOL,JOLTS: job openings: total,fred,M,GL,diff_level,inv_diff,42,2m_prior,Job Openings and Labor Turnover (JOLTS),2001-01-31,38.9,parte 2000-12
 PCEC96,Real personal consumption expenditures,fred,M,GR,MoM_log,inv_MoM_log,30,1m_prior,Personal Income and Outlays,2007-02-28,53.5,serie mensile FRED parte 2007-02 -> buco pre-2007 (NaN via W_t)
 PCEPI,PCE: chain price index,fred,M,G,MoM_log,inv_MoM_log,30,1m_prior,Personal Income and Outlays,1985-01-31,0.4,

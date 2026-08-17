@@ -735,6 +735,7 @@ def ecm_inner_loop(
     verbose: bool = False,
     gaussian: bool = False,
     w_init: dict | None = None,
+    strict_inner: bool = False,
 ) -> dict:
     r"""
     Run the ECM inner loop that resolves the coupling between the
@@ -1117,6 +1118,30 @@ def ecm_inner_loop(
             converged = True
             break
 
+    if not converged and strict_inner:
+        # IL TETTO RAGGIUNTO E' UN SINTOMO, NON UNA CONFIGURAZIONE.
+        # E' scritto sopra, dove `max_inner` viene alzato a 300 per i pesi
+        # per-serie: "se viene raggiunto e' un sintomo da guardare, non una
+        # configurazione da accettare".  Restituire comunque il best iterate
+        # accetta un E-step troncato e lo passa all'M-step, che ci costruisce
+        # sopra un theta; nella passata del 16-8-2026 e' cosi' che
+        # `diag3/student_t_ar1` e' arrivato a 60,6 minuti PER STIMA — una
+        # iterazione EM da ~6 passate di Kalman ne faceva 300, ripetuta ~90
+        # volte fa i 2709 s che si leggono nel log.
+        #
+        # Sul percorso di STIMA quindi si rifiuta: la ri-stima abortisce e il
+        # chiamante ricade sul theta precedente, esattamente come per un theta
+        # degenere.  Si spende una iterazione patologica invece di novanta.
+        #
+        # `strict_inner` resta False sul percorso di FILTRO (`filter_only`,
+        # theta congelato): li' non si sta stimando niente, il best iterate e'
+        # il meglio disponibile, e sollevare toglierebbe il ripiego proprio a
+        # chi serve da ripiego.
+        raise RuntimeError(
+            f"ecm_inner_loop non converge in {max_inner} iterazioni "
+            f"(delta finale {delta:.3e}, migliore {best_delta:.3e}, "
+            f"tol {tol_inner:.3e}): E-step troncato, la stima non si accetta."
+        )
     if not converged:
         warnings.warn(
             f"ecm_inner_loop did not converge in {max_inner} iterations "
@@ -1179,6 +1204,7 @@ def run_e_step(
     save_path=None,
     gaussian: bool = False,
     w_init: dict | None = None,
+    strict_inner: bool = False,
 ) -> dict:
     r"""
     High-level entry point: full E-step at a single outer EM iteration.
@@ -1301,6 +1327,7 @@ def run_e_step(
         max_inner=max_inner,
         verbose=verbose,
         gaussian=gaussian,
+        strict_inner=strict_inner,
     )
 
     # ── 2. Metadata ───────────────────────────────────────────────────────────

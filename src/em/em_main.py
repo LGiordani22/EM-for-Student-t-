@@ -2032,9 +2032,15 @@ def run_em(
 
     for j in range(max_iter):
         # ── 1. E-step at current theta ──────────────────────────────────────
+        # `strict_inner=True`: qui si STIMA, e un E-step troncato dal tetto del
+        # ciclo interno non si accetta — l'M-step ci costruirebbe sopra un theta
+        # e la stima proseguirebbe per decine di iterazioni altrettanto
+        # patologiche.  Meglio abortire e lasciare che il chiamante ricada sul
+        # theta precedente.  Sul percorso di filtro il flag resta False.
         e_out = run_e_step(Y, theta, freq_list=freq_list, verbose=False,
                            gaussian=gaussian, tol_inner=_tol_inner,
-                           w_init=_w_prev if _warm else None)
+                           w_init=_w_prev if _warm else None,
+                           strict_inner=True)
         if _warm:
             _w_prev = {"w_eps": e_out["w_eps"], "w_u": e_out["w_u"]}
         L_j   = float(e_out["loglik"])

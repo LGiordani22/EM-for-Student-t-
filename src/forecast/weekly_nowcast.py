@@ -359,6 +359,93 @@ def _realised(panel: pd.DataFrame, quarter: str, target_series: str) -> tuple[fl
 
 # ─── Il ciclo ─────────────────────────────────────────────────────────────────
 
+#: Sotto questa varianza idiosincratica una serie e' di fatto priva di rumore e
+#: la F del filtro diventa singolare.  Il pannello e' standardizzato, quindi le
+#: R vere stanno fra ~1e-2 e ~1: 1e-12 non taglia niente di legittimo.
+_R_MIN = 1e-12
+
+
+class ThetaDegenere(RuntimeError):
+    """
+    L'EM e' arrivato in fondo ma il theta che consegna non e' utilizzabile.
+
+    NON e' un'eccezione dell'EM: l'EM non ha sollevato niente, ha solo smesso di
+    convergere e restituito parametri degeneri.  Serve un tipo proprio perche'
+    il chiamante la tratti come una ri-stima fallita — filtrare col theta
+    precedente e ritentare la settimana dopo — invece di adottarli.
+    """
+
+
+def theta_problema(theta: dict | None) -> str | None:
+    """
+    `None` se `theta` si puo' usare, altrimenti la ragione, in chiaro.
+
+    PERCHE' ESISTE.  `run_weekly_nowcast` adottava il theta di OGNI ri-stima
+    riuscita, anche con `converged=False`.  Nella passata del 16-8-2026 e'
+    bastata una stima non convergente per uccidere una cella intera:
+
+        2022-04-15  2022Q2  EM 2709.4s  non converge   nowcast= +5.973%
+        2022-04-15  2022Q3       0.1s   ERRORE (LinAlgError: Singular matrix)
+        ... e poi NaN fino al 2025, senza mai riprendersi
+
+    Il theta degenere finiva nella variabile portata avanti, il target successivo
+    lo riusava e il filtro moriva; anche il ripiego "filtra col theta precedente"
+    ripescava lo stesso theta marcio, quindi la cella non poteva piu' guarire da
+    sola.  `fed_overlap/student_t_ar1` ha chiuso cosi' con 441 NaN su 2277
+    (19,4%), `diag3/student_t_ar1_shared` con 394.
+
+    COSA SI CONTROLLA, e perche' solo questo.  I due modi in cui il theta
+    diventa inservibile a valle sono entrambi visibili nei log della passata:
+    valori non finiti, e le due matrici che il filtro deve invertire — `R`
+    (varianze idiosincratiche, se una va a zero la F e' singolare) e `Q`, che
+    l'M-step puo' consegnare non definita positiva, come segnala di suo:
+
+        [update_A_Q WARNING] Q_new has a non-positive eigenvalue: min eig = -4.191e-01
+
+    Non si controlla la convergenza in se': una stima non convergente ma sana
+    resta preferibile a un theta vecchio di un mese, ed e' il caso della maggior
+    parte delle righe "non converge" della passata, che hanno prodotto nowcast
+    validi.  Si rifiuta il theta ROTTO, non quello lento.
+    """
+    if theta is None:
+        return "assente"
+
+    # I gradi di liberta' fanno eccezione: `inf` e' il modo in cui la variante
+    # gaussiana si scrive nello stesso theta della Student-t (nessuna coda
+    # pesante = nu infinito), quindi li' l'infinito e' il valore GIUSTO.  Su
+    # tutto il resto un non-finito e' un guasto.
+    for key, val in theta.items():
+        if val is None:
+            continue
+        try:
+            arr = np.asarray(val, dtype=float)
+        except (TypeError, ValueError):
+            # `theta` non contiene solo matrici: ci sono anche voci di servizio
+            # non numeriche (per esempio la modalita' del ciclo ECM, 'rms').
+            # Non c'e' niente da controllare li'.
+            continue
+        if not arr.size:
+            continue
+        if key in ("nu_eps", "nu_u"):
+            if np.any(np.isnan(arr)) or np.any(arr <= 0.0):
+                return f"{key} non e' un grado di liberta' valido ({arr.ravel()[0]!r})"
+            continue
+        if not np.all(np.isfinite(arr)):
+            return f"{key} contiene valori non finiti"
+
+    R = np.asarray(theta["R"], dtype=float).ravel()
+    if R.size and float(R.min()) <= _R_MIN:
+        return f"R ha una varianza <= {_R_MIN:g} (minimo {float(R.min()):.3e})"
+
+    Q = np.asarray(theta["Q"], dtype=float)
+    if Q.size:
+        q_min = float(np.linalg.eigvalsh(0.5 * (Q + Q.T)).min())
+        if q_min <= 0.0:
+            return f"Q non e' definita positiva (autovalore minimo {q_min:.3e})"
+
+    return None
+
+
 def run_weekly_nowcast(
     start: str,
     end: str,
@@ -567,6 +654,13 @@ def run_weekly_nowcast(
                                 target_series=target_series,
                                 panel=panel, metadata=meta,
                             )
+                            # Il theta di una ri-stima si adotta solo se REGGE:
+                            # uno degenere avvelenerebbe tutte le settimane a
+                            # venire, ripiego compreso (vedi `theta_problema`).
+                            if reestimate:
+                                perche = theta_problema(r["theta"])
+                                if perche is not None:
+                                    raise ThetaDegenere(perche)
                             theta = r["theta"]
                             if reestimate:
                                 last_em_month = month
@@ -579,13 +673,64 @@ def run_weekly_nowcast(
                             conv, reest = r["converged"], r["reestimated"]
                             status = "OK" if conv else "non converge"
                         except Exception as exc:
+                            # ── LIVELLO 1: RIPARTENZA A FREDDO (PCA) ──────────
+                            # La ri-stima e' partita da `theta_warm`, cioe' dal
+                            # theta del vintage precedente, in una catena che
+                            # dura dal 2007.  Se e' fallita, il theta EREDITATO
+                            # e' il primo sospetto: misurato sulla catena
+                            # 2022-01 -> 2022-04 di fed_overlap/student_t_ar1,
+                            # `min sigma2` scende da 1,49e-04 a 2,14e-05 — un
+                            # cricchetto che stringe a ogni mese.
+                            #
+                            # Ripartire dall'inizializzazione PCA non eredita
+                            # NIENTE: rompe la catena e ri-ancora i parametri.
+                            # Senza questo, il ripiego al livello 2 riuserebbe
+                            # proprio il theta sospetto, e la cella non avrebbe
+                            # modo di guarire da sola.
+                            #
+                            # COSTA: a freddo sono ~157 s contro i ~15 s di una
+                            # stima calda (misurato).  Si accetta solo perche'
+                            # scatta sui fallimenti, che dopo le guardie
+                            # dovrebbero essere rari.
+                            #
+                            # DA DICHIARARE IN TESI: dove scatta, la serie dei
+                            # nowcast ha un gradino: i parametri cambiano di
+                            # colpo perche' non discendono piu' dal mese prima.
+                            risolto = False
+                            if reestimate:
+                                try:
+                                    r_pca = nowcast(
+                                        as_of, q, spec, variant,
+                                        theta=None, theta_warm=None,
+                                        max_iter=max_iter, verbose=verbose_em,
+                                        target_series=target_series,
+                                        panel=panel, metadata=meta,
+                                    )
+                                    if theta_problema(r_pca["theta"]) is None:
+                                        theta = r_pca["theta"]
+                                        last_em_month = month
+                                        n_em += 1
+                                        reestimate = False
+                                        liv = r_pca["nowcast_livello"]
+                                        bea, z = r_pca["nowcast_bea"], r_pca["nowcast_z"]
+                                        sd, n_it = r_pca["sd_z"], r_pca["n_iter"]
+                                        conv, reest = r_pca["converged"], True
+                                        status = (f"warm fallito ({type(exc).__name__}), "
+                                                  f"ripartito da PCA")
+                                        risolto = True
+                                except Exception:
+                                    pass    # nemmeno a freddo: si scende al livello 2
+
+                            # ── LIVELLO 2: il theta precedente, solo filtro ───
                             # Ricaduta: se e' fallita la RI-STIMA EM ma abbiamo un
                             # theta da una stima precedente, filtriamo con quello
                             # invece di emettere NaN — la traiettoria resta continua
                             # e i parametri restano dell'ultima stima riuscita.  La
                             # ri-stima NON viene segnata come fatta (last_em_month
                             # invariato), quindi si ritenta la settimana dopo.
-                            if reestimate and theta is not None:
+                            if risolto:
+                                pass
+                            elif reestimate and theta is not None:
                                 try:
                                     r = nowcast(
                                         as_of, q, spec, variant, theta=theta,

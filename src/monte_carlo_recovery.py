@@ -124,6 +124,28 @@ def _labels(r: int, factor_names: list[str] | None = None) -> list[str]:
     return names[:r]
 
 
+def _col_of_block(b: str, r: int, factor_names: list[str] | None = None) -> int:
+    """
+    Colonna di `Lambda` corrispondente al nome di blocco `b`, oppure -1.
+
+    Va risolta sui nomi dei fattori EFFETTIVI, non sul `_BLOCK_TO_COL`
+    cablato: quello e' costruito su `_BLOCK_ORDER` = real/financial/other,
+    cioe' i nomi del binario a tre blocchi cancellato il 2026-08-03. Con le
+    spec nominate i fattori si chiamano A/N/L, S/R/L/N, G/S/R/L, quindi il
+    lookup falliva SEMPRE e le tabelle che lo usavano uscivano tutte `nan`
+    con `j = -1` (verificato su tutte e 15 le celle). E' lo stesso residuo del
+    "quarto fattore omesso" corretto il 2026-07-20: il resto del file era gia'
+    passato a `_labels()`, questi due punti no.
+
+    Il fallback su `_BLOCK_TO_COL` resta per non rompere un eventuale chiamante
+    che passi ancora i nomi storici.
+    """
+    lab = _labels(r, factor_names)
+    if b in lab:
+        return lab.index(b)
+    return _BLOCK_TO_COL.get(b, -1)
+
+
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║                                                                          ║
 # ║   INITIALISATION ON A SYNTHETIC PANEL                                    ║
@@ -401,6 +423,76 @@ def _sorted_eigvals(A: np.ndarray) -> np.ndarray:
     return w[np.argsort(-np.abs(w))]
 
 
+def stationary_factor_cov(A: np.ndarray, Q: np.ndarray) -> np.ndarray:
+    r"""
+    Varianza stazionaria dei fattori: la soluzione di
+    :math:`\Sigma = A \Sigma A' + Q`, risolta in forma vec come
+    :math:`(I - A \otimes A)\,\mathrm{vec}(\Sigma) = \mathrm{vec}(Q)`.
+
+    Serve all'allineamento di scala di :func:`align_factor_scale`: e' la
+    varianza IMPLICATA dai parametri, non quella campionaria dei fattori
+    smoothed che usa `apply_convention_1`. La differenza conta: la seconda
+    dipende dal pannello, la prima no, e solo la prima permette di confrontare
+    due `theta` stimati su dati diversi.
+    """
+    A = np.asarray(A, float)
+    Q = np.asarray(Q, float)
+    r = A.shape[0]
+    return np.linalg.solve(np.eye(r * r) - np.kron(A, A),
+                           Q.reshape(-1)).reshape(r, r)
+
+
+def align_factor_scale(
+    Lambda: np.ndarray,
+    A: np.ndarray,
+    Q: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    r"""
+    Porta ``(Lambda, A, Q)`` nel rappresentante dell'orbita in cui **la
+    varianza stazionaria di ciascun fattore vale 1**.
+
+    Perche' serve
+    -------------
+    Il modello e' invariante alla riparametrizzazione :math:`f \to D f` con
+    :math:`D` diagonale invertibile, che si propaga come
+
+    .. math::
+
+        \Lambda \to \Lambda D^{-1}, \qquad
+        A \to D A D^{-1}, \qquad
+        Q \to D Q D .
+
+    E' la stessa trasformazione implementata da
+    :func:`em_main.apply_convention_1` (che pero' fissa la scala sulla
+    varianza CAMPIONARIA totale dei fattori smoothed, quindi dipende dal
+    pannello).  Confrontare ``diag(Q_hat)`` con ``diag(Q_star)`` elemento per
+    elemento misura allora la differenza di **rappresentante** dentro la classe
+    di equivalenza, non l'errore di stima: due `theta` osservazionalmente
+    identici possono avere ``diag(Q)`` diversi di ordini di grandezza.
+
+    Fissando :math:`s_j = \sqrt{\Sigma_{f,jj}}` e :math:`D = \mathrm{diag}(1/s)`
+    entrambi i `theta` finiscono nello stesso rappresentante, e
+    ``diag(Q)`` allineata e' la quota di varianza stazionaria dovuta
+    all'innovazione fresca — che e' identificata.
+
+    La regola usa i SOLI parametri (nessun dato, nessun valore vero) e va
+    applicata identica a `theta_hat` e a `theta_star`.
+
+    Ritorna
+    -------
+    ``(Lambda_a, A_a, Q_a, s)`` con ``s`` (r,) le deviazioni standard
+    stazionarie implicate dal `theta` in ingresso.
+    """
+    Lambda = np.asarray(Lambda, float)
+    A = np.asarray(A, float)
+    Q = np.asarray(Q, float)
+
+    s = np.sqrt(np.clip(np.diag(stationary_factor_cov(A, Q)), 1e-300, None))
+    D = np.diag(1.0 / s)
+
+    return Lambda * s[None, :], D @ A @ np.diag(s), D @ Q @ D, s
+
+
 def _corr(x: np.ndarray, y: np.ndarray) -> float:
     """
     Correlazione di Pearson (con segno), calcolata sugli array APPIATTITI.
@@ -496,6 +588,21 @@ def compute_recovery_metrics(
     - ``"Lambda_relerr_per_series"``  (M,)  -- after sign alignment
     - ``"Lambda_relerr_norm"``  scalar
     - ``"diagQ_star"``, ``"diagQ_hat"``, ``"diagQ_relerr"``  (r,)
+      — confronto GREZZO, elemento per elemento.  Non e' invariante alla
+      riparametrizzazione ``f -> D f`` e va letto insieme alla riga seguente.
+    - ``"diagQ_star_aligned"``, ``"diagQ_hat_aligned"``,
+      ``"diagQ_relerr_aligned"``  (r,)  -- lo stesso confronto DOPO aver
+      portato entrambi i theta, con :func:`align_factor_scale`, nel
+      rappresentante a varianza stazionaria unitaria.  E' la misura da
+      leggere per giudicare la recovery di ``Q``.
+    - ``"sd_f_star"``, ``"sd_f_hat"``  (r,)  -- deviazioni standard
+      stazionarie implicate, cioe' la scala che l'allineamento neutralizza.
+    - ``"Lambda_colnorm_star"``, ``"Lambda_colnorm_hat"``,
+      ``"Lambda_colnorm_ratio"``, ``"Lambda_colnorm_ratio_aligned"``  (r,)
+      -- norma della colonna `j` di ``Lambda`` e rapporto hat/star, prima e
+      dopo l'allineamento.  E' la controparte di ``diag(Q)`` vista dall'altro
+      lato: la scala per fattore si sposta fra ``Lambda`` e ``Q``, quindi il
+      rapporto grezzo e' circa il reciproco della radice di quello di ``Q``.
     - ``"R_star"``, ``"R_hat"``, ``"R_relerr"``  (M,)
     - ``"H_free"``  (r, r)  -- free orthogonal Procrustes rotation
     - ``"H_block"`` (r, r)  -- block-diagonal Procrustes rotation
@@ -577,6 +684,58 @@ def compute_recovery_metrics(
     diagQ_relerr  = np.abs(diagQ_hat - diagQ_star) / np.maximum(np.abs(diagQ_star), 1e-12)
     R_relerr      = np.abs(R_hat - R_star)        / np.maximum(np.abs(R_star),     1e-12)
 
+    # ── diag(Q) NELLA STESSA RAPPRESENTAZIONE IDENTIFICATA ─────────────────
+    # La riga sopra confronta due rappresentanti diversi della stessa classe
+    # di equivalenza f -> D f (vedi `align_factor_scale`), e quello che misura
+    # e' in larga parte la differenza di rappresentante. Misurato sulle 30 run
+    # del Monte Carlo: sulle celle Student-t l'errore grezzo sta fra 0.41 e
+    # 1.60 e CRESCE con T (firma di distorsione), mentre quello allineato sta
+    # fra 0.015 e 0.18 e CALA con T (firma di varianza campionaria). Il caso
+    # limite e' `Q[L]`, che grezzo vale 19-31 volte il vero e allineato
+    # 0.88-1.13.
+    #
+    # Le due misure sono tenute AFFIANCATE, non l'una al posto dell'altra: la
+    # grezza resta la continuita' con le tabelle storiche, l'allineata e'
+    # quella da leggere per giudicare la recovery.
+    #
+    # `sd_f_*` sono la ragione numerica del divario e vanno stampate con le
+    # altre: `theta_star` ha il fattore peggiore a sd implicita 0.15-0.24 nelle
+    # celle Student-t mentre l'EM converge a 0.58-0.82, cioe' i due `theta`
+    # stanno in punti diversi della stessa orbita.
+    L_star_al, _, Q_star_al, sd_f_star = align_factor_scale(
+        Lambda_star, A_star, Q_star)
+    L_hat_al,  _, Q_hat_al,  sd_f_hat = align_factor_scale(
+        Lambda_hat_sgn, A_hat, Q_hat_sgn)
+    diagQ_star_aligned   = np.diag(Q_star_al)
+    diagQ_hat_aligned    = np.diag(Q_hat_al)
+    diagQ_relerr_aligned = (np.abs(diagQ_hat_aligned - diagQ_star_aligned)
+                            / np.maximum(np.abs(diagQ_star_aligned), 1e-12))
+
+    # ── Norma di Lambda PER COLONNA, grezza e allineata ────────────────────
+    # E' la controparte esatta del blocco sopra vista dall'altro lato: la scala
+    # per fattore si sposta fra `Lambda` e `Q` lasciando il prodotto invariato,
+    # quindi una colonna "piccola" e una `Q` "grande" sono lo stesso errore
+    # contato due volte. Sul Monte Carlo la colonna del fattore L sta a
+    # 0.19-0.27 della norma vera nella metrica grezza, cioe' esattamente il
+    # reciproco della radice del 19-31x di `diag(Q)`.
+    #
+    # Il rapporto va calcolato sulle colonne INTERE: fuori dalla mask le
+    # entrate di `Lambda` sono esattamente zero (sia in `theta_star` sia in
+    # `theta_hat`, la struttura e' imposta dall'M-step), quindi la norma di
+    # colonna coincide gia' con quella ristretta ai membri del blocco.
+    def _colnorm(X):
+        return np.linalg.norm(np.asarray(X, float), axis=0)
+
+    Lambda_colnorm_star = _colnorm(Lambda_star)
+    Lambda_colnorm_hat  = _colnorm(Lambda_hat_sgn)
+    Lambda_colnorm_ratio = (Lambda_colnorm_hat
+                            / np.maximum(Lambda_colnorm_star, 1e-12))
+    Lambda_colnorm_star_aligned = _colnorm(L_star_al)
+    Lambda_colnorm_hat_aligned  = _colnorm(L_hat_al)
+    Lambda_colnorm_ratio_aligned = (
+        Lambda_colnorm_hat_aligned
+        / np.maximum(Lambda_colnorm_star_aligned, 1e-12))
+
     # ── Factor-path recovery: |corr(f_hat, F_true)| per factor ─────────────
     # f_smooth_hat is in the EM's canonical frame (Conv. 1 + sign).  F_true
     # is the raw simulator output — NOT Convention-1 rescaled.  |corr| is
@@ -611,6 +770,15 @@ def compute_recovery_metrics(
         "diagQ_star":     diagQ_star,
         "diagQ_hat":      diagQ_hat,
         "diagQ_relerr":   diagQ_relerr,
+        "diagQ_star_aligned":   diagQ_star_aligned,
+        "diagQ_hat_aligned":    diagQ_hat_aligned,
+        "diagQ_relerr_aligned": diagQ_relerr_aligned,
+        "sd_f_star":      sd_f_star,
+        "sd_f_hat":       sd_f_hat,
+        "Lambda_colnorm_star":          Lambda_colnorm_star,
+        "Lambda_colnorm_hat":           Lambda_colnorm_hat,
+        "Lambda_colnorm_ratio":         Lambda_colnorm_ratio,
+        "Lambda_colnorm_ratio_aligned": Lambda_colnorm_ratio_aligned,
         "R_star":         R_star,
         "R_hat":          R_hat,
         "R_relerr":       R_relerr,
@@ -668,12 +836,37 @@ def print_recovery_table(
         print(f"    {k:>2d}  {_fmt_complex(ws, 5):>22s}    {_fmt_complex(wh, 5):>22s}")
 
     # ── Diagonal Q recovery ──────────────────────────────────────────────────
+    # Due colonne di rel.err: la GREZZA (che confronta due rappresentanti
+    # diversi della classe f -> D f) e quella ALLINEATA, che e' la misura da
+    # leggere. Vedi `align_factor_scale`.
+    _has_al = "diagQ_relerr_aligned" in metrics
     print(f"\n  diag(Q):")
-    print(f"    {'block':<12s}  {'theta_star':>12s}  {'theta_hat':>12s}  {'rel.err':>10s}")
-    print("    " + "-" * 50)
+    _h = (f"    {'block':<12s}  {'theta_star':>12s}  {'theta_hat':>12s}  "
+          f"{'rel.err':>10s}")
+    if _has_al:
+        _h += f"  {'rel.err ALL.':>12s}  {'hat/star ALL.':>13s}"
+    print(_h)
+    print("    " + "-" * (50 + (28 if _has_al else 0)))
     for j, b in enumerate(_labels(_r_of(metrics), factor_names)):
-        print(f"    {b:<12s}  {metrics['diagQ_star'][j]:>12.4f}  "
-              f"{metrics['diagQ_hat'][j]:>12.4f}  {metrics['diagQ_relerr'][j]:>10.2%}")
+        _row = (f"    {b:<12s}  {metrics['diagQ_star'][j]:>12.4f}  "
+                f"{metrics['diagQ_hat'][j]:>12.4f}  "
+                f"{metrics['diagQ_relerr'][j]:>10.2%}")
+        if _has_al:
+            _rap = (float(metrics["diagQ_hat_aligned"][j])
+                    / max(float(metrics["diagQ_star_aligned"][j]), 1e-12))
+            _row += (f"  {metrics['diagQ_relerr_aligned'][j]:>12.2%}"
+                     f"  {_rap:>13.3f}")
+        print(_row)
+    if _has_al:
+        print("    (ALL. = dopo allineamento alla varianza stazionaria "
+              "unitaria; e' la colonna da leggere)")
+        print(f"\n  sd stazionaria implicata dei fattori "
+              f"(la scala che l'allineamento neutralizza):")
+        print(f"    {'block':<12s}  {'theta_star':>12s}  {'theta_hat':>12s}")
+        print("    " + "-" * 40)
+        for j, b in enumerate(_labels(_r_of(metrics), factor_names)):
+            print(f"    {b:<12s}  {float(metrics['sd_f_star'][j]):>12.4f}  "
+                  f"{float(metrics['sd_f_hat'][j]):>12.4f}")
 
     # ── Sign alignment ───────────────────────────────────────────────────────
     print(f"\n  Sign alignment per factor (theta_hat vs theta_star, expected +1):")
@@ -693,7 +886,7 @@ def print_recovery_table(
             continue
         i = ordered_cols.index(name)
         b = block_map.get(name, "?")
-        j = _BLOCK_TO_COL.get(b, -1)
+        j = _col_of_block(b, _r_of(metrics), factor_names)
         lam_s = float(Lambda_star_arr[i, j]) if j >= 0 else float("nan")
         lam_h = float(Lambda_hat_sgn[i, j])  if j >= 0 else float("nan")
         relerr = abs(lam_h - lam_s) / max(abs(lam_s), 1e-12)
@@ -1338,11 +1531,22 @@ def print_outlier_overlap_tables(
     print(bar)
 
 
-def load_recovery_metrics(save_path: str | pathlib.Path) -> dict[str, Any]:
+def load_recovery_metrics(
+    save_path: str | pathlib.Path,
+    theta_star: dict | None = None,
+) -> dict[str, Any]:
     """
     Reconstruct a metrics dict (suitable for :func:`print_recovery_table`)
     from a ``.npz`` previously written by :func:`run_recovery`.  Lets
     callers print or compare results without re-running the EM.
+
+    `theta_star` (opzionale) serve SOLO a ricalcolare le metriche allineate
+    (``diagQ_*_aligned``, ``sd_f_*``) sugli archivi scritti PRIMA che quelle
+    metriche esistessero.  L'archivio conserva ``theta_hat__{Lambda,A,Q}``, e
+    l'allineamento e' una funzione dei soli parametri: le metriche si
+    ricostruiscono quindi esattamente, senza ri-eseguire l'EM.  Se
+    `theta_star` non viene passato e le chiavi non sono nell'archivio, le
+    metriche allineate restano semplicemente assenti.
     """
     arc = np.load(save_path)
     keys = set(arc.files)
@@ -1361,6 +1565,10 @@ def load_recovery_metrics(save_path: str | pathlib.Path) -> dict[str, Any]:
         "Lambda_relerr_norm_proc_block",
         "H_free", "H_block",
         "diagQ_star", "diagQ_hat", "diagQ_relerr",
+        "diagQ_star_aligned", "diagQ_hat_aligned", "diagQ_relerr_aligned",
+        "sd_f_star", "sd_f_hat",
+        "Lambda_colnorm_star", "Lambda_colnorm_hat",
+        "Lambda_colnorm_ratio", "Lambda_colnorm_ratio_aligned",
         "R_star", "R_hat", "R_relerr",
         "factor_abscorr",
         "w_u_corr", "w_eps_corr",
@@ -1374,6 +1582,38 @@ def load_recovery_metrics(save_path: str | pathlib.Path) -> dict[str, Any]:
             metrics[k] = v.item()
         else:
             metrics[k] = np.asarray(v)
+
+    # ── Ricalcolo delle metriche allineate per gli archivi vecchi ──────────
+    # Sono una funzione dei soli parametri, e l'archivio porta gia'
+    # `theta_hat__{Lambda,A,Q}`: si ricostruiscono cifra per cifra senza
+    # toccare l'EM. Serve solo `theta_star`, che non e' salvato nell'archivio.
+    if "diagQ_relerr_aligned" not in metrics and theta_star is not None:
+        needed = {"theta_hat__Lambda", "theta_hat__A", "theta_hat__Q"}
+        if needed <= keys:
+            Ls_al, _, Qs_al, sd_s = align_factor_scale(
+                theta_star["Lambda"], theta_star["A"], theta_star["Q"])
+            Lh_al, _, Qh_al, sd_h = align_factor_scale(
+                arc["theta_hat__Lambda"], arc["theta_hat__A"],
+                arc["theta_hat__Q"])
+            ds, dh = np.diag(Qs_al), np.diag(Qh_al)
+            metrics["diagQ_star_aligned"] = ds
+            metrics["diagQ_hat_aligned"] = dh
+            metrics["diagQ_relerr_aligned"] = (
+                np.abs(dh - ds) / np.maximum(np.abs(ds), 1e-12))
+            metrics["sd_f_star"] = sd_s
+            metrics["sd_f_hat"] = sd_h
+
+            # Norme di colonna di Lambda: il segno non le tocca, quindi si
+            # possono prendere da `theta_hat__Lambda` senza riallineare.
+            def _cn(X):
+                return np.linalg.norm(np.asarray(X, float), axis=0)
+            cs, ch = _cn(theta_star["Lambda"]), _cn(arc["theta_hat__Lambda"])
+            metrics["Lambda_colnorm_star"] = cs
+            metrics["Lambda_colnorm_hat"] = ch
+            metrics["Lambda_colnorm_ratio"] = ch / np.maximum(cs, 1e-12)
+            csa, cha = _cn(Ls_al), _cn(Lh_al)
+            metrics["Lambda_colnorm_ratio_aligned"] = (
+                cha / np.maximum(csa, 1e-12))
 
     extras: dict[str, Any] = {}
     for k in keys:
@@ -1513,7 +1753,9 @@ def write_recovery_txt(
 
     # ── 3. Diagonal of Q ─────────────────────────────────────────────────────
     w()
-    w("  DIAGONAL OF Q")
+    w("  DIAGONAL OF Q  —  confronto GREZZO")
+    w("  (non invariante a f -> D f: confronta due rappresentanti diversi")
+    w("   della stessa classe di equivalenza. Vedi il blocco seguente.)")
     w(f"  {'block':<12s}  {'theta_star':>12s}  {'theta_hat':>12s}  "
       f"{'bias':>12s}  {'rel.err':>8s}")
     w("  " + "-" * 60)
@@ -1522,6 +1764,29 @@ def write_recovery_txt(
         dh = float(metrics["diagQ_hat"][j])
         re = float(metrics["diagQ_relerr"][j])
         w(f"  {b:<12s}  {ds:>12.4f}  {dh:>12.4f}  {dh - ds:>+12.4f}  {re:>8.2%}")
+
+    # ── 3-bis. Diagonal of Q, allineata ──────────────────────────────────────
+    if "diagQ_relerr_aligned" in metrics:
+        w()
+        w("  DIAGONAL OF Q  —  DOPO ALLINEAMENTO  (la misura da leggere)")
+        w("  Entrambi i theta portati nel rappresentante a varianza")
+        w("  stazionaria unitaria per fattore. Regola dai soli parametri.")
+        w(f"  {'block':<12s}  {'theta_star':>12s}  {'theta_hat':>12s}  "
+          f"{'hat/star':>10s}  {'rel.err':>8s}")
+        w("  " + "-" * 62)
+        for j, b in enumerate(_labels(_r_of(metrics), factor_names)):
+            ds = float(metrics["diagQ_star_aligned"][j])
+            dh = float(metrics["diagQ_hat_aligned"][j])
+            re = float(metrics["diagQ_relerr_aligned"][j])
+            w(f"  {b:<12s}  {ds:>12.4f}  {dh:>12.4f}  "
+              f"{dh / max(ds, 1e-12):>10.3f}  {re:>8.2%}")
+        w()
+        w("  sd STAZIONARIA IMPLICATA  (la scala che l'allineamento toglie)")
+        w(f"  {'block':<12s}  {'theta_star':>12s}  {'theta_hat':>12s}")
+        w("  " + "-" * 40)
+        for j, b in enumerate(_labels(_r_of(metrics), factor_names)):
+            w(f"  {b:<12s}  {float(metrics['sd_f_star'][j]):>12.4f}  "
+              f"{float(metrics['sd_f_hat'][j]):>12.4f}")
 
     # ── 4. Lambda — reference series ─────────────────────────────────────────
     w()
@@ -1536,13 +1801,29 @@ def write_recovery_txt(
             continue
         i      = ordered_cols.index(name)
         b      = block_map.get(name, "?")
-        j      = _BLOCK_TO_COL.get(b, -1)
+        j      = _col_of_block(b, _r_of(metrics), factor_names)
         ls     = float(Lambda_star_arr[i, j]) if j >= 0 else float("nan")
         lh     = float(Lambda_hat_sgn[i, j])  if j >= 0 else float("nan")
         re     = abs(lh - ls) / max(abs(ls), 1e-12)
         bias_l = lh - ls
         w(f"  {name:<14s}  {b:<10s}  {j:>2d}  "
           f"{ls:>+12.4f}  {lh:>+12.4f}  {bias_l:>+12.4f}  {re:>8.2%}")
+
+    # ── 4-bis. Lambda per colonna: norma e rapporto ──────────────────────────
+    # Controparte di diag(Q). Il rapporto GREZZO e' circa il reciproco della
+    # radice di quello di Q (la scala si sposta fra i due); quello ALLINEATO
+    # e' la misura da leggere e deve stare vicino a 1.
+    if "Lambda_colnorm_ratio_aligned" in metrics:
+        w()
+        w("  LAMBDA — NORMA PER COLONNA  (controparte di diag(Q))")
+        w(f"  {'block':<12s}  {'||L_star_j||':>12s}  {'||L_hat_j||':>12s}  "
+          f"{'hat/star':>10s}  {'hat/star ALL.':>13s}")
+        w("  " + "-" * 66)
+        for j, b in enumerate(_labels(_r_of(metrics), factor_names)):
+            w(f"  {b:<12s}  {float(metrics['Lambda_colnorm_star'][j]):>12.4f}  "
+              f"{float(metrics['Lambda_colnorm_hat'][j]):>12.4f}  "
+              f"{float(metrics['Lambda_colnorm_ratio'][j]):>10.3f}  "
+              f"{float(metrics['Lambda_colnorm_ratio_aligned'][j]):>13.3f}")
 
     # ── 5. Procrustes summary ────────────────────────────────────────────────
     w()
@@ -1672,8 +1953,49 @@ def write_recovery_summary(
 
     for j, b in enumerate(_lab):
         metric_rows.append((
-            f"diag(Q)[{j}={b:<{_w}s}] rel.err",
+            f"diag(Q)[{j}={b:<{_w}s}] rel.err  (grezzo)",
             lambda m, j=j: float(np.asarray(m["diagQ_relerr"])[j]),
+        ))
+
+    # Le stesse righe DOPO l'allineamento, piu' il rapporto hat/star che dice
+    # in che verso sbaglia. Sono le righe da leggere: quelle grezze confrontano
+    # due rappresentanti diversi della classe f -> D f (vedi
+    # `align_factor_scale`) e sul Monte Carlo PEGGIORANO con T mentre queste
+    # MIGLIORANO. Se l'archivio e' vecchio e manca `theta_star` per il
+    # ricalcolo, il blocco `try` a valle stampa "N/A" e il resto non cambia.
+    for j, b in enumerate(_lab):
+        metric_rows.append((
+            f"diag(Q)[{j}={b:<{_w}s}] rel.err  ALLINEATA",
+            lambda m, j=j: float(np.asarray(m["diagQ_relerr_aligned"])[j]),
+        ))
+    for j, b in enumerate(_lab):
+        metric_rows.append((
+            f"diag(Q)[{j}={b:<{_w}s}] hat/star ALLIN.",
+            lambda m, j=j: (float(np.asarray(m["diagQ_hat_aligned"])[j])
+                            / max(float(np.asarray(m["diagQ_star_aligned"])[j]),
+                                  1e-12)),
+        ))
+    for j, b in enumerate(_lab):
+        metric_rows.append((
+            f"||Lambda[:,{j}={b:<{_w}s}]|| hat/star (grezzo)",
+            lambda m, j=j: float(np.asarray(m["Lambda_colnorm_ratio"])[j]),
+        ))
+    for j, b in enumerate(_lab):
+        metric_rows.append((
+            f"||Lambda[:,{j}={b:<{_w}s}]|| hat/star ALLIN.",
+            lambda m, j=j: float(
+                np.asarray(m["Lambda_colnorm_ratio_aligned"])[j]),
+        ))
+
+    for j, b in enumerate(_lab):
+        metric_rows.append((
+            f"sd stazionaria[{j}={b:<{_w}s}] star",
+            lambda m, j=j: float(np.asarray(m["sd_f_star"])[j]),
+        ))
+    for j, b in enumerate(_lab):
+        metric_rows.append((
+            f"sd stazionaria[{j}={b:<{_w}s}] hat",
+            lambda m, j=j: float(np.asarray(m["sd_f_hat"])[j]),
         ))
 
     for label, fn in metric_rows:
@@ -1775,7 +2097,10 @@ if __name__ == "__main__":
             if _recovery_cache_valid(npz, theta_star, T=T, seed=SEED,
                                      force_recompute=force_recompute):
                 print(f"\n  [riuso] {npz.name} (fingerprint + T + seed verificati)")
-                m = load_recovery_metrics(npz)
+                # `theta_star` serve a ricalcolare le metriche allineate sugli
+                # archivi scritti prima che esistessero: sono funzione dei soli
+                # parametri, quindi si ottengono senza ri-eseguire l'EM.
+                m = load_recovery_metrics(npz, theta_star=theta_star)
             else:
                 m = run_recovery(
                     theta_star, T=T, seed=SEED, verbose_em=False,

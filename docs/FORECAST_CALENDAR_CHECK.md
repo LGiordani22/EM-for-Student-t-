@@ -135,15 +135,17 @@ reale** (`data/processed/final/ism_release_dates.csv`); il delay è solo fallbac
 | BOPTIMP | M | 35 | 2m_prior | config/Tab.2 | BEA trade ~35g ✔ ⚑mapping |
 | WHLSLRIMSA | M | 37 | 2m_prior | config/Tab.2 | Wholesale ~37g ✔ |
 | JTSJOL | M | 42 | 2m_prior | config/Tab.2 | JOLTS ~42g ✔ |
-| BUSINV | M | 44 | 1m_prior | config/Tab.2 | ⚑44g con 1m_prior — vedi sotto |
+| BUSINV | M | 44 | 2m_prior | config/Tab.2 (reference corretto) | ⚑44g — vedi sotto |
 
 Legenda ⚑ (documentati in `config/series_final.json` e in `DATASET_MAP.md` §6,
 **non** bug): `proxy` USPRIV proxy BLS di ADP; `id` IQ id da riverificare (all
 commodities — l'id di IR è invece stato verificato); `1989+` IR/IQ sono
 trimestrali prima del 1989, contribuiscono dal 1989; `2009+`/`2007+` partenza
 tardiva (buco NaN gestito dal Kalman); `mapping` BOPTEXP/IMP mappate a BEA
-goods+services (non Census advance 28/1m); `BUSINV` 44g con reference 1m_prior è
-**stranezza interna del paper** (Tab. 2), riprodotta fedelmente.
+goods+services (non Census advance 28/1m); `BUSINV` 44g: il reference
+`1m_prior` di Tab. 2 non regge coi 44 giorni ed è
+stato **corretto in `2m_prior` il 2026-08-11** (il delay, unico campo usato nei
+calcoli, resta quello del paper: nessun numero di questo documento cambia).
 
 ### (a) Delay implausibili
 
@@ -151,8 +153,8 @@ L'euristica (soglie: `<−20` troppo anticipato, `>60` troppo lungo, coerenza
 delay↔reference) **non segnala nessuna serie**. Confronto coi valori tipici
 attesi (ISM ~1‑3g, occupazione BLS ~7g, PIL ~28g, Census ~30‑45g): tutti
 coerenti. Nessun delay troppo corto (rischio look‑ahead) né sprecato.
-L'unico borderline è **BUSINV (44g / 1m_prior)** — anomalia del paper, non del
-codice; da tenere presente ma già documentata.
+L'unico borderline era **BUSINV (44g / 1m_prior)** — incoerenza della Tab. 2,
+non del codice: reference corretto in `2m_prior` il 2026-08-11, delay invariato.
 
 ### (b) Le 4 ISM usano le date reali (non il delay generico) ✔
 
@@ -197,7 +199,7 @@ nessuna serie orfana.
 
 **Verdetto Check 2: OK.** Calendario completo e coerente per tutte le 37 serie;
 ISM sulle date reali; zero look‑ahead. Nessun bug. Voci da tenere d'occhio (già
-documentate, non azioni): **BUSINV 44g/1m_prior** (anomalia del paper), **IQ**
+documentate, non azioni): **BUSINV 44g** (reference corretto in 2m_prior il 2026-08-11), **IQ**
 (id da riverificare), **BOPTEXP/IMP** (scelta di mapping BEA vs Census advance).
 
 ---
@@ -224,7 +226,7 @@ settimana lavorativa → tutto ciò che è uscito nella settimana è dentro).
 | | Esito | Dettaglio |
 |---|---|---|
 | **Check 1** (PIL rientra + muove il Kalman) | **OK** | (a) rientra dopo il rilascio; (b) ablazione −0.11 pt BEA su 2008Q4 → entra nel filtro; (c) delay 28g corretto. Magnitudine modesta ma meccanismo confermato. |
-| **Check 2** (calendario 37 serie) | **OK** | 37/37 coperte, ISM su date reali, 0 look‑ahead su 55 315 celle, nessun delay mancante. Da verificare a mano (documentati, non bug): BUSINV 44g/1m, IQ id, BOPTEXP/IMP mapping. |
+| **Check 2** (calendario 37 serie) | **OK** | 37/37 coperte, ISM su date reali, 0 look‑ahead su 55 315 celle, nessun delay mancante. Da verificare a mano (documentati, non bug): BUSINV 44g (reference corretto in 2m il 2026-08-11), IQ id, BOPTEXP/IMP mapping. |
 | **Giorni del forecast** | **Venerdì** | griglia W‑FRI, variabile nel mese (4‑5/mese); EM ri‑stimato il 1° venerdì del mese (default). |
 
 ---
