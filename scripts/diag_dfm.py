@@ -34,8 +34,8 @@ import traceback
 
 # Lanciando `python scripts/diag_dfm.py`, Python mette sul path la cartella
 # DELLO SCRIPT (`scripts/`), non quella da cui lo si lancia: senza questa
-# riga `import src...` fallisce anche stando nella radice del repo.  Stessa
-# medicina che usa `src/forecast/__init__.py` per far risolvere `em.*`.
+# riga `import core...` fallisce anche stando nella radice del repo.  Stessa
+# medicina che usa `core/forecast/__init__.py` per far risolvere `em.*`.
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
@@ -67,12 +67,12 @@ def main() -> int:
     # Se cade qui, il guasto e' d'ambiente (path, dipendenze, versione di
     # Python) e non arriva nemmeno a guardare un dato.
     try:
-        from src.forecast.nowcast_engine import nowcast
-        from src.forecast.release_calendar import load_metadata, load_panel
+        from core.forecast.nowcast_engine import nowcast
+        from core.forecast.release_calendar import load_metadata, load_panel
     except Exception:                                        # noqa: BLE001
         print("\n>>> FALLITO ALL'IMPORT DEL MOTORE:")
         traceback.print_exc()
-        print("\n  (se e' un ModuleNotFoundError su 'src', lancia lo script")
+        print("\n  (se e' un ModuleNotFoundError su 'core', lancia lo script")
         print("   dalla RADICE del repo, non da scripts/)")
         return 1
     print("  import : ok")
