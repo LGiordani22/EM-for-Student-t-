@@ -118,9 +118,9 @@ def load(paths: list[str] | None = None) -> pd.DataFrame:
     """
     I CSV del BVAR, uniti, nella forma che `forecast.figures` si aspetta.
 
-    `dfm.load` legge un file solo; qui i blocchi-trimestre sono tanti file
-    (l'unita' di parallelismo della passata), quindi si concatena prima e si
-    riusa la sua stessa preparazione di colonne dopo.
+    Qui i blocchi-trimestre sono tanti file (l'unita' di parallelismo della
+    passata), quindi si concatena prima e si riusa la preparazione di colonne
+    di `dfm` dopo — che oggi concatena a sua volta, una cella per file.
     """
     frames = [pd.read_csv(p) for p in discover_csvs(paths)]
     df = pd.concat(frames, ignore_index=True)

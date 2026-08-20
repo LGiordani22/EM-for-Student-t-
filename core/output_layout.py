@@ -158,6 +158,34 @@ def bvar_csv_dir() -> str:
     return os.path.join(OUTPUT_ROOT, "csv", "bvar")
 
 
+def dfm_cell_dir(spec: str, variant: str) -> str:
+    """
+    `csv/_cells/<spec>_<variant>/` — il RISULTATO INTERMEDIO di una cella DFM,
+    e insieme il suo stato di ripresa.
+
+    Una cartella per cella, e non e' cosmesi: il nome del file che
+    `weekly_nowcast` scrive e' `weekly_nowcast_<inizio>_<fine>.csv`, che per
+    quindici celle sullo stesso periodo sarebbe lo STESSO file — quindici
+    processi che si sovrascrivono a vicenda.  Separate, i quindici CSV
+    convivono, e `run_dfm.py` ne pubblica una copia in `dfm_csv_dir()` con il
+    nome della cella dentro.
+
+    Si COPIA, non si sposta: questo file e' cio' da cui la cella riprende.
+    """
+    return os.path.join(OUTPUT_ROOT, "csv", "_cells", f"{spec}_{variant}")
+
+
+def logs_dir() -> str:
+    """
+    `output/_logs/` — l'uscita a video di ogni passo, un file per passo.
+
+    Fuori dall'albero di consegna come `checkpoint_dir()`: e' diario di bordo,
+    non risultato.  `run_outputs.py` ci scrive un log per passo, cosi' un passo
+    fallito si legge senza rilanciare tutta la catena.
+    """
+    return os.path.join(_PROJECT_ROOT, "output", "_logs")
+
+
 def checkpoint_dir() -> str:
     """
     `output/_checkpoint/` — lo stato di lavoro della passata, FUORI dall'albero
@@ -224,6 +252,8 @@ __all__ = [
     "OUTPUT_ROOT", "FORECAST_WINDOWS", "RMSE_PASSES", "RMSE_ZOOM_WINDOWS",
     "NYFED_COMPARISON_PASSES", "FULL_SPAN", "SPECS", "VARIANTS", "BVAR_MODELS",
     "BENCHMARKS", "dfm_forecast_dir", "dfm_rmse_dir", "bvar_forecast_dir",
-    "bvar_rmse_dir", "bvar_logscore_dir", "comparison_dir", "all_dirs",
+    "bvar_rmse_dir", "bvar_logscore_dir", "comparison_dir",
+    "dfm_csv_dir", "bvar_csv_dir", "dfm_cell_dir", "logs_dir",
+    "checkpoint_dir", "all_dirs",
     "build_tree", "window", "slice_window",
 ]
