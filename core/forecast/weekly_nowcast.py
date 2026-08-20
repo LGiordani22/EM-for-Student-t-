@@ -295,6 +295,62 @@ def _csv_path(out_dir: str, start: str, end: str) -> str:
     return os.path.join(out_dir, f"weekly_nowcast_{start}_{end}.csv")
 
 
+def theta_dir(out_dir: str) -> str:
+    """`<cartella della cella>/theta/` — un file per stima EM."""
+    return os.path.join(out_dir, "theta")
+
+
+def _save_theta(out_dir: str, as_of_iso: str, spec: str, variant: str,
+                theta: dict, n_iter: int, converged: bool, origine: str) -> None:
+    """
+    Scrive il theta di UNA stima EM in `<cella>/theta/theta_<as_of>.npz`.
+
+    UN FILE PER STIMA, NON PER VENERDI'.  Fra una ri-stima e la successiva il
+    theta non cambia — viene riusato tal quale — quindi salvarne uno per
+    venerdi' vorrebbe dire 991 file di cui 763 copie identiche.  Con
+    `em_frequency='monthly'` le stime vere sono ~228 per cella: 228 file da
+    ~3 KB compressi, una decina di MB per tutte e quindici le celle.
+
+    SI SCRIVE E BASTA: NESSUNO LO RILEGGE.  E' una scelta, non una svista.  La
+    ripresa NON eredita un theta che non ha prodotto in questa sessione — la
+    regola sta nel docstring di `tests/forecast/test_resume.py`, dove e' anche
+    misurata: alla ripresa la prima settimana ri-stima invece di riusare, la
+    catena diverge di 2.4e-03 punti BEA e da li' in poi le righe si spostano
+    di quel tanto.  Rileggere questi file renderebbe una passata ripresa
+    identica a una intera, ma e' un cambio di comportamento sui NUMERI, e va
+    deciso a parte da chi scrive la tesi.
+
+    A che serve allora: (a) e' il risultato intermedio che si puo' ispezionare
+    — come sono andati i parametri di vintage in vintage, senza ri-stimare
+    niente; (b) dice a chi vuole parallelizzare che cosa costerebbe spezzare
+    una cella per data, cioe' esattamente uno di quei gradini da 2.4e-03 a
+    ogni confine di shard.
+
+    `origine` distingue una stima calda (dal theta del vintage prima) da una
+    ripartita a freddo dalla PCA: dove c'e' 'pca' la serie dei parametri ha uno
+    stacco che non e' apprendimento, ed e' un fatto da leggere nel merito.
+    """
+    d = theta_dir(out_dir)
+    os.makedirs(d, exist_ok=True)
+    arrays = {k: np.asarray(v) for k, v in theta.items() if v is not None}
+    path = os.path.join(d, f"theta_{as_of_iso}.npz")
+    tmp = path + ".tmp"
+    try:
+        # Si passa il FILE, non il nome: `savez_compressed` appiccica '.npz' a
+        # un nome che non ce l'ha gia', e il file finiva quindi in
+        # 'theta_....npz.tmp.npz' mentre `os.replace` cercava '...npz.tmp'.
+        with open(tmp, "wb") as fh:
+            np.savez_compressed(
+                fh, as_of=np.array(as_of_iso), spec=np.array(spec),
+                variant=np.array(variant), n_iter=np.array(int(n_iter)),
+                converged=np.array(bool(converged)), origine=np.array(origine),
+                **arrays)
+        os.replace(tmp, path)
+    except Exception as exc:      # un theta non salvato non ferma la passata
+        print(f"  [attenzione] theta non salvato per {as_of_iso}: "
+              f"{type(exc).__name__}: {exc}")
+
+
 def _row_key(r: dict) -> tuple:
     return tuple(str(r[k]) for k in _KEY)
 
@@ -645,6 +701,10 @@ def run_weekly_nowcast(
                             continue
 
                         t0 = time.perf_counter()
+                        # Da dove parte questa stima, PRIMA che `theta` venga
+                        # sovrascritto: serve solo a etichettare il theta
+                        # salvato come 'warm' o 'cold'.
+                        theta_prima = theta
                         try:
                             r = nowcast(
                                 as_of, q, spec, variant,
@@ -665,6 +725,10 @@ def run_weekly_nowcast(
                             if reestimate:
                                 last_em_month = month
                                 n_em += 1
+                                if save and out_dir:
+                                    _save_theta(out_dir, as_of_iso, spec, variant,
+                                                theta, r["n_iter"], r["converged"],
+                                                "warm" if theta_prima is not None else "cold")
                                 reestimate = False   # gli altri target della stessa
                                 #                      settimana riusano questo theta:
                                 #                      stesso pannello, stessa stima
@@ -710,6 +774,11 @@ def run_weekly_nowcast(
                                         theta = r_pca["theta"]
                                         last_em_month = month
                                         n_em += 1
+                                        if save and out_dir:
+                                            _save_theta(out_dir, as_of_iso, spec,
+                                                        variant, theta,
+                                                        r_pca["n_iter"],
+                                                        r_pca["converged"], "pca")
                                         reestimate = False
                                         liv = r_pca["nowcast_livello"]
                                         bea, z = r_pca["nowcast_bea"], r_pca["nowcast_z"]
