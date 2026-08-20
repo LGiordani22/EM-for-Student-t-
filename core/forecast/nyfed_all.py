@@ -54,26 +54,6 @@ from core.forecast import compute_metrics as cm
 WINDOWS: list[str] = list(layout.RMSE_PASSES) + list(layout.RMSE_ZOOM_WINDOWS)
 
 
-def _full_coverage_quarters(mine: pd.DataFrame) -> list[str]:
-    """
-    I trimestri con copertura settimanale COMPLETA, calcolati PRIMA di chiamare
-    `horizon_panel`.
-
-    Serve a due cose.  La prima e' che la curva non scenda per composizione: un
-    trimestre visto solo da meta' asse in poi abbasserebbe l'RMSE a sinistra
-    senza che il modello abbia imparato niente.  La seconda e' che
-    `horizon_panel`, se non sopravvive nessun trimestre, costruisce un frame
-    vuoto e poi lo ordina per `metodo` — colonna che un frame vuoto non ha,
-    quindi `KeyError` invece di "niente figura".  Su una finestra di zoom corta
-    e' il caso normale, non l'eccezione.
-    """
-    cov = mine.groupby("target_quarter")["horizon_week"].apply(set)
-    if not len(cov):
-        return []
-    full = set().union(*cov)
-    return [q for q in sorted(cov.index) if cov[q] == full]
-
-
 def run_spec(mine_all: pd.DataFrame, spec: str,
              windows: list[str] = WINDOWS,
              out_dir: str | None = None) -> list[str]:
@@ -115,11 +95,13 @@ def run_spec(mine_all: pd.DataFrame, spec: str,
         # La Fed entra come curva quando copre gli stessi trimestri
         # (`horizon_panel` la carica da se'), ma se non li copre la figura esce
         # lo stesso: l'RMSE per orizzonte e' una metrica mia.
-        qs = _full_coverage_quarters(mine)
-        if not qs:
-            print(f"  [{spec}/{w}] nessun trimestre con copertura settimanale "
-                  f"completa: niente figura.")
-            continue
+        # TUTTI i trimestri della finestra: il campione lo sceglie
+        # `horizon_panel`, che applica la regola DOPO aver ristretto ai metodi
+        # di questa spec.  Pre-filtrare qui era sbagliato due volte: la regola
+        # era l'unione esatta (vedi `core_coverage_quarters`), e si applicava
+        # al frame di TUTTE le spec — cosi' le due celle guaste di diag3
+        # tagliavano il campione anche a diag4 e fed_overlap, che sono sane.
+        qs = sorted(mine["target_quarter"].unique())
         ph, sample_fig = cn.horizon_panel(mine, qs, spec)
         if not sample_fig or ph.empty:
             print(f"  [{spec}/{w}] copertura incompleta: niente figura.")

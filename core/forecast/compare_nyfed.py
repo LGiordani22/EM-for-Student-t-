@@ -543,6 +543,80 @@ def _apply_axes_style(ax) -> None:
     ax.set_facecolor("white")
 
 
+def standard_axis(df_mine: pd.DataFrame) -> frozenset:
+    """
+    L'ASSE STANDARD: l'insieme di `horizon_week` che un trimestre normale ha.
+
+    Si prende per VOTO — l'insieme di settimane piu' frequente fra i trimestri
+    del campione.  Su tutte e sei le finestre del progetto esce lo stesso:
+    `-12..+17`, trenta settimane, con 44 voti su 54 nel 2007-2019 e 6 su 10 nel
+    2024-2025.  E' una proprieta' del calendario, non della finestra, ed e' per
+    questo che si puo' usare come metro.
+
+    PERCHE' NON L'UNIONE, E PERCHE' NON UNA QUOTA
+    ---------------------------------------------
+    L'UNIONE era la regola di prima, e si rompe cosi': `horizon_week` si conta
+    dall'inizio del trimestre target, e un trimestre entra "in volo" all'inizio
+    di quello PRECEDENTE, quindi la sua prima settimana dipende da quanti
+    venerdi' aveva il trimestre prima.  Quasi sempre tredici, e si parte da
+    -12; ogni tanto quattordici, e si parte da -13.  Sul 2007-2019 capita a TRE
+    trimestri su 54 (2011Q1, 2011Q4, 2016Q4): l'unione diventava -13..+17 e gli
+    altri 51, perfettamente regolari, venivano squalificati per una settimana
+    che non potevano avere.  Ne restavano DUE, e la figura di tredici anni era
+    un RMSE su due trimestri.
+
+    Una QUOTA ("le settimane che ha almeno il 90% dei trimestri") aggiusta le
+    finestre lunghe e sbaglia le corte: ogni finestra ha quattro trimestri di
+    bordo con l'asse tagliato, che su 54 sono il 7% e su 10 sono il 40% — li'
+    il nucleo si svuotava e non restava disegnabile piu' niente.  Il voto non
+    ha questo problema, perche' i trimestri di bordo hanno assi tutti diversi
+    fra loro e non fanno maggioranza.
+    """
+    from collections import Counter
+    per_quarter = df_mine.groupby("target_quarter")["horizon_week"].apply(frozenset)
+    if not len(per_quarter):
+        return frozenset()
+    return Counter(per_quarter).most_common(1)[0][0]
+
+
+def core_coverage_quarters(df_mine: pd.DataFrame,
+                           sample: list[str] | None = None) -> list[str]:
+    """
+    I trimestri che coprono l'asse standard PER OGNI METODO disegnato.
+
+    Per ogni metodo, e non "per qualcuno": un metodo che per quel trimestre non
+    ha nemmeno una riga conta come scoperto.  Guardando la copertura sul frame
+    messo in comune fra le spec, un trimestre passava perche' lo copriva
+    qualche metodo, entrava in `n_target`, e poi i metodi che non ce l'avevano
+    fallivano `pieno` a ogni settimana e sparivano dal grafico — sul 2024-2025
+    restava disegnato UN metodo su otto.  Percio' questa funzione va chiamata
+    sul frame gia' ristretto ai metodi che si disegnano.
+
+    NON E' UN ALLENTAMENTO DELLA GUARDIA ANTI-COMPOSIZIONE
+    ------------------------------------------------------
+    Quella guardia — "un punto si disegna solo se ha tutti i trimestri del
+    campione" — vive nella colonna `pieno` di `horizon_panel` e resta identica.
+    La settimana -13 continuera' a non essere disegnata, perche' li'
+    `n_trimestri` vale 3 contro un campione di 46.  Cambia solo QUALI trimestri
+    formano il campione, non su che cosa si media un punto disegnato.
+    """
+    d = (df_mine if sample is None
+         else df_mine[df_mine["target_quarter"].isin(sample)])
+    if not len(d):
+        return []
+    asse = standard_axis(d)
+    if not asse:
+        return []
+    per = d.groupby(["target_quarter", "metodo"])["horizon_week"].apply(set)
+    quarters = list(dict.fromkeys(per.index.get_level_values(0)))
+    metodi = set(per.index.get_level_values(1))
+    tenuti = {q for q in quarters
+              if all((q, m) in per.index and asse <= per[(q, m)] for m in metodi)}
+    # L'ordine del campione lo decide il chiamante, quando ne passa uno.
+    return ([q for q in sample if q in tenuti] if sample is not None
+            else sorted(tenuti))
+
+
 def horizon_panel(df_mine: pd.DataFrame, sample: list[str],
                   spec: str = "fed_overlap") -> tuple[pd.DataFrame, list[str]]:
     """
@@ -561,8 +635,9 @@ def horizon_panel(df_mine: pd.DataFrame, sample: list[str],
     fase di forecast.  La figura invece percorre TUTTO l'asse, e un trimestre
     che esiste solo da meta' asse in poi farebbe scendere la curva a sinistra
     per composizione e non per apprendimento.  Si tengono quindi solo i
-    trimestri con la copertura settimanale COMPLETA — 2007Q4-2010Q1, dieci — e
-    lo si dichiara nel titolo invece di lasciar credere che siano dodici.
+    trimestri con la copertura piena sul NUCLEO dell'asse
+    (`core_coverage_quarters`, che spiega perche' il nucleo e non l'unione), e
+    quanti sono lo si dichiara nel titolo invece di lasciarlo indovinare.
 
     I miei metodi arrivano dal CSV settimanale, che porta gia' `horizon_week` e
     il realizzato riga per riga.  La Fed arriva da `nyfed_nowcast.load_long()`
@@ -570,16 +645,24 @@ def horizon_panel(df_mine: pd.DataFrame, sample: list[str],
     tabelle restano scartati qui, altrimenti il punto piu' a destra della loro
     curva sarebbe l'unico calcolato su un'informazione che io non avevo.
     """
-    coverage = (df_mine[df_mine["target_quarter"].isin(sample)]
-                .groupby("target_quarter")["horizon_week"].apply(set))
-    full = set().union(*coverage) if len(coverage) else set()
-    sample = [q for q in sample if coverage.get(q, set()) == full]
-    n_target = len(sample)
+    # IL FILTRO PER SPEC VIENE PRIMA DEL CAMPIONE, e l'ordine non e' un
+    # dettaglio.  Calcolando il campione sul frame di TUTTE le spec, un
+    # trimestre risultava coperto perche' lo copriva QUALCHE metodo: entrava in
+    # `n_target`, e poi i metodi che non ce l'avevano fallivano `pieno` a ogni
+    # settimana e sparivano dal grafico.  Sul 2024-2025 restava disegnato un
+    # metodo solo su otto.  Il campione va deciso sui metodi che si disegnano.
+    keep = df_mine["metodo"].str.split("/").str[0] == spec
+    keep |= df_mine["metodo"].isin(_BENCH)
+    mine = df_mine[keep].copy()
 
-    mine = df_mine[df_mine["target_quarter"].isin(sample)].copy()
-    keep = mine["metodo"].str.split("/").str[0] == spec
-    keep |= mine["metodo"].isin(_BENCH)
-    mine = mine[keep]
+    sample = core_coverage_quarters(mine, sample)
+    n_target = len(sample)
+    if not sample:
+        vuoto = pd.DataFrame(columns=["metodo", "horizon_week", "n_trimestri",
+                                      "RMSE", "sett_al_rilascio", "pieno"])
+        return vuoto, []
+
+    mine = mine[mine["target_quarter"].isin(sample)]
     mine["as_of"] = pd.to_datetime(mine["as_of"])
     mine["gdp_release_date"] = pd.to_datetime(mine["gdp_release_date"])
 
@@ -588,6 +671,14 @@ def horizon_panel(df_mine: pd.DataFrame, sample: list[str],
 
     fed = load_nyfed()
     fed = fed[fed["target_quarter"].isin(sample) & fed["pre_release"]].copy()
+    # LA FED SI RITAGLIA SULLA STESSA FINESTRA, e prima non succedeva: `df_mine`
+    # arriva gia' tagliato dal chiamante, la Fed no.  Sul 2024-2025 la loro
+    # curva aveva percio' dieci trimestri per settimana dove i miei metodi ne
+    # avevano otto — punti calcolati su un campione piu' largo del mio, cioe'
+    # esattamente il confronto per composizione che tutto il resto del modulo
+    # evita.  I confini si prendono da `mine`, che E' la finestra.
+    lo, hi = mine["as_of"].min(), mine["as_of"].max()
+    fed = fed[(fed["forecast_date"] >= lo) & (fed["forecast_date"] <= hi)]
     # Un venerdi' spostato di festivita' puo' far cadere due righe dello stesso
     # trimestre nella stessa settimana: vince la piu' recente, come altrove.
     fed = (fed.sort_values("forecast_date")
@@ -625,14 +716,15 @@ def figure_rmse_by_horizon(panel_h: pd.DataFrame, sample: list[str],
     Il grafico: RMSE medio sui trimestri del campione, settimana per settimana,
     con le tre fasi come bande di sfondo.
 
-    PRELIMINARE.  Con dodici trimestri ogni punto e' un RMSE su dodici errori:
-    l'ordinamento fra curve vicine puo' ribaltarsi per un solo trimestre andato
-    male, e le oscillazioni da una settimana all'altra sono in buona parte
-    rumore di campionamento, non apprendimento del modello.  Il grafico diventa
-    interpretabile con decine di trimestri, cioe' dopo la run lunga; per ora
-    serve a validare la meccanica — e infatti la cosa da guardare non e' quale
-    curva sta sotto, ma che AR(2) e media espandente siano piatti (non hanno
-    pannello da ascoltare) e che le curve del pannello scendano verso destra.
+    QUANTI TRIMESTRI CI SONO SOTTO SI LEGGE NEL TITOLO, e cambia la lettura.
+    Con dieci ogni punto e' un RMSE su dieci errori: l'ordinamento fra curve
+    vicine puo' ribaltarsi per un solo trimestre andato male, e le oscillazioni
+    da una settimana all'altra sono in buona parte rumore di campionamento.
+    Con quaranta e passa — le tre passate lunghe — il confronto fra curve
+    regge; sugli zoom corti resta indicativo, e la didascalia lo dichiara.
+    Quello che si guarda comunque per primo: che AR(2) e media espandente siano
+    piatti (non hanno pannello da ascoltare) e che le curve del pannello
+    scendano verso destra.
     """
     plotted = panel_h[panel_h["pieno"]]
     models = sorted(m for m in plotted["metodo"].unique()

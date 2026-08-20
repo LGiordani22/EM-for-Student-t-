@@ -242,21 +242,16 @@ def horizon_figures(mine: pd.DataFrame, out_dir: str,
     """
     written: list[str] = []
 
-    # IL CAMPIONE SI CALCOLA QUI, PRIMA DI CHIAMARE.  `horizon_panel` applica
-    # la stessa regola al suo interno, ma se non sopravvive nessun trimestre
-    # costruisce un frame vuoto e poi lo ordina per `metodo`: colonna che un
-    # frame vuoto non ha, quindi `KeyError: 'metodo'` invece di "niente
-    # figura".  Il controllo che c'era stava DOPO la chiamata, cioe' dopo il
-    # punto in cui si rompe.  Su una finestra corta — uno degli zoom — e' il
-    # caso normale, non l'eccezione.
-    cov = mine.groupby("target_quarter")["horizon_week"].apply(set)
-    full = set().union(*cov) if len(cov) else set()
-    quarters = [q for q in sorted(cov.index) if cov[q] == full]
+    # IL CAMPIONE LO SCEGLIE `horizon_panel`, e qui si passano tutti i
+    # trimestri.  Qui c'era una copia della regola — l'unione esatta delle
+    # settimane — messa a guardia di un `KeyError` su frame vuoto: due copie
+    # della stessa regola che potevano divergere, e infatti quella era la
+    # versione che ha ridotto a due trimestri le figure di tredici anni.  Il
+    # frame vuoto ora lo gestisce `horizon_panel`, che torna (vuoto, []).
+    quarters = sorted(mine["target_quarter"].unique())
     if not quarters:
-        print(f"  [{tag or 'completo'}] nessun trimestre con copertura "
-              f"settimanale completa su {len(cov)}: niente figure per "
-              f"orizzonte (blocco troppo corto, i trimestri ai bordi sono "
-              f"monchi).")
+        print(f"  [{tag or 'completo'}] nessun trimestre nel blocco: "
+              f"niente figure per orizzonte.")
         return written
 
     presenti = [m for m in models
