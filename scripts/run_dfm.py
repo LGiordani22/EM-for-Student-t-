@@ -26,10 +26,25 @@ CHE COSA SCRIVE
 ---------------
     output/forecast_weekly/csv/_cells/<spec>_<variante>/weekly_nowcast_*.csv
         il risultato intermedio, e insieme lo stato di ripresa della cella
+    output/forecast_weekly/csv/_cells/<spec>_<variante>/theta/theta_<as_of>.npz
+        i PARAMETRI di ogni stima EM: Lambda, A, Q, R, Sigma_0, i gradi di
+        liberta' e i pesi, piu' n_iter, converged e `origine` (warm/cold/pca)
     output/forecast_weekly/csv/dfm/weekly_nowcast_<spec>_<variante>_*.csv
         la copia pubblicata, che figure e tabelle leggono
 
 Si copia e non si sposta: spostando il primo, un rilancio ripartirebbe da zero.
+
+I THETA SI SCRIVONO E BASTA: NESSUNO LI RILEGGE
+-----------------------------------------------
+Uno per stima EM, non uno per venerdi': fra due ri-stime il theta e' lo stesso,
+quindi con `--em-frequency monthly` sono ~228 file da ~3 KB per cella invece di
+991 di cui 763 copie.  Servono a guardare come si muovono i parametri di
+vintage in vintage senza ri-stimare niente, e a misurare che cosa costerebbe
+spezzare una cella per data: la ripresa non eredita un theta che non ha
+prodotto, quindi ogni confine di shard vale un gradino da ~2e-03 punti BEA
+(misurato in `src/forecast/test_resume.py`).  Farglieli rileggere
+cambierebbe i numeri di una passata ripresa, e non e' una decisione da
+prendere di nascosto dentro uno script.
 
 RIPRESA, E IL SUO SPIGOLO
 -------------------------
