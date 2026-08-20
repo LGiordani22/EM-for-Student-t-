@@ -961,8 +961,11 @@ def main() -> None:
         ph.to_csv(csv, index=False)
         png = figure_rmse_by_horizon(
             ph, sample_fig, a.spec_figura,
+            # Nome stabile, non il campione: vedi la nota in `bvar.metrics`.
+            # Un nome che porta dentro il campione lascia un file orfano ogni
+            # volta che il campione cambia.
             os.path.join(out_dir, f"rmse_by_horizon_{a.spec_figura}"
-                                  f"{tag or '_' + sample_fig[0] + '_' + sample_fig[-1]}.png"))
+                                  f"{tag or '_completo'}.png"))
         scartati = ph[~ph["pieno"]]
         print(f"\nscritto: {csv}")
         print(f"scritto: {png}")
