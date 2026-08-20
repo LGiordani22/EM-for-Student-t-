@@ -214,20 +214,44 @@ def _place_legend(fig, ax: plt.Axes, handles: list, ncol: int = 1,
 
 # ─── Lettura ──────────────────────────────────────────────────────────────────
 
-def _newest_csv() -> str:
+def discover_csvs(paths: list[str] | None = None) -> list[str]:
+    """
+    I CSV da disegnare: quelli dati, o TUTTI quelli presenti.
+
+    Tutti, e non piu' il piu' recente per data di modifica.  Il piu' recente
+    era corretto finche' una passata scriveva un CSV solo, con dentro tutte le
+    celle (`--all-specs --all-variants` in un processo).  Da quando ogni cella
+    e' un processo suo — perche' e' l'unita' che si parallelizza — in
+    `csv/dfm/` ci sono QUINDICI file, uno per cella, e prenderne uno solo
+    voleva dire disegnare una cella su quindici: in silenzio, senza errore,
+    il file c'era e le figure uscivano — quattro invece di sessanta.
+
+    E' la stessa regola che `compute_metrics.discover_csvs` applica gia' alle
+    tabelle: le figure leggevano l'albero in un modo e le metriche in un altro.
+    """
+    if paths:
+        return list(paths)
     d = layout.dfm_csv_dir()
-    cands = glob.glob(os.path.join(d, "weekly_nowcast_*.csv"))
-    if not cands:
+    found = sorted(glob.glob(os.path.join(d, "weekly_nowcast_*.csv")))
+    if not found:
         raise FileNotFoundError(
             f"Nessun CSV in {d}.\n"
-            f"Generane uno con:  python -m src.forecast.weekly_nowcast "
-            f"--start YYYY-MM-DD --end YYYY-MM-DD"
+            f"Generane uno con:  python scripts/run_dfm.py "
+            f"--spec diag3 --variant gaussian"
         )
-    return max(cands, key=os.path.getmtime)
+    return found
 
 
-def load(csv_path: str | None = None) -> pd.DataFrame:
-    df = pd.read_csv(csv_path or _newest_csv())
+def load(csv_path: "str | list[str] | None" = None) -> pd.DataFrame:
+    """
+    Le righe di tutti i CSV richiesti, in un frame solo.
+
+    `csv_path` accetta un percorso, una lista di percorsi, o niente (tutti).
+    """
+    if isinstance(csv_path, str):
+        csv_path = [csv_path]
+    df = pd.concat([pd.read_csv(p) for p in discover_csvs(csv_path)],
+                   ignore_index=True)
     df["target_quarter"] = df["target_quarter"].astype(str)
     df["as_of_dt"] = pd.to_datetime(df["as_of"])
     df["release_dt"] = pd.to_datetime(df["gdp_release_date"])
@@ -521,7 +545,8 @@ def make_compare(df: pd.DataFrame, output_dir: str, target_quarter: str,
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Figure del nowcast settimanale.")
-    p.add_argument("--csv", default=None, help="default: il piu' recente")
+    p.add_argument("--csv", nargs="*", default=None,
+                   help="default: TUTTI i CSV di csv/dfm/ (una cella per file)")
     p.add_argument("--output-dir", default=None)
     p.add_argument("--style", choices=["cg8a", "compare"], default="cg8a")
     p.add_argument("--target", default=None,
@@ -541,22 +566,22 @@ def main() -> None:
                         "e il vuoto fino al pallino e' ~1 settimana.")
     a = p.parse_args()
 
-    csv_path = a.csv or _newest_csv()
-    df = load(csv_path)
+    paths = discover_csvs(a.csv)
+    df = load(paths)
     ylim = tuple(a.ylim) if a.ylim else None
 
     if a.window:
         df = layout.slice_window(df, a.window)
         if df.empty:
             raise SystemExit(
-                f"Nessuna riga di {csv_path} cade nella finestra {a.window} "
-                f"{layout.window(a.window)}.")
+                f"Nessuna riga dei {len(paths)} CSV cade nella finestra "
+                f"{a.window} {layout.window(a.window)}.")
 
     # Default: il nuovo albero (dfm/<spec>/<variant>), non piu' figures/<spec>.
     out_dir = a.output_dir or layout.OUTPUT_ROOT
     dir_for_cell = None if a.output_dir else _dfm_dir_for_cell
 
-    print(f"leggo: {csv_path}")
+    print(f"leggo: {len(paths)} CSV da {os.path.dirname(paths[0])}")
     print(f"  {len(df)} righe, {df['target_quarter'].nunique()} trimestri, "
           f"celle: {sorted(df['cella'].unique())}")
 
