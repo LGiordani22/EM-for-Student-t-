@@ -269,10 +269,17 @@ def horizon_figures(mine: pd.DataFrame, out_dir: str,
 
     csv = os.path.join(out_dir, f"rmse_per_orizzonte_bvar{tag}.csv")
     ph.to_csv(csv, index=False)
+    # IL NOME NON CONTIENE IL CAMPIONE.  Ci finiva, quando non c'e' un `tag`:
+    # `_<primo>_<ultimo>` trimestre.  Cosi' pero' il file CAMBIA NOME appena
+    # cambia il campione, e quello vecchio resta li' orfano: dopo la correzione
+    # della regola di selezione ci si e' ritrovati
+    # `..._2016Q4_2022Q4.png` (2 trimestri, vecchio) accanto a
+    # `..._2007Q2_2025Q1.png` (58, nuovo), senza niente che dicesse quale dei
+    # due fosse quello buono.  Un nome stabile si sovrascrive.  Il campione sta
+    # nel titolo della figura e nel CSV accanto, che e' dove va cercato.
     png = cn.figure_rmse_by_horizon(
         ph, sample, "/".join(presenti),
-        os.path.join(out_dir, f"rmse_per_orizzonte_bvar"
-                              f"{tag or '_' + sample[0] + '_' + sample[-1]}.png"))
+        os.path.join(out_dir, f"rmse_per_orizzonte_bvar{tag or '_completo'}.png"))
     return [csv, png]
 
 
