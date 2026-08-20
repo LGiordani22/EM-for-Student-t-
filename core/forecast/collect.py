@@ -19,6 +19,17 @@ SI COPIA, NON SI SPOSTA
 -----------------------
 Il file in `csv/_cells/` e' lo stato di ripresa della cella: e' da li' che un
 rilancio riparte.  Spostandolo, ogni ripresa ricomincerebbe da zero.
+
+UN PERIODO SOLO PER VOLTA, E QUESTA E' UNA GUARDIA
+--------------------------------------------------
+`csv/dfm/` e' l'input di TUTTO il resto, e chi lo legge — `figures`,
+`compute_metrics`, `metrics_tables` — prende ogni file che ci trova e li
+CONCATENA.  Due periodi diversi nella stessa cartella (una prova sul 2016
+rimasta accanto alla passata 2007-2025) non danno errore: danno righe
+doppie sugli stessi (trimestre, settimana), cioe' RMSE calcolati due volte
+sugli stessi punti.  `run_all.sh` non poteva incapparci perche' copiava un
+nome di file esatto; qui si raccoglie tutto, quindi la guardia serve e sta
+sotto, in `_un_periodo_solo`.
 """
 
 from __future__ import annotations
@@ -37,6 +48,23 @@ _SPAN = re.compile(r"weekly_nowcast_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})\.csv
 def published_name(spec: str, variant: str, start: str, end: str) -> str:
     """Il nome con cui una cella compare in `csv/dfm/`."""
     return f"weekly_nowcast_{spec}_{variant}_{start}_{end}.csv"
+
+
+def cell_parts(nome_cartella: str) -> tuple[str, str] | None:
+    """
+    `'fed_overlap_student_t_ar1'` -> `('fed_overlap', 'student_t_ar1')`.
+
+    `None` se non e' una cella nota: la spec deve stare in `layout.SPECS` e la
+    variante in `layout.VARIANTS`.  Serve perche' la variante contiene degli
+    underscore quanto il nome della cartella, quindi lo spezzone non si puo'
+    indovinare — si riconosce.
+    """
+    for spec in layout.SPECS:
+        if nome_cartella.startswith(spec + "_"):
+            variant = nome_cartella[len(spec) + 1:]
+            if variant in layout.VARIANTS:
+                return spec, variant
+    return None
 
 
 def publish_cell(spec: str, variant: str, start: str, end: str) -> str:
@@ -59,6 +87,33 @@ def publish_cell(spec: str, variant: str, start: str, end: str) -> str:
     return dst
 
 
+def _un_periodo_solo(paths: list[str]) -> None:
+    """
+    Solleva se in `csv/dfm/` convivono periodi diversi.
+
+    Guarda la cartella intera, non solo quel che si e' appena copiato: un file
+    rimasto da prima e' pericoloso quanto uno appena scritto, e nessuno dei
+    due si annuncia.
+    """
+    spans = {}
+    for p in paths:
+        m = re.search(r"_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})\.csv$",
+                      os.path.basename(p))
+        if m:
+            spans.setdefault(m.groups(), []).append(os.path.basename(p))
+    if len(spans) > 1:
+        righe = "\n".join(
+            f"    {a} .. {b}   ({len(f)} file, es. {f[0]})"
+            for (a, b), f in sorted(spans.items()))
+        raise SystemExit(
+            f"In {layout.dfm_csv_dir()} convivono {len(spans)} periodi:\n"
+            f"{righe}\n"
+            f"Figure e tabelle concatenano TUTTO quello che trovano: cosi' "
+            f"gli stessi\n(trimestre, settimana) verrebbero contati piu' "
+            f"volte.  Cancellare i file\ndel periodo che non serve e "
+            f"rilanciare.")
+
+
 def collect_cells(verbose: bool = True) -> list[str]:
     """
     Pubblica TUTTE le celle che hanno scritto qualcosa in `csv/_cells/`.
@@ -66,29 +121,42 @@ def collect_cells(verbose: bool = True) -> list[str]:
     Idempotente: si puo' rilanciare, ricopia e basta.  Non pretende che le
     quindici ci siano — a dirlo se manca qualcosa e' la guardia
     `tests/forecast/test_cells_produced.py`, che guarda anche DENTRO i file.
-    Qui si guarda solo l'albero.
+    Qui si guarda solo l'albero, piu' la guardia sul periodo unico.
     """
-    root = os.path.dirname(layout.dfm_cell_dir("x", "y"))
+    root = layout.dfm_cells_root()
+    if not os.path.isdir(root):
+        raise SystemExit(
+            f"Non c'e' niente da raccogliere: manca {root}.\n"
+            f"Le celle si stimano con:  python scripts/run_dfm.py "
+            f"--spec <spec> --variant <variante>")
+
     pubblicati: list[str] = []
-    for cella in sorted(os.listdir(root)) if os.path.isdir(root) else []:
+    for cella in sorted(os.listdir(root)):
+        parti = cell_parts(cella)
+        if parti is None:
+            if verbose and os.path.isdir(os.path.join(root, cella)):
+                print(f"  [salto] {cella}: non e' una cella nota")
+            continue
+        spec, variant = parti
         for src in sorted(glob.glob(os.path.join(root, cella,
                                                  "weekly_nowcast_*.csv"))):
             m = _SPAN.search(os.path.basename(src))
             if not m:
                 continue
-            # Il nome della cartella e' '<spec>_<variante>': la spec e' il
-            # prefisso noto, il resto e' la variante (che contiene '_').
-            spec = next((s for s in layout.SPECS
-                         if cella.startswith(s + "_")), None)
-            if spec is None:
-                if verbose:
-                    print(f"  [salto] {cella}: non e' una cella nota")
-                continue
-            variant = cella[len(spec) + 1:]
             dst = publish_cell(spec, variant, m.group(1), m.group(2))
             pubblicati.append(dst)
             if verbose:
                 print(f"  {spec}/{variant} -> {os.path.basename(dst)}")
+
+    if not pubblicati:
+        raise SystemExit(
+            f"Nessuna cella ha scritto un CSV sotto {root}.\n"
+            f"Le celle si stimano con:  python scripts/run_dfm.py "
+            f"--spec <spec> --variant <variante>")
+
+    # La guardia guarda la CARTELLA, non la lista: conta anche cio' che c'era.
+    _un_periodo_solo(sorted(glob.glob(os.path.join(layout.dfm_csv_dir(),
+                                                   "weekly_nowcast_*.csv"))))
     if verbose:
         print(f"  {len(pubblicati)} CSV in {layout.dfm_csv_dir()}")
     return pubblicati
@@ -98,7 +166,8 @@ def main() -> int:
     print("=" * 78)
     print("  RACCOLTA — csv/_cells/ -> csv/dfm/")
     print("=" * 78)
-    return 0 if collect_cells() else 1
+    collect_cells()
+    return 0
 
 
 if __name__ == "__main__":

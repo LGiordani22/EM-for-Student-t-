@@ -84,6 +84,10 @@ def main() -> int:
                         "finirebbero nelle tabelle insieme alla passata buona")
     p.add_argument("--keep-cache", action="store_true",
                    help="non cancellare le cache_*.pkl a blocco finito")
+    p.add_argument("--max-cache-mb", type=float, default=None,
+                   help="tetto per una cache su disco; oltre, la ripresa "
+                        "riavvolge all'ultima stima piena (default: quello "
+                        "di core.bvar.evaluate)")
     a = p.parse_args()
 
     from core.bvar.evaluate import MAX_CACHE_MB, parallel_blocks, run_realtime
@@ -109,7 +113,7 @@ def main() -> int:
         dry_run=a.dry_run,
         benchmarks=not a.no_benchmarks,
         fresh=False,
-        max_cache_mb=MAX_CACHE_MB,
+        max_cache_mb=(MAX_CACHE_MB if a.max_cache_mb is None else a.max_cache_mb),
         keep_cache=a.keep_cache,
         n_draws=({m: a.draws for m in models} if a.draws else None),
     )

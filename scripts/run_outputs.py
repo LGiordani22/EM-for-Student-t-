@@ -145,9 +145,13 @@ def main() -> int:
     p = argparse.ArgumentParser(
         description="Figure, metriche e tabelle, lette ex post dai CSV.")
     p.add_argument("--list", action="store_true", help="i passi, ed esce")
-    p.add_argument("--only", choices=nomi, default=None,
+    # Si escludono: `--only tabelle --from figure` e' una richiesta
+    # contraddittoria, e sceglierne una in silenzio farebbe girare qualcosa di
+    # diverso da quel che si e' chiesto.
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--only", choices=nomi, default=None,
                    help="esegue un passo solo")
-    p.add_argument("--from", dest="da", choices=nomi, default=None,
+    g.add_argument("--from", dest="da", choices=nomi, default=None,
                    help="riprende da questo passo in poi")
     a = p.parse_args()
 

@@ -158,6 +158,11 @@ def bvar_csv_dir() -> str:
     return os.path.join(OUTPUT_ROOT, "csv", "bvar")
 
 
+def dfm_cells_root() -> str:
+    """`csv/_cells/` — la radice sotto cui sta una cartella per cella."""
+    return os.path.join(OUTPUT_ROOT, "csv", "_cells")
+
+
 def dfm_cell_dir(spec: str, variant: str) -> str:
     """
     `csv/_cells/<spec>_<variant>/` — il RISULTATO INTERMEDIO di una cella DFM,
@@ -172,7 +177,7 @@ def dfm_cell_dir(spec: str, variant: str) -> str:
 
     Si COPIA, non si sposta: questo file e' cio' da cui la cella riprende.
     """
-    return os.path.join(OUTPUT_ROOT, "csv", "_cells", f"{spec}_{variant}")
+    return os.path.join(dfm_cells_root(), f"{spec}_{variant}")
 
 
 def logs_dir() -> str:
@@ -253,7 +258,8 @@ __all__ = [
     "NYFED_COMPARISON_PASSES", "FULL_SPAN", "SPECS", "VARIANTS", "BVAR_MODELS",
     "BENCHMARKS", "dfm_forecast_dir", "dfm_rmse_dir", "bvar_forecast_dir",
     "bvar_rmse_dir", "bvar_logscore_dir", "comparison_dir",
-    "dfm_csv_dir", "bvar_csv_dir", "dfm_cell_dir", "logs_dir",
+    "dfm_csv_dir", "bvar_csv_dir", "dfm_cells_root", "dfm_cell_dir",
+    "logs_dir",
     "checkpoint_dir", "all_dirs",
     "build_tree", "window", "slice_window",
 ]

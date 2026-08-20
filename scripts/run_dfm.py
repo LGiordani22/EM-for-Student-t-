@@ -31,11 +31,20 @@ CHE COSA SCRIVE
 
 Si copia e non si sposta: spostando il primo, un rilancio ripartirebbe da zero.
 
-RIPRESA
--------
+RIPRESA, E IL SUO SPIGOLO
+-------------------------
 Rilanciare lo stesso comando.  Niente viene cancellato all'avvio: le settimane
-gia' nel CSV si saltano e si riprende dalla prima che manca.  Per rifare una
-cella davvero da capo si cancella la sua cartella in `csv/_cells/`.
+gia' nel CSV si saltano e si riprende dalla prima che manca.
+
+LO SPIGOLO: 'gia' nel CSV' include le righe IN ERRORE.  Una riga che e' andata
+storta e' stata comunque scritta — con `n_iter = -1` e il nowcast a NaN — e la
+ripresa la conta come fatta.  Un rilancio semplice quindi NON ripara una cella
+guasta: la lascia identica, senza dire niente.  Per ripararla serve `--fresh`,
+che cancella il CSV della cella e la ristima da capo.  Costa l'intera cella,
+ma e' l'unico modo di avere una catena di theta continua: ricalcolare i soli
+buchi ripartirebbe a freddo in mezzo alla serie, e si vedrebbe come un gradino.
+
+All'avvio lo script dice sempre quante righe trova e quante sono in errore.
 
 I BENCHMARK LI CALCOLA UNA CELLA SOLA
 -------------------------------------
@@ -93,6 +102,11 @@ def main() -> int:
                    help="trimestri oltre quello corrente")
     p.add_argument("--max-iter", type=int, default=250)
     p.add_argument("--verbose-em", action="store_true")
+    p.add_argument("--fresh", action="store_true",
+                   help="cancella il CSV della cella e ristima da zero. "
+                        "SERVE per rifare una cella che ha righe in errore: "
+                        "la ripresa normale le considera 'gia' fatte' e le "
+                        "salta, quindi un rilancio semplice non le ripara")
     a = p.parse_args()
 
     if a.list:
@@ -117,6 +131,27 @@ def main() -> int:
 
     from core.forecast.weekly_nowcast import cell_health, run_weekly_nowcast
 
+    # ── Che cosa c'e' gia', e che cosa la ripresa fara' con quello ───────────
+    # La ripresa salta ogni riga gia' presente nel CSV, comprese quelle in
+    # ERRORE (`n_iter == -1`): sono righe scritte, quindi 'fatte'.  Un rilancio
+    # semplice non ripara una cella guasta — la lascia com'e', in silenzio.
+    # Qui lo si dice prima di partire, invece di scoprirlo dal referto in fondo.
+    csv_cella = os.path.join(cell_dir, f"weekly_nowcast_{a.start}_{a.end}.csv")
+    if os.path.exists(csv_cella):
+        if a.fresh:
+            os.remove(csv_cella)
+            print("  --fresh: CSV precedente cancellato, si ristima da zero.")
+        else:
+            import pandas as pd
+            vecchio = pd.read_csv(csv_cella)
+            n_err = int((vecchio.get("n_iter", pd.Series(dtype=int)) == -1).sum())
+            print(f"  ripresa: {len(vecchio)} righe gia' sul disco"
+                  + (f", di cui {n_err} IN ERRORE" if n_err else ""))
+            if n_err:
+                print("  le righe in errore NON verranno ricalcolate: la "
+                      "ripresa le conta come fatte.")
+                print("  per ripararle serve  --fresh  (ristima l'intera cella).")
+
     df = run_weekly_nowcast(
         a.start, a.end, specs=(a.spec,), variants=(a.variant,),
         em_frequency=a.em_frequency, n_ahead=a.n_ahead, max_iter=a.max_iter,
@@ -127,9 +162,9 @@ def main() -> int:
     rotte = [h for h in cell_health(df) if h["rotta"]]
     if rotte:
         print("\nLa cella non ha prodotto nowcast: il referto e' qui sopra.")
-        print("PRIMA di rilanciare, cancellare il CSV vuoto — altrimenti la "
-              "ripresa lo considera 'gia' fatto' e lo salta:")
-        print(f"    {cell_dir}")
+        print("Per rilanciarla serve --fresh: la ripresa normale considera le "
+              "righe in errore 'gia' fatte' e le salta, quindi un rilancio "
+              "semplice non riparerebbe niente.")
         return 1
 
     # ── La pubblicazione ─────────────────────────────────────────────────────
