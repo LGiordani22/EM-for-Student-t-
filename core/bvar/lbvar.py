@@ -159,12 +159,14 @@ Non e' un compromesso, e' la ricostruzione onesta dell'insieme informativo.
 
 from __future__ import annotations
 
+import copy
+import warnings
 from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
 
-from core.bvar.core import CoreState, step
+from core.bvar.core import CoreState, draw_parameters, step
 from core.bvar.data import (
     append_forecast_rows,
     build_panel,
@@ -183,6 +185,78 @@ DROP_HEAD = 3
 
 #: `MCMCconst` di `lbvar.m`: il fattore di scala della proposta Metropolis.
 MCMC_CONST = 1.6
+
+# A finite-precision rejection should be fantastically rare.  A cap turns a
+# genuinely broken state-space system into a useful error instead of a loop.
+MAX_NUMERICAL_REDRAWS = 100
+
+# Within a Gibbs sweep, a few conditional parameter redraws are cheap insurance.
+# If they all fail, the whole candidate sweep is rejected and the last valid
+# chain state is retained.  Retrying 100 smoothers at one fixed hyperparameter
+# value is both slow and unable to escape the numerical trap seen in 2020.
+MAX_REDRAWS_PER_SWEEP = 2
+MAX_CONSECUTIVE_NUMERICAL_REJECTIONS = 25
+
+
+def _finite_smoother(state: CoreState, Y: np.ndarray, rng: np.random.Generator,
+                     *, n: int, p: int, a0: np.ndarray,
+                     max_redraws: int = MAX_NUMERICAL_REDRAWS
+                     ) -> tuple[np.ndarray, int]:
+    """Draw a finite latent path, redrawing only unusable parameter draws.
+
+    The L-BVAR deliberately permits explosive VAR draws.  Durbin--Koopman's
+    unconditional auxiliary path can nevertheless overflow for an extreme
+    draw over a long sample; subtracting two infinite paths then produces the
+    NaN panel seen by the Covid blocks.  Such a draw is not made stationary or
+    imputed.  We reject only the numerically unrepresentable ``(B, Sigma)`` and
+    redraw it from the same conditional posterior.
+    """
+    for retry in range(max_redraws + 1):
+        ss = build_state_space(state.B, state.Sigma, n, p, a0)
+        try:
+            with np.errstate(over="ignore", invalid="ignore"):
+                alpha = simulation_smoother(
+                    ss, Y, rng, numerical_guard=True)
+        except (FloatingPointError, np.linalg.LinAlgError):
+            alpha = None
+        usable = alpha is not None and np.isfinite(alpha).all()
+        if usable:
+            # The next core step forms X'X.  A technically finite path whose
+            # square already overflows is no more usable than a NaN path.
+            safe = np.sqrt(np.finfo(float).max / max(1, Y.shape[0]))
+            usable = bool(np.max(np.abs(alpha[:, :n]), initial=0.0) <= safe)
+        if usable:
+            return alpha, retry
+        if retry == max_redraws:
+            break
+        draw_parameters(state, rng)
+    raise FloatingPointError(
+        "L-BVAR: simulation smoother non finito dopo "
+        f"{max_redraws} nuove estrazioni condizionali")
+
+
+def _candidate_transition(state: CoreState, panel: np.ndarray, Y: np.ndarray,
+                          rng: np.random.Generator, *, n: int, p: int,
+                          a0: np.ndarray, n_metro: int
+                          ) -> tuple[CoreState, np.ndarray | None, int, bool]:
+    """Propose one complete Gibbs sweep without corrupting the valid state.
+
+    A numerically unrepresentable smoother draw rejects the *whole* candidate
+    sweep.  The original state is untouched, so the chain makes an explicit
+    self-transition instead of being stranded at the last unusable ``(B, Sigma)``.
+    This is the finite-precision analogue of rejecting a proposal outside the
+    computational support; no stationarity restriction or replacement data are
+    introduced.
+    """
+    candidate = copy.deepcopy(state)
+    try:
+        candidate = step(candidate, rng, panel=panel, n_metro=n_metro)
+        alpha, n_retry = _finite_smoother(
+            candidate, Y, rng, n=n, p=p, a0=a0,
+            max_redraws=MAX_REDRAWS_PER_SWEEP)
+    except (FloatingPointError, np.linalg.LinAlgError):
+        return state, None, MAX_REDRAWS_PER_SWEEP, False
+    return candidate, alpha, n_retry, True
 
 
 # ─── 1. L'inizializzazione con le spline ──────────────────────────────────────
@@ -347,6 +421,7 @@ class LBVARDraws:
     #: True se le estrazioni vengono dal ramo di RIUSO (`fit_reuse`), dove
     #: (B, Sigma) sono ereditati e non ristimati.
     reused: bool = False
+    numerical_rejections: int = 0
 
     @property
     def S(self) -> int:
@@ -561,16 +636,47 @@ Il target si muove sotto la catena: ogni iterazione ricostruisce la
         state = step(state, rng)
         B_cur, S_cur = state.B, state.Sigma
 
+    # Il primo smoother e poi quello dell'iterazione successiva sono calcolati
+    # in pipeline.  Dove non serve un retry, l'ordine delle chiamate RNG e tutti
+    # i risultati restano identici al ciclo precedente.  Il look-ahead finale
+    # garantisce inoltre che nessun (B, Sigma) non verificato entri nella cache.
+    alpha, n_retry = _finite_smoother(state, Y_in, rng, n=n, p=p, a0=a0)
+    if n_retry and verbose:
+        print(f"    scartate {n_retry} estrazioni numericamente non finite")
+
+    numerical_rejections = 0
+    consecutive_rejections = 0
+
     for it in range(n_draws):
-        # passo 1 — lo state-space RICOSTRUITO (punto 6), poi lo smoother
-        ss = build_state_space(B_cur, S_cur, n, p, a0)
-        alpha = simulation_smoother(ss, Y_in, rng)               # (T_in, n*p)
+        # passo 1 — il cammino e' gia' stato estratto dalla pipeline
         drawn = np.vstack([head, alpha[:, :n]])                  # punto 4
 
-        # passi 2 e 3 — il core, sul pannello estratto troncato a lastFull
-        state = step(state, rng, panel=drawn[: lf + 1], n_metro=n_metro)
+        # Passi 2 e 3, piu' il smoother successivo, sono una sola transizione
+        # candidata.  Se la parte DK non e' rappresentabile in doppia
+        # precisione, la transizione e' un self-loop e lo stato valido resta
+        # intatto.  Questo evita che un pannello numericamente corrotto avveleni
+        # tutte le condizionali successive.
+        candidate, next_alpha, n_retry, accepted = _candidate_transition(
+            state, drawn[: lf + 1], Y_in, rng,
+            n=n, p=p, a0=a0, n_metro=n_metro)
+        if accepted:
+            state = candidate
+            alpha = next_alpha
+            consecutive_rejections = 0
+        else:
+            numerical_rejections += 1
+            consecutive_rejections += 1
+            if consecutive_rejections >= MAX_CONSECUTIVE_NUMERICAL_REJECTIONS:
+                raise FloatingPointError(
+                    "L-BVAR: catena ferma dopo "
+                    f"{consecutive_rejections} transizioni numeriche rifiutate; "
+                    "ultimo stato valido preservato")
+
         hyp = state.hyper
         B_cur, S_cur = state.B, state.Sigma
+        if accepted and n_retry and verbose:
+            print(f"    iterazione {it + 1}: scartate {n_retry} estrazioni "
+                  "numericamente non finite")
 
         if it == burn - 1:
             state.metro.n_accept = state.metro.n_prop = 0   # statistiche pulite
@@ -584,9 +690,16 @@ Il target si muove sotto la catena: ogni iterazione ricostruisce la
                   f"lambda {hyp.lam:.3f}  mu {hyp.mu:.3f}  "
                   f"acc {state.metro.acceptance:.1%}")
 
+    if numerical_rejections:
+        warnings.warn(
+            f"L-BVAR: {numerical_rejections}/{n_draws} transizioni numeriche "
+            "rifiutate e sostituite da self-loop espliciti",
+            RuntimeWarning, stacklevel=2)
+
     return LBVARDraws(panels=panels, B=Bs, Sigma=Ss, lam=lams, mu=mus, psi=psis,
                       index=index[: p + T_in], spec=spec,
-                      acceptance=state.metro.acceptance)
+                      acceptance=state.metro.acceptance,
+                      numerical_rejections=numerical_rejections)
 
 
 # ─── 5. Il ramo di RIUSO — `lbvar_NE.m` ───────────────────────────────────────

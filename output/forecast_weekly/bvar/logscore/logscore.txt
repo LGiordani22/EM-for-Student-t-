@@ -1,0 +1,45 @@
+LOG PREDICTIVE SCORE — GATE 6
+LS = log p(y* | Omega_D), kernel gaussiano sulle estrazioni.
+PIU' ALTO E' MEGLIO (l'opposto dell'RMSE).
+righe punteggiate: 8988   trimestri: 78
+punti (trimestre, settimana): 2247 in totale, 2247 coperti da TUTTI i modelli
+
+DUE COLONNE, SI LEGGONO IN COPPIA:
+  LS_medio      su tutto cio' che quel modello ha prodotto
+  LS_medio_com  sui soli punti prodotti da tutti i modelli
+Solo la seconda confronta le righe fra loro.  Se n e n_com coincidono
+le due letture sono la stessa e non c'e' niente da interpretare.
+
+====================================================================================
+1. METODO x FASE  (comune calcolato DENTRO la fase)
+====================================================================================
+       metodo       fase   n  n_com   LS_medio  LS_medio_com  LS_mediano      LS_sd
+      bbvar/-   forecast 978    978 -39.887725    -39.887725   -2.271498 270.810791
+      bbvar/- nowcast M1 300    300 -22.639301    -22.639301   -2.169468 173.531455
+      bbvar/- nowcast M2 375    375  -5.431161     -5.431161   -1.893274  49.429043
+      bbvar/- nowcast M3 300    300  -3.038311     -3.038311   -1.809586   8.533524
+      bbvar/-   backcast 294    294  -2.283384     -2.283384   -1.789194   4.450992
+cbvar/authors   forecast 978    978  -4.559859     -4.559859   -2.515012  21.465413
+cbvar/authors nowcast M1 300    300  -3.703523     -3.703523   -2.440324  13.030986
+cbvar/authors nowcast M2 375    375  -2.478499     -2.478499   -2.267549   0.752296
+cbvar/authors nowcast M3 300    300  -2.315475     -2.315475   -2.096841   0.704202
+cbvar/authors   backcast 294    294  -2.154621     -2.154621   -1.981015   0.595999
+      lbvar/-   forecast 978    978 -18.825712    -18.825712   -2.343447 120.996593
+      lbvar/- nowcast M1 300    300  -9.538986     -9.538986   -2.179449  63.729324
+      lbvar/- nowcast M2 375    375  -3.538018     -3.538018   -2.058731  11.236359
+      lbvar/- nowcast M3 300    300  -3.163199     -3.163199   -1.852144   8.740992
+      lbvar/-   backcast 294    294  -2.456682     -2.456682   -1.863665   3.832601
+      qbvar/-   forecast 978    978 -40.379790    -40.379790   -2.430661 231.028602
+      qbvar/- nowcast M1 300    300 -24.001504    -24.001504   -2.321027 163.218506
+      qbvar/- nowcast M2 375    375 -21.582610    -21.582610   -2.279623 163.626141
+      qbvar/- nowcast M3 300    300 -18.376715    -18.376715   -2.238873 136.170540
+      qbvar/-   backcast 294    294  -5.895409     -5.895409   -1.847590  62.872216
+
+====================================================================================
+2. METODO  (ordinato per LS_medio_com)
+====================================================================================
+       metodo    n  n_com   LS_medio  LS_medio_com  LS_mediano
+cbvar/authors 2247   2247  -3.483817     -3.483817   -2.303562
+      lbvar/- 2247   2247 -10.801612    -10.801612   -2.126392
+      bbvar/- 2247   2247 -21.994428    -21.994428   -2.089248
+      qbvar/- 2247   2247 -27.606421    -27.606421   -2.302165

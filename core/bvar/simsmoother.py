@@ -592,7 +592,8 @@ def _psd_chol(M: np.ndarray) -> np.ndarray:
 
 def simulation_smoother(ss: LinearGaussianSS, Y: np.ndarray,
                         rng: np.random.Generator, *,
-                        n_draws: int = 1) -> np.ndarray:
+                        n_draws: int = 1,
+                        numerical_guard: bool = False) -> np.ndarray:
     r"""
     Estrazioni da p(alpha_{1:T} | y_{1:T}) — Durbin & Koopman (2002).
 
@@ -624,7 +625,36 @@ def simulation_smoother(ss: LinearGaussianSS, Y: np.ndarray,
     for d in range(n_draws):
         alpha_p, y_p = simulate_forward(ss, T, rng, pattern=Y)
         fp = forward_pass(ss0, Y - y_p, with_const=False)
-        out[d] = smoothed_mean(ss0, fp, with_const=False) + alpha_p
+        correction = smoothed_mean(ss0, fp, with_const=False)
+        draw = correction + alpha_p
+
+        if numerical_guard:
+            # DK obtains the conditional draw by cancelling an unconditional
+            # auxiliary path with its smoothed correction.  For an explosive
+            # transition both terms can be enormous even when their sum is
+            # ordinary.  A finite sum is then not sufficient: it may have lost
+            # every meaningful digit before it reaches the next Gibbs step.
+            #
+            # This is an accuracy test, not an economic bound on the draw.  A
+            # genuinely large conditional draw passes when it does not rely on
+            # catastrophic cancellation.  ``sqrt(eps)`` asks for roughly half
+            # of double precision to remain; ``ns * eps`` is a conservative
+            # first-order bound for the state-sized matrix operations above.
+            block = slice(0, ss.n)
+            finite_y = np.abs(Y[np.isfinite(Y)])
+            data_scale = float(finite_y.max(initial=1.0))
+            draw_scale = float(np.abs(draw[:, block]).max(initial=0.0))
+            reference = max(1.0, data_scale, draw_scale)
+            cancellation_scale = float(
+                (np.abs(correction[:, block]) + np.abs(alpha_p[:, block])).max(
+                    initial=0.0))
+            error_bound = ss.ns * np.finfo(float).eps * cancellation_scale
+            if (not np.isfinite(error_bound)
+                    or error_bound > np.sqrt(np.finfo(float).eps) * reference):
+                raise FloatingPointError(
+                    "simulation smoother: cancellazione numericamente non affidabile")
+
+        out[d] = draw
 
     return out[0] if n_draws == 1 else out
 

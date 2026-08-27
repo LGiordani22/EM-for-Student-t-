@@ -1,5 +1,25 @@
 # `scripts/` — i tre entry point, e come si parallelizzano
 
+La passata completa, senza opzioni da configurare, parte dalla radice:
+
+```
+python run_all.py
+```
+
+Durante la passata, un secondo terminale puo' mostrare il dashboard live
+(sola lettura, refresh automatico, ETA appresa dai checkpoint):
+
+```
+python check_progress.py
+```
+
+`run_all.py` scopre le celle e i blocchi dagli entry point sotto, separa anche
+i quattro modelli di ogni blocco BVAR e usa fino a 224 processi indipendenti
+con un thread BLAS ciascuno. Poi riunisce i quattro shard di ogni blocco e
+lancia tutte le figure e tabelle. Un lavoro fallito non interrompe gli altri:
+viene elencato nel riepilogo finale e il suo dettaglio resta in
+`output/_logs/run_all/`.
+
 Tre script, uno per impostazione, ciascuno lanciabile da solo.
 
 ```
@@ -17,7 +37,7 @@ numeri che sono stati *misurati* su questo progetto invece che stimati.
 | | unità | quante | indipendenti? |
 |---|---|---|---|
 | DFM | la **cella** (spec × variante) | 15 | sì, fra loro |
-| BVAR | il **blocco** (1 stima piena + le sue settimane di riuso) | 77 sul 2007-2025 | sì, per costruzione |
+| BVAR | **modello × blocco** (1 stima piena + riusi) | 4 × 77 sul 2007-2025 | sì, per costruzione |
 
 ```
 python scripts/run_dfm.py --list          le 15 celle, 'spec variante' per riga
@@ -32,6 +52,12 @@ non cambia una riga rispetto a una passata continua. Un taglio annuale a
 Capodanno, per dire, cadrebbe in mezzo a un trimestre e promuoverebbe
 diciannove settimane da riuso a stima fresca: numeri che dipendono da come si è
 affettato il lavoro, non dal modello.
+
+Anche i quattro modelli di uno stesso blocco sono indipendenti: ciascuno parte
+dallo stesso stream deterministico derivato dalla data e non condivide stato
+mutabile con gli altri. `run_all.py` li scrive sotto radici temporanee diverse,
+così checkpoint e file non collidono, e pubblica il blocco normale solo quando
+tutti e quattro sono presenti. I benchmark vengono calcolati dal solo Q-BVAR.
 
 **Il DFM no, e il limite è a 15.** Dentro una cella i 991 venerdì sono
 **sequenziali**, perché ogni ri-stima parte dal θ del vintage precedente. Il
@@ -51,7 +77,7 @@ va saputo prima di decidere, non dopo.
 ## Thread per processo: **uno**
 
 Il parallelismo di questo progetto è **fra lavori indipendenti**, non dentro
-l'algebra: 77 blocchi + 15 celle = 92 unità. Con molti core la quantità da
+l'algebra: 4 × 77 shard BVAR + 15 celle = 323 unità. Con molti core la quantità da
 minimizzare sono i **core-secondi per blocco**, cioè il rendimento per core,
 non il tempo del singolo blocco. Quindi:
 

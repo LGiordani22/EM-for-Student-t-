@@ -103,6 +103,17 @@ class BVARDraws:
 
 # ─── Una spazzata ─────────────────────────────────────────────────────────────
 
+def draw_parameters(state: CoreState, rng: np.random.Generator) -> CoreState:
+    """Redraw ``(B, Sigma)`` conditional on the current panel and hyperparameters."""
+    tgt, hyp = state.target, state.hyper
+    prior = build_prior(tgt.spec, hyp)
+    Yd, Xd = sum_of_coefficients_dummy(tgt.spec, hyp, tgt.y0_bar)
+    post = niw_posterior(np.vstack([Yd, tgt.Y]), np.vstack([Xd, tgt.X]), prior)
+    B, S = draw(post, rng, n_draws=1)
+    state.B, state.Sigma = B[0], S[0]
+    return state
+
+
 def step(state: CoreState, rng: np.random.Generator, *,
          panel: np.ndarray | None = None, draw_params: bool = True,
          n_metro: int = 1) -> CoreState:
@@ -148,12 +159,7 @@ def step(state: CoreState, rng: np.random.Generator, *,
         state.metro = metropolis_step(state.target, state.metro, rng)
 
     if draw_params:
-        tgt, hyp = state.target, state.hyper
-        prior = build_prior(tgt.spec, hyp)
-        Yd, Xd = sum_of_coefficients_dummy(tgt.spec, hyp, tgt.y0_bar)
-        post = niw_posterior(np.vstack([Yd, tgt.Y]), np.vstack([Xd, tgt.X]), prior)
-        B, S = draw(post, rng, n_draws=1)
-        state.B, state.Sigma = B[0], S[0]
+        draw_parameters(state, rng)
     return state
 
 

@@ -1,0 +1,14 @@
+{
+  "start": "2012-02-03",
+  "end": "2012-04-27",
+  "models": [
+    "bbvar"
+  ],
+  "seed": 20260801,
+  "seed_scheme": "date-ordinal-v1",
+  "horizon": 24,
+  "n_ahead": 1,
+  "draws": {
+    "bbvar": 1000
+  }
+}

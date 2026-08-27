@@ -1,0 +1,14 @@
+{
+  "start": "2023-07-28",
+  "end": "2023-10-27",
+  "models": [
+    "cbvar"
+  ],
+  "seed": 20260801,
+  "seed_scheme": "date-ordinal-v1",
+  "horizon": 24,
+  "n_ahead": 1,
+  "draws": {
+    "cbvar": 1000
+  }
+}

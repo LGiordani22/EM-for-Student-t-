@@ -1,0 +1,14 @@
+{
+  "start": "2009-07-31",
+  "end": "2009-10-23",
+  "models": [
+    "lbvar"
+  ],
+  "seed": 20260801,
+  "seed_scheme": "date-ordinal-v1",
+  "horizon": 24,
+  "n_ahead": 1,
+  "draws": {
+    "lbvar": 250
+  }
+}

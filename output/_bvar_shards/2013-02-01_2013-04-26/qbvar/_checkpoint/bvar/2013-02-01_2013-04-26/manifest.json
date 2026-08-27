@@ -1,0 +1,14 @@
+{
+  "start": "2013-02-01",
+  "end": "2013-04-26",
+  "models": [
+    "qbvar"
+  ],
+  "seed": 20260801,
+  "seed_scheme": "date-ordinal-v1",
+  "horizon": 24,
+  "n_ahead": 1,
+  "draws": {
+    "qbvar": 1000
+  }
+}

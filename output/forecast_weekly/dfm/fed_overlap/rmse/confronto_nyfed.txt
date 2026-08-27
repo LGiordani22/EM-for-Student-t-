@@ -1,0 +1,1001 @@
+CONFRONTO COL NY FED STAFF NOWCAST — spec fed_overlap
+Un blocco per finestra.  I CSV accanto sono in formato lungo: si filtra sulla
+colonna `window` invece di aprire un file diverso per periodo.
+
+====================================================================================
+SPEC fed_overlap  —  FINESTRA 2007-2019
+====================================================================================
+IO CONTRO LA NEW YORK FED — ultima stima prima del rilascio del PIL
+errore in punti BEA (nowcast - realizzato), realizzato = GDPC1 versione corrente
+trimestri nel campione (52): 2006Q4, 2007Q1, 2007Q2, 2007Q3, 2007Q4, 2008Q1, 2008Q2, 2008Q3, 2008Q4, 2009Q1, 2009Q2, 2009Q3, 2009Q4, 2010Q1, 2010Q2, 2010Q3, 2010Q4, 2011Q1, 2011Q2, 2011Q3, 2011Q4, 2012Q1, 2012Q2, 2012Q3, 2012Q4, 2013Q1, 2013Q2, 2013Q3, 2013Q4, 2014Q1, 2014Q2, 2014Q3, 2014Q4, 2015Q1, 2015Q2, 2015Q3, 2015Q4, 2016Q1, 2016Q2, 2016Q3, 2016Q4, 2017Q1, 2017Q2, 2017Q3, 2017Q4, 2018Q1, 2018Q2, 2018Q3, 2018Q4, 2019Q1, 2019Q2, 2019Q3
+esclusi: 2019Q4 (stime finali fuori dalla settimana di rilascio); 2020Q1 (stime finali fuori dalla settimana di rilascio)
+metodi (8): fed_overlap/gaussian, fed_overlap/gaussian_ar1, fed_overlap/student_t, fed_overlap/student_t_ar1, fed_overlap/student_t_ar1_shared, nyfed, ar2, mean
+
+AVVERTENZA  campione corto e tutto dentro la Grande Recessione: sono
+differenze descrittive, non risultati con un errore standard.  I valori
+Fed fino a 2015Q4 sono ricostruzioni su dati real-time, non pubblicazioni
+avvenute davvero; il mio esercizio e' pseudo-real-time.  Confronto equo
+fra due pseudo-real-time, non fra un pseudo e un vero.
+
+============================================================================================
+1. ACCURATEZZA contro il realizzato  (RMSE_rel_fed < 1 batte la NY Fed)
+============================================================================================
+                          metodo  n settimana  RMSE   MAE   Bias   corr RMSE_rel_fed RMSE_rel_ar2
+            fed_overlap/gaussian 52      16.9 1.933 1.506 +0.242 +0.635        1.066        0.824
+        fed_overlap/gaussian_ar1 52      16.9 2.115 1.620 +0.465 +0.585        1.167        0.901
+           fed_overlap/student_t 52      16.9 1.861 1.412 +0.281 +0.649        1.027        0.793
+       fed_overlap/student_t_ar1 52      16.9 2.015 1.582 +0.343 +0.624        1.112        0.859
+fed_overlap/student_t_ar1_shared 52      16.9 1.944 1.528 +0.463 +0.650        1.073        0.829
+                           nyfed 52      16.9 1.813 1.361 +0.313 +0.666        1.000        0.773
+                             ar2 52      16.9 2.346 1.656 +0.341 +0.313        1.294        1.000
+                            mean 52      16.9 2.614 1.702 +0.902 -0.340        1.442        1.114
+
+============================================================================================
+2. IO CONTRO LA FED  (diff = mio - fed; quota_meglio = trimestri in cui sbaglio meno)
+============================================================================================
+                          metodo  n diff_media diff_sd corr_fed  RMSE RMSE_fed quota_meglio
+            fed_overlap/gaussian 52     -0.071   1.004   +0.878 1.933    1.813         0.40
+        fed_overlap/gaussian_ar1 52     +0.152   1.153   +0.843 2.115    1.813         0.46
+           fed_overlap/student_t 52     -0.032   0.917   +0.867 1.861    1.813         0.50
+       fed_overlap/student_t_ar1 52     +0.030   1.091   +0.878 2.015    1.813         0.42
+fed_overlap/student_t_ar1_shared 52     +0.150   0.964   +0.896 1.944    1.813         0.40
+                             ar2 52     +0.028   1.622   +0.365 2.346    1.813         0.52
+                            mean 52     +0.589   1.647   -0.267 2.614    1.813         0.42
+
+============================================================================================
+3. LA FED TRIMESTRE PER TRIMESTRE  (quanto vale il metro)
+============================================================================================
+trimestre realizzato   fed err_fed                     mio_migliore err_migliore                     mio_peggiore err_peggiore
+   2006Q4      +3.48 +1.78   -1.70             fed_overlap/gaussian        -0.95 fed_overlap/student_t_ar1_shared        -1.70
+   2007Q1      +1.21 +2.40   +1.19         fed_overlap/gaussian_ar1        +2.18        fed_overlap/student_t_ar1        +2.57
+   2007Q2      +2.47 +3.25   +0.78            fed_overlap/student_t        +1.20 fed_overlap/student_t_ar1_shared        +1.73
+   2007Q3      +2.32 +1.99   -0.33            fed_overlap/student_t        +0.05         fed_overlap/gaussian_ar1        -0.42
+   2007Q4      +2.54 +1.49   -1.05             fed_overlap/gaussian        +0.06         fed_overlap/gaussian_ar1        -0.21
+   2008Q1      -1.70 +1.43   +3.13         fed_overlap/gaussian_ar1        +3.11 fed_overlap/student_t_ar1_shared        +3.30
+   2008Q2      +2.40 +1.99   -0.41 fed_overlap/student_t_ar1_shared        -2.45             fed_overlap/gaussian        -3.00
+   2008Q3      -2.08 -0.52   +1.56 fed_overlap/student_t_ar1_shared        -0.08         fed_overlap/gaussian_ar1        -0.66
+   2008Q4      -8.47 -3.47   +5.00 fed_overlap/student_t_ar1_shared        +5.30         fed_overlap/gaussian_ar1        +7.60
+   2009Q1      -4.46 -3.57   +0.89            fed_overlap/student_t        -0.62         fed_overlap/gaussian_ar1        -2.65
+   2009Q2      -0.71 +0.04   +0.75            fed_overlap/student_t        -0.59         fed_overlap/gaussian_ar1        -2.00
+   2009Q3      +1.41 +5.20   +3.79            fed_overlap/student_t        +3.00        fed_overlap/student_t_ar1        +3.85
+   2009Q4      +4.39 +4.32   -0.07            fed_overlap/student_t        -0.04 fed_overlap/student_t_ar1_shared        +0.30
+   2010Q1      +1.95 +3.98   +2.03 fed_overlap/student_t_ar1_shared        +2.63             fed_overlap/gaussian        +3.04
+   2010Q2      +3.93 +4.96   +1.03            fed_overlap/student_t        +0.39 fed_overlap/student_t_ar1_shared        +1.23
+   2010Q3      +3.12 +2.27   -0.85 fed_overlap/student_t_ar1_shared        +0.06             fed_overlap/gaussian        +0.79
+   2010Q4      +2.12 +2.90   +0.78            fed_overlap/student_t        +0.29         fed_overlap/gaussian_ar1        +0.86
+   2011Q1      -0.95 +4.37   +5.32            fed_overlap/student_t        +3.28         fed_overlap/gaussian_ar1        +4.08
+   2011Q2      +2.73 +3.17   +0.44        fed_overlap/student_t_ar1        +0.02            fed_overlap/student_t        -0.74
+   2011Q3      -0.09 +2.09   +2.18 fed_overlap/student_t_ar1_shared        +3.22             fed_overlap/gaussian        +3.75
+   2011Q4      +4.57 +3.22   -1.35        fed_overlap/student_t_ar1        -0.80 fed_overlap/student_t_ar1_shared        -1.14
+   2012Q1      +3.40 +3.28   -0.12             fed_overlap/gaussian        +0.03 fed_overlap/student_t_ar1_shared        -0.65
+   2012Q2      +1.80 +2.88   +1.08             fed_overlap/gaussian        +1.10 fed_overlap/student_t_ar1_shared        +1.44
+   2012Q3      +0.58 +1.64   +1.06 fed_overlap/student_t_ar1_shared        +1.26            fed_overlap/student_t        +1.73
+   2012Q4      +0.46 +2.66   +2.20 fed_overlap/student_t_ar1_shared        +2.08            fed_overlap/student_t        +2.27
+   2013Q1      +4.01 +3.83   -0.18            fed_overlap/student_t        -0.95 fed_overlap/student_t_ar1_shared        -1.01
+   2013Q2      +1.07 +1.95   +0.88         fed_overlap/gaussian_ar1        +1.28            fed_overlap/student_t        +1.68
+   2013Q3      +3.45 +2.15   -1.30 fed_overlap/student_t_ar1_shared        -0.51             fed_overlap/gaussian        -0.89
+   2013Q4      +3.53 +3.42   -0.11            fed_overlap/student_t        -0.56        fed_overlap/student_t_ar1        -0.86
+   2014Q1      -1.37 +2.23   +3.60             fed_overlap/gaussian        +4.27 fed_overlap/student_t_ar1_shared        +4.61
+   2014Q2      +5.27 +3.07   -2.20 fed_overlap/student_t_ar1_shared        -0.80            fed_overlap/student_t        -1.44
+   2014Q3      +4.95 +2.20   -2.75            fed_overlap/student_t        -2.28        fed_overlap/student_t_ar1        -2.76
+   2014Q4      +2.04 +2.56   +0.52             fed_overlap/gaussian        +0.68         fed_overlap/gaussian_ar1        +1.07
+   2015Q1      +3.65 +0.64   -3.01 fed_overlap/student_t_ar1_shared        -2.80             fed_overlap/gaussian        -3.18
+   2015Q2      +2.50 +2.20   -0.30         fed_overlap/gaussian_ar1        -1.85        fed_overlap/student_t_ar1        -2.63
+   2015Q3      +1.61 +2.02   +0.41             fed_overlap/gaussian        +0.65         fed_overlap/gaussian_ar1        +1.63
+   2015Q4      +0.74 +1.42   +0.68            fed_overlap/student_t        -0.08         fed_overlap/gaussian_ar1        +0.45
+   2016Q1      +2.34 +0.70   -1.64         fed_overlap/gaussian_ar1        -0.36        fed_overlap/student_t_ar1        -1.18
+   2016Q2      +1.29 +2.17   +0.88             fed_overlap/gaussian        +0.31 fed_overlap/student_t_ar1_shared        +1.12
+   2016Q3      +2.87 +2.22   -0.65 fed_overlap/student_t_ar1_shared        +0.08             fed_overlap/gaussian        -0.52
+   2016Q4      +2.24 +2.02   -0.22         fed_overlap/gaussian_ar1        +0.08             fed_overlap/gaussian        -0.42
+   2017Q1      +1.96 +2.65   +0.69             fed_overlap/gaussian        -0.09 fed_overlap/student_t_ar1_shared        +0.90
+   2017Q2      +2.26 +2.04   -0.22            fed_overlap/student_t        +1.54         fed_overlap/gaussian_ar1        +2.48
+   2017Q3      +3.19 +1.60   -1.59 fed_overlap/student_t_ar1_shared        -1.03             fed_overlap/gaussian        -1.72
+   2017Q4      +4.58 +3.88   -0.70         fed_overlap/gaussian_ar1        +0.17            fed_overlap/student_t        -0.99
+   2018Q1      +3.29 +2.97   -0.32        fed_overlap/student_t_ar1        +0.11            fed_overlap/student_t        -0.93
+   2018Q2      +2.14 +2.78   +0.64            fed_overlap/student_t        +0.94         fed_overlap/gaussian_ar1        +2.00
+   2018Q3      +2.52 +2.18   -0.34            fed_overlap/student_t        +0.18         fed_overlap/gaussian_ar1        +1.02
+   2018Q4      +0.57 +2.57   +2.00            fed_overlap/student_t        +1.49        fed_overlap/student_t_ar1        +1.80
+   2019Q1      +2.52 +1.43   -1.09        fed_overlap/student_t_ar1        -1.57             fed_overlap/gaussian        -1.87
+   2019Q2      +3.38 +1.50   -1.88            fed_overlap/student_t        -2.03         fed_overlap/gaussian_ar1        -2.21
+   2019Q3      +4.76 +1.91   -2.85 fed_overlap/student_t_ar1_shared        -2.21             fed_overlap/gaussian        -2.68
+
+============================================================================================
+4. VERIFICA DELL'ALLINEAMENTO  (stessa_data False = si confrontano istanti diversi)
+============================================================================================
+trimestre  mia_as_of  mia_sett  fed_as_of  fed_sett rilascio_pil  scarto_gg  stessa_data
+   2006Q4 2007-01-26        17 2007-01-26        17   2007-01-28          0         True
+   2007Q1 2007-04-27        17 2007-04-27        17   2007-04-28          0         True
+   2007Q2 2007-07-27        17 2007-07-27        17   2007-07-28          0         True
+   2007Q3 2007-10-26        17 2007-10-26        17   2007-10-28          0         True
+   2007Q4 2008-01-25        17 2008-01-25        17   2008-01-28          0         True
+   2008Q1 2008-04-25        17 2008-04-25        17   2008-04-28          0         True
+   2008Q2 2008-07-25        17 2008-07-25        17   2008-07-28          0         True
+   2008Q3 2008-10-24        17 2008-10-24        17   2008-10-28          0         True
+   2008Q4 2009-01-23        17 2009-01-23        17   2009-01-28          0         True
+   2009Q1 2009-04-24        17 2009-04-24        17   2009-04-28          0         True
+   2009Q2 2009-07-24        17 2009-07-24        17   2009-07-28          0         True
+   2009Q3 2009-10-23        17 2009-10-23        17   2009-10-28          0         True
+   2009Q4 2010-01-22        17 2010-01-22        17   2010-01-28          0         True
+   2010Q1 2010-04-23        17 2010-04-23        17   2010-04-28          0         True
+   2010Q2 2010-07-23        17 2010-07-23        17   2010-07-28          0         True
+   2010Q3 2010-10-22        17 2010-10-22        17   2010-10-28          0         True
+   2010Q4 2011-01-21        17 2011-01-21        17   2011-01-28          0         True
+   2011Q1 2011-04-22        16 2011-04-22        16   2011-04-28          0         True
+   2011Q2 2011-07-22        17 2011-07-22        17   2011-07-28          0         True
+   2011Q3 2011-10-21        17 2011-10-21        17   2011-10-28          0         True
+   2011Q4 2012-01-27        17 2012-01-27        17   2012-01-28          0         True
+   2012Q1 2012-04-27        17 2012-04-27        17   2012-04-28          0         True
+   2012Q2 2012-07-27        17 2012-07-27        17   2012-07-28          0         True
+   2012Q3 2012-10-26        17 2012-10-26        17   2012-10-28          0         True
+   2012Q4 2013-01-25        17 2013-01-25        17   2013-01-28          0         True
+   2013Q1 2013-04-26        17 2013-04-26        17   2013-04-28          0         True
+   2013Q2 2013-07-26        17 2013-07-26        17   2013-07-28          0         True
+   2013Q3 2013-10-25        17 2013-10-25        17   2013-10-28          0         True
+   2013Q4 2014-01-24        17 2014-01-24        17   2014-01-28          0         True
+   2014Q1 2014-04-25        17 2014-04-25        17   2014-04-28          0         True
+   2014Q2 2014-07-25        17 2014-07-25        17   2014-07-28          0         True
+   2014Q3 2014-10-24        17 2014-10-24        17   2014-10-28          0         True
+   2014Q4 2015-01-23        17 2015-01-23        17   2015-01-28          0         True
+   2015Q1 2015-04-24        17 2015-04-24        17   2015-04-28          0         True
+   2015Q2 2015-07-24        17 2015-07-24        17   2015-07-28          0         True
+   2015Q3 2015-10-23        17 2015-10-23        17   2015-10-28          0         True
+   2015Q4 2016-01-22        17 2016-01-22        17   2016-01-28          0         True
+   2016Q1 2016-04-22        17 2016-04-22        17   2016-04-28          0         True
+   2016Q2 2016-07-22        17 2016-07-22        17   2016-07-28          0         True
+   2016Q3 2016-10-21        17 2016-10-21        17   2016-10-28          0         True
+   2016Q4 2017-01-27        17 2017-01-27        17   2017-01-28          0         True
+   2017Q1 2017-04-21        16 2017-04-21        16   2017-04-28          0         True
+   2017Q2 2017-07-21        16 2017-07-21        16   2017-07-28          0         True
+   2017Q3 2017-10-27        17 2017-10-27        17   2017-10-28          0         True
+   2017Q4 2018-01-26        17 2018-01-26        17   2018-01-28          0         True
+   2018Q1 2018-04-27        17 2018-04-27        17   2018-04-28          0         True
+   2018Q2 2018-07-27        17 2018-07-27        17   2018-07-28          0         True
+   2018Q3 2018-10-26        17 2018-10-26        17   2018-10-28          0         True
+   2018Q4 2019-01-25        17 2019-01-25        17   2019-01-28          0         True
+   2019Q1 2019-04-26        17 2019-04-26        17   2019-04-28          0         True
+   2019Q2 2019-07-26        17 2019-07-26        17   2019-07-28          0         True
+   2019Q3 2019-10-25        17 2019-10-25        17   2019-10-28          0         True
+
+============================================================================================
+5. COMPOSIZIONE DEL CAMPIONE  (cosa e' entrato e cosa no)
+============================================================================================
+trimestre  n_metodi  completo  allineato  spread_gg  tenuto                                         motivo
+   2006Q4         8      True       True          0    True                                               
+   2007Q1         8      True       True          0    True                                               
+   2007Q2         8      True       True          0    True                                               
+   2007Q3         8      True       True          0    True                                               
+   2007Q4         8      True       True          0    True                                               
+   2008Q1         8      True       True          0    True                                               
+   2008Q2         8      True       True          0    True                                               
+   2008Q3         8      True       True          0    True                                               
+   2008Q4         8      True       True          0    True                                               
+   2009Q1         8      True       True          0    True                                               
+   2009Q2         8      True       True          0    True                                               
+   2009Q3         8      True       True          0    True                                               
+   2009Q4         8      True       True          0    True                                               
+   2010Q1         8      True       True          0    True                                               
+   2010Q2         8      True       True          0    True                                               
+   2010Q3         8      True       True          0    True                                               
+   2010Q4         8      True       True          0    True                                               
+   2011Q1         8      True       True          0    True                                               
+   2011Q2         8      True       True          0    True                                               
+   2011Q3         8      True       True          0    True                                               
+   2011Q4         8      True       True          0    True                                               
+   2012Q1         8      True       True          0    True                                               
+   2012Q2         8      True       True          0    True                                               
+   2012Q3         8      True       True          0    True                                               
+   2012Q4         8      True       True          0    True                                               
+   2013Q1         8      True       True          0    True                                               
+   2013Q2         8      True       True          0    True                                               
+   2013Q3         8      True       True          0    True                                               
+   2013Q4         8      True       True          0    True                                               
+   2014Q1         8      True       True          0    True                                               
+   2014Q2         8      True       True          0    True                                               
+   2014Q3         8      True       True          0    True                                               
+   2014Q4         8      True       True          0    True                                               
+   2015Q1         8      True       True          0    True                                               
+   2015Q2         8      True       True          0    True                                               
+   2015Q3         8      True       True          0    True                                               
+   2015Q4         8      True       True          0    True                                               
+   2016Q1         8      True       True          0    True                                               
+   2016Q2         8      True       True          0    True                                               
+   2016Q3         8      True       True          0    True                                               
+   2016Q4         8      True       True          0    True                                               
+   2017Q1         8      True       True          0    True                                               
+   2017Q2         8      True       True          0    True                                               
+   2017Q3         8      True       True          0    True                                               
+   2017Q4         8      True       True          0    True                                               
+   2018Q1         8      True       True          0    True                                               
+   2018Q2         8      True       True          0    True                                               
+   2018Q3         8      True       True          0    True                                               
+   2018Q4         8      True       True          0    True                                               
+   2019Q1         8      True       True          0    True                                               
+   2019Q2         8      True       True          0    True                                               
+   2019Q3         8      True       True          0    True                                               
+   2019Q4         8      True      False         28   False stime finali fuori dalla settimana di rilascio
+   2020Q1         8      True      False        119   False stime finali fuori dalla settimana di rilascio
+
+====================================================================================
+SPEC fed_overlap  —  FINESTRA 2007-2021
+====================================================================================
+IO CONTRO LA NEW YORK FED — ultima stima prima del rilascio del PIL
+errore in punti BEA (nowcast - realizzato), realizzato = GDPC1 versione corrente
+trimestri nel campione (59): 2006Q4, 2007Q1, 2007Q2, 2007Q3, 2007Q4, 2008Q1, 2008Q2, 2008Q3, 2008Q4, 2009Q1, 2009Q2, 2009Q3, 2009Q4, 2010Q1, 2010Q2, 2010Q3, 2010Q4, 2011Q1, 2011Q2, 2011Q3, 2011Q4, 2012Q1, 2012Q2, 2012Q3, 2012Q4, 2013Q1, 2013Q2, 2013Q3, 2013Q4, 2014Q1, 2014Q2, 2014Q3, 2014Q4, 2015Q1, 2015Q2, 2015Q3, 2015Q4, 2016Q1, 2016Q2, 2016Q3, 2016Q4, 2017Q1, 2017Q2, 2017Q3, 2017Q4, 2018Q1, 2018Q2, 2018Q3, 2018Q4, 2019Q1, 2019Q2, 2019Q3, 2019Q4, 2020Q1, 2020Q2, 2020Q3, 2020Q4, 2021Q1, 2021Q2
+esclusi: 2021Q3 (stime finali fuori dalla settimana di rilascio); 2021Q4 (metodi mancanti); 2022Q1 (metodi mancanti)
+metodi (8): fed_overlap/gaussian, fed_overlap/gaussian_ar1, fed_overlap/student_t, fed_overlap/student_t_ar1, fed_overlap/student_t_ar1_shared, nyfed, ar2, mean
+
+AVVERTENZA  campione corto e tutto dentro la Grande Recessione: sono
+differenze descrittive, non risultati con un errore standard.  I valori
+Fed fino a 2015Q4 sono ricostruzioni su dati real-time, non pubblicazioni
+avvenute davvero; il mio esercizio e' pseudo-real-time.  Confronto equo
+fra due pseudo-real-time, non fra un pseudo e un vero.
+
+============================================================================================
+1. ACCURATEZZA contro il realizzato  (RMSE_rel_fed < 1 batte la NY Fed)
+============================================================================================
+                          metodo  n settimana  RMSE   MAE   Bias   corr RMSE_rel_fed RMSE_rel_ar2
+            fed_overlap/gaussian 59      16.9 3.145 2.012 +0.200 +0.916        0.829        0.366
+        fed_overlap/gaussian_ar1 59      16.9 3.691 2.188 +0.565 +0.872        0.973        0.430
+           fed_overlap/student_t 59      16.9 3.710 2.059 +0.145 +0.902        0.978        0.432
+       fed_overlap/student_t_ar1 59      16.9 3.194 2.040 +0.376 +0.908        0.842        0.372
+fed_overlap/student_t_ar1_shared 59      16.9 3.540 2.065 +0.425 +0.896        0.933        0.412
+                           nyfed 59      16.9 3.794 2.015 +0.126 +0.903        1.000        0.442
+                             ar2 59      16.9 8.588 3.425 -0.401 -0.511        2.264        1.000
+                            mean 59      16.9 6.433 2.865 +0.732 -0.272        1.696        0.749
+
+============================================================================================
+2. IO CONTRO LA FED  (diff = mio - fed; quota_meglio = trimestri in cui sbaglio meno)
+============================================================================================
+                          metodo  n diff_media diff_sd corr_fed  RMSE RMSE_fed quota_meglio
+            fed_overlap/gaussian 59     +0.075   1.739   +0.911 3.145    3.794         0.44
+        fed_overlap/gaussian_ar1 59     +0.440   1.701   +0.885 3.691    3.794         0.46
+           fed_overlap/student_t 59     +0.019   1.229   +0.926 3.710    3.794         0.51
+       fed_overlap/student_t_ar1 59     +0.251   1.761   +0.912 3.194    3.794         0.44
+fed_overlap/student_t_ar1_shared 59     +0.300   1.165   +0.951 3.540    3.794         0.42
+                             ar2 59     -0.526   5.314   -0.323 8.588    3.794         0.47
+                            mean 59     +0.607   3.162   -0.215 6.433    3.794         0.39
+
+============================================================================================
+3. LA FED TRIMESTRE PER TRIMESTRE  (quanto vale il metro)
+============================================================================================
+trimestre realizzato    fed err_fed                     mio_migliore err_migliore                     mio_peggiore err_peggiore
+   2006Q4      +3.48  +1.78   -1.70             fed_overlap/gaussian        -0.95 fed_overlap/student_t_ar1_shared        -1.70
+   2007Q1      +1.21  +2.40   +1.19         fed_overlap/gaussian_ar1        +2.18        fed_overlap/student_t_ar1        +2.57
+   2007Q2      +2.47  +3.25   +0.78            fed_overlap/student_t        +1.20 fed_overlap/student_t_ar1_shared        +1.73
+   2007Q3      +2.32  +1.99   -0.33            fed_overlap/student_t        +0.05         fed_overlap/gaussian_ar1        -0.42
+   2007Q4      +2.54  +1.49   -1.05             fed_overlap/gaussian        +0.06         fed_overlap/gaussian_ar1        -0.21
+   2008Q1      -1.70  +1.43   +3.13         fed_overlap/gaussian_ar1        +3.11 fed_overlap/student_t_ar1_shared        +3.30
+   2008Q2      +2.40  +1.99   -0.41 fed_overlap/student_t_ar1_shared        -2.45             fed_overlap/gaussian        -3.00
+   2008Q3      -2.08  -0.52   +1.56 fed_overlap/student_t_ar1_shared        -0.08         fed_overlap/gaussian_ar1        -0.66
+   2008Q4      -8.47  -3.47   +5.00 fed_overlap/student_t_ar1_shared        +5.30         fed_overlap/gaussian_ar1        +7.60
+   2009Q1      -4.46  -3.57   +0.89            fed_overlap/student_t        -0.62         fed_overlap/gaussian_ar1        -2.65
+   2009Q2      -0.71  +0.04   +0.75            fed_overlap/student_t        -0.59         fed_overlap/gaussian_ar1        -2.00
+   2009Q3      +1.41  +5.20   +3.79            fed_overlap/student_t        +3.00        fed_overlap/student_t_ar1        +3.85
+   2009Q4      +4.39  +4.32   -0.07            fed_overlap/student_t        -0.04 fed_overlap/student_t_ar1_shared        +0.30
+   2010Q1      +1.95  +3.98   +2.03 fed_overlap/student_t_ar1_shared        +2.63             fed_overlap/gaussian        +3.04
+   2010Q2      +3.93  +4.96   +1.03            fed_overlap/student_t        +0.39 fed_overlap/student_t_ar1_shared        +1.23
+   2010Q3      +3.12  +2.27   -0.85 fed_overlap/student_t_ar1_shared        +0.06             fed_overlap/gaussian        +0.79
+   2010Q4      +2.12  +2.90   +0.78            fed_overlap/student_t        +0.29         fed_overlap/gaussian_ar1        +0.86
+   2011Q1      -0.95  +4.37   +5.32            fed_overlap/student_t        +3.28         fed_overlap/gaussian_ar1        +4.08
+   2011Q2      +2.73  +3.17   +0.44        fed_overlap/student_t_ar1        +0.02            fed_overlap/student_t        -0.74
+   2011Q3      -0.09  +2.09   +2.18 fed_overlap/student_t_ar1_shared        +3.22             fed_overlap/gaussian        +3.75
+   2011Q4      +4.57  +3.22   -1.35        fed_overlap/student_t_ar1        -0.80 fed_overlap/student_t_ar1_shared        -1.14
+   2012Q1      +3.40  +3.28   -0.12             fed_overlap/gaussian        +0.03 fed_overlap/student_t_ar1_shared        -0.65
+   2012Q2      +1.80  +2.88   +1.08             fed_overlap/gaussian        +1.10 fed_overlap/student_t_ar1_shared        +1.44
+   2012Q3      +0.58  +1.64   +1.06 fed_overlap/student_t_ar1_shared        +1.26            fed_overlap/student_t        +1.73
+   2012Q4      +0.46  +2.66   +2.20 fed_overlap/student_t_ar1_shared        +2.08            fed_overlap/student_t        +2.27
+   2013Q1      +4.01  +3.83   -0.18            fed_overlap/student_t        -0.95 fed_overlap/student_t_ar1_shared        -1.01
+   2013Q2      +1.07  +1.95   +0.88         fed_overlap/gaussian_ar1        +1.28            fed_overlap/student_t        +1.68
+   2013Q3      +3.45  +2.15   -1.30 fed_overlap/student_t_ar1_shared        -0.51             fed_overlap/gaussian        -0.89
+   2013Q4      +3.53  +3.42   -0.11            fed_overlap/student_t        -0.56        fed_overlap/student_t_ar1        -0.86
+   2014Q1      -1.37  +2.23   +3.60             fed_overlap/gaussian        +4.27 fed_overlap/student_t_ar1_shared        +4.61
+   2014Q2      +5.27  +3.07   -2.20 fed_overlap/student_t_ar1_shared        -0.80            fed_overlap/student_t        -1.44
+   2014Q3      +4.95  +2.20   -2.75            fed_overlap/student_t        -2.28        fed_overlap/student_t_ar1        -2.76
+   2014Q4      +2.04  +2.56   +0.52             fed_overlap/gaussian        +0.68         fed_overlap/gaussian_ar1        +1.07
+   2015Q1      +3.65  +0.64   -3.01 fed_overlap/student_t_ar1_shared        -2.80             fed_overlap/gaussian        -3.18
+   2015Q2      +2.50  +2.20   -0.30         fed_overlap/gaussian_ar1        -1.85        fed_overlap/student_t_ar1        -2.63
+   2015Q3      +1.61  +2.02   +0.41             fed_overlap/gaussian        +0.65         fed_overlap/gaussian_ar1        +1.63
+   2015Q4      +0.74  +1.42   +0.68            fed_overlap/student_t        -0.08         fed_overlap/gaussian_ar1        +0.45
+   2016Q1      +2.34  +0.70   -1.64         fed_overlap/gaussian_ar1        -0.36        fed_overlap/student_t_ar1        -1.18
+   2016Q2      +1.29  +2.17   +0.88             fed_overlap/gaussian        +0.31 fed_overlap/student_t_ar1_shared        +1.12
+   2016Q3      +2.87  +2.22   -0.65 fed_overlap/student_t_ar1_shared        +0.08             fed_overlap/gaussian        -0.52
+   2016Q4      +2.24  +2.02   -0.22         fed_overlap/gaussian_ar1        +0.08             fed_overlap/gaussian        -0.42
+   2017Q1      +1.96  +2.65   +0.69             fed_overlap/gaussian        -0.09 fed_overlap/student_t_ar1_shared        +0.90
+   2017Q2      +2.26  +2.04   -0.22            fed_overlap/student_t        +1.54         fed_overlap/gaussian_ar1        +2.48
+   2017Q3      +3.19  +1.60   -1.59 fed_overlap/student_t_ar1_shared        -1.03             fed_overlap/gaussian        -1.72
+   2017Q4      +4.58  +3.88   -0.70         fed_overlap/gaussian_ar1        +0.17            fed_overlap/student_t        -0.99
+   2018Q1      +3.29  +2.97   -0.32        fed_overlap/student_t_ar1        +0.11            fed_overlap/student_t        -0.93
+   2018Q2      +2.14  +2.78   +0.64            fed_overlap/student_t        +0.94         fed_overlap/gaussian_ar1        +2.00
+   2018Q3      +2.52  +2.18   -0.34            fed_overlap/student_t        +0.18         fed_overlap/gaussian_ar1        +1.02
+   2018Q4      +0.57  +2.57   +2.00            fed_overlap/student_t        +1.49        fed_overlap/student_t_ar1        +1.80
+   2019Q1      +2.52  +1.43   -1.09        fed_overlap/student_t_ar1        -1.57             fed_overlap/gaussian        -1.87
+   2019Q2      +3.38  +1.50   -1.88            fed_overlap/student_t        -2.03         fed_overlap/gaussian_ar1        -2.21
+   2019Q3      +4.76  +1.91   -2.85 fed_overlap/student_t_ar1_shared        -2.21             fed_overlap/gaussian        -2.68
+   2019Q4      +2.76  +1.22   -1.54         fed_overlap/gaussian_ar1        -1.02             fed_overlap/gaussian        -1.31
+   2020Q1      -5.16  -0.40   +4.76             fed_overlap/gaussian        +5.23 fed_overlap/student_t_ar1_shared        +5.89
+   2020Q2     -27.98 -14.27  +13.71             fed_overlap/gaussian       +13.63         fed_overlap/gaussian_ar1       +17.19
+   2020Q3     +34.86 +13.75  -21.11        fed_overlap/student_t_ar1       -11.46            fed_overlap/student_t       -18.39
+   2020Q4      +4.61  +2.58   -2.03            fed_overlap/student_t        +0.22         fed_overlap/gaussian_ar1        +3.68
+   2021Q1      +5.70  +6.86   +1.16 fed_overlap/student_t_ar1_shared        -0.03             fed_overlap/gaussian        -4.50
+   2021Q2      +6.98  +3.16   -3.82         fed_overlap/gaussian_ar1        +0.37            fed_overlap/student_t        -3.38
+
+============================================================================================
+4. VERIFICA DELL'ALLINEAMENTO  (stessa_data False = si confrontano istanti diversi)
+============================================================================================
+trimestre  mia_as_of  mia_sett  fed_as_of  fed_sett rilascio_pil  scarto_gg  stessa_data
+   2006Q4 2007-01-26        17 2007-01-26        17   2007-01-28          0         True
+   2007Q1 2007-04-27        17 2007-04-27        17   2007-04-28          0         True
+   2007Q2 2007-07-27        17 2007-07-27        17   2007-07-28          0         True
+   2007Q3 2007-10-26        17 2007-10-26        17   2007-10-28          0         True
+   2007Q4 2008-01-25        17 2008-01-25        17   2008-01-28          0         True
+   2008Q1 2008-04-25        17 2008-04-25        17   2008-04-28          0         True
+   2008Q2 2008-07-25        17 2008-07-25        17   2008-07-28          0         True
+   2008Q3 2008-10-24        17 2008-10-24        17   2008-10-28          0         True
+   2008Q4 2009-01-23        17 2009-01-23        17   2009-01-28          0         True
+   2009Q1 2009-04-24        17 2009-04-24        17   2009-04-28          0         True
+   2009Q2 2009-07-24        17 2009-07-24        17   2009-07-28          0         True
+   2009Q3 2009-10-23        17 2009-10-23        17   2009-10-28          0         True
+   2009Q4 2010-01-22        17 2010-01-22        17   2010-01-28          0         True
+   2010Q1 2010-04-23        17 2010-04-23        17   2010-04-28          0         True
+   2010Q2 2010-07-23        17 2010-07-23        17   2010-07-28          0         True
+   2010Q3 2010-10-22        17 2010-10-22        17   2010-10-28          0         True
+   2010Q4 2011-01-21        17 2011-01-21        17   2011-01-28          0         True
+   2011Q1 2011-04-22        16 2011-04-22        16   2011-04-28          0         True
+   2011Q2 2011-07-22        17 2011-07-22        17   2011-07-28          0         True
+   2011Q3 2011-10-21        17 2011-10-21        17   2011-10-28          0         True
+   2011Q4 2012-01-27        17 2012-01-27        17   2012-01-28          0         True
+   2012Q1 2012-04-27        17 2012-04-27        17   2012-04-28          0         True
+   2012Q2 2012-07-27        17 2012-07-27        17   2012-07-28          0         True
+   2012Q3 2012-10-26        17 2012-10-26        17   2012-10-28          0         True
+   2012Q4 2013-01-25        17 2013-01-25        17   2013-01-28          0         True
+   2013Q1 2013-04-26        17 2013-04-26        17   2013-04-28          0         True
+   2013Q2 2013-07-26        17 2013-07-26        17   2013-07-28          0         True
+   2013Q3 2013-10-25        17 2013-10-25        17   2013-10-28          0         True
+   2013Q4 2014-01-24        17 2014-01-24        17   2014-01-28          0         True
+   2014Q1 2014-04-25        17 2014-04-25        17   2014-04-28          0         True
+   2014Q2 2014-07-25        17 2014-07-25        17   2014-07-28          0         True
+   2014Q3 2014-10-24        17 2014-10-24        17   2014-10-28          0         True
+   2014Q4 2015-01-23        17 2015-01-23        17   2015-01-28          0         True
+   2015Q1 2015-04-24        17 2015-04-24        17   2015-04-28          0         True
+   2015Q2 2015-07-24        17 2015-07-24        17   2015-07-28          0         True
+   2015Q3 2015-10-23        17 2015-10-23        17   2015-10-28          0         True
+   2015Q4 2016-01-22        17 2016-01-22        17   2016-01-28          0         True
+   2016Q1 2016-04-22        17 2016-04-22        17   2016-04-28          0         True
+   2016Q2 2016-07-22        17 2016-07-22        17   2016-07-28          0         True
+   2016Q3 2016-10-21        17 2016-10-21        17   2016-10-28          0         True
+   2016Q4 2017-01-27        17 2017-01-27        17   2017-01-28          0         True
+   2017Q1 2017-04-21        16 2017-04-21        16   2017-04-28          0         True
+   2017Q2 2017-07-21        16 2017-07-21        16   2017-07-28          0         True
+   2017Q3 2017-10-27        17 2017-10-27        17   2017-10-28          0         True
+   2017Q4 2018-01-26        17 2018-01-26        17   2018-01-28          0         True
+   2018Q1 2018-04-27        17 2018-04-27        17   2018-04-28          0         True
+   2018Q2 2018-07-27        17 2018-07-27        17   2018-07-28          0         True
+   2018Q3 2018-10-26        17 2018-10-26        17   2018-10-28          0         True
+   2018Q4 2019-01-25        17 2019-01-25        17   2019-01-28          0         True
+   2019Q1 2019-04-26        17 2019-04-26        17   2019-04-28          0         True
+   2019Q2 2019-07-26        17 2019-07-26        17   2019-07-28          0         True
+   2019Q3 2019-10-25        17 2019-10-25        17   2019-10-28          0         True
+   2019Q4 2020-01-24        17 2020-01-24        17   2020-01-28          0         True
+   2020Q1 2020-04-24        17 2020-04-24        17   2020-04-28          0         True
+   2020Q2 2020-07-24        17 2020-07-24        17   2020-07-28          0         True
+   2020Q3 2020-10-23        17 2020-10-23        17   2020-10-28          0         True
+   2020Q4 2021-01-22        17 2021-01-22        17   2021-01-28          0         True
+   2021Q1 2021-04-23        17 2021-04-23        17   2021-04-28          0         True
+   2021Q2 2021-07-23        17 2021-07-23        17   2021-07-28          0         True
+
+============================================================================================
+5. COMPOSIZIONE DEL CAMPIONE  (cosa e' entrato e cosa no)
+============================================================================================
+trimestre  n_metodi  completo  allineato  spread_gg  tenuto                                         motivo
+   2006Q4         8      True       True          0    True                                               
+   2007Q1         8      True       True          0    True                                               
+   2007Q2         8      True       True          0    True                                               
+   2007Q3         8      True       True          0    True                                               
+   2007Q4         8      True       True          0    True                                               
+   2008Q1         8      True       True          0    True                                               
+   2008Q2         8      True       True          0    True                                               
+   2008Q3         8      True       True          0    True                                               
+   2008Q4         8      True       True          0    True                                               
+   2009Q1         8      True       True          0    True                                               
+   2009Q2         8      True       True          0    True                                               
+   2009Q3         8      True       True          0    True                                               
+   2009Q4         8      True       True          0    True                                               
+   2010Q1         8      True       True          0    True                                               
+   2010Q2         8      True       True          0    True                                               
+   2010Q3         8      True       True          0    True                                               
+   2010Q4         8      True       True          0    True                                               
+   2011Q1         8      True       True          0    True                                               
+   2011Q2         8      True       True          0    True                                               
+   2011Q3         8      True       True          0    True                                               
+   2011Q4         8      True       True          0    True                                               
+   2012Q1         8      True       True          0    True                                               
+   2012Q2         8      True       True          0    True                                               
+   2012Q3         8      True       True          0    True                                               
+   2012Q4         8      True       True          0    True                                               
+   2013Q1         8      True       True          0    True                                               
+   2013Q2         8      True       True          0    True                                               
+   2013Q3         8      True       True          0    True                                               
+   2013Q4         8      True       True          0    True                                               
+   2014Q1         8      True       True          0    True                                               
+   2014Q2         8      True       True          0    True                                               
+   2014Q3         8      True       True          0    True                                               
+   2014Q4         8      True       True          0    True                                               
+   2015Q1         8      True       True          0    True                                               
+   2015Q2         8      True       True          0    True                                               
+   2015Q3         8      True       True          0    True                                               
+   2015Q4         8      True       True          0    True                                               
+   2016Q1         8      True       True          0    True                                               
+   2016Q2         8      True       True          0    True                                               
+   2016Q3         8      True       True          0    True                                               
+   2016Q4         8      True       True          0    True                                               
+   2017Q1         8      True       True          0    True                                               
+   2017Q2         8      True       True          0    True                                               
+   2017Q3         8      True       True          0    True                                               
+   2017Q4         8      True       True          0    True                                               
+   2018Q1         8      True       True          0    True                                               
+   2018Q2         8      True       True          0    True                                               
+   2018Q3         8      True       True          0    True                                               
+   2018Q4         8      True       True          0    True                                               
+   2019Q1         8      True       True          0    True                                               
+   2019Q2         8      True       True          0    True                                               
+   2019Q3         8      True       True          0    True                                               
+   2019Q4         8      True       True          0    True                                               
+   2020Q1         8      True       True          0    True                                               
+   2020Q2         8      True       True          0    True                                               
+   2020Q3         8      True       True          0    True                                               
+   2020Q4         8      True       True          0    True                                               
+   2021Q1         8      True       True          0    True                                               
+   2021Q2         8      True       True          0    True                                               
+   2021Q3         8      True      False         56   False stime finali fuori dalla settimana di rilascio
+   2021Q4         7     False      False          0   False                                metodi mancanti
+   2022Q1         7     False      False          0   False                                metodi mancanti
+
+====================================================================================
+SPEC fed_overlap  —  FINESTRA 2007-2025
+====================================================================================
+IO CONTRO LA NEW YORK FED — ultima stima prima del rilascio del PIL
+errore in punti BEA (nowcast - realizzato), realizzato = GDPC1 versione corrente
+trimestri nel campione (70): 2006Q4, 2007Q1, 2007Q2, 2007Q3, 2007Q4, 2008Q1, 2008Q2, 2008Q3, 2008Q4, 2009Q1, 2009Q2, 2009Q3, 2009Q4, 2010Q1, 2010Q2, 2010Q3, 2010Q4, 2011Q1, 2011Q2, 2011Q3, 2011Q4, 2012Q1, 2012Q2, 2012Q3, 2012Q4, 2013Q1, 2013Q2, 2013Q3, 2013Q4, 2014Q1, 2014Q2, 2014Q3, 2014Q4, 2015Q1, 2015Q2, 2015Q3, 2015Q4, 2016Q1, 2016Q2, 2016Q3, 2016Q4, 2017Q1, 2017Q2, 2017Q3, 2017Q4, 2018Q1, 2018Q2, 2018Q3, 2018Q4, 2019Q1, 2019Q2, 2019Q3, 2019Q4, 2020Q1, 2020Q2, 2020Q3, 2020Q4, 2021Q1, 2021Q2, 2023Q1, 2023Q2, 2023Q3, 2023Q4, 2024Q1, 2024Q2, 2024Q3, 2024Q4, 2025Q1, 2025Q2, 2025Q3
+esclusi: 2021Q3 (stime finali fuori dalla settimana di rilascio); 2021Q4 (metodi mancanti); 2022Q1 (metodi mancanti); 2022Q2 (metodi mancanti); 2022Q3 (metodi mancanti); 2022Q4 (metodi mancanti); 2025Q4 (stime finali fuori dalla settimana di rilascio); 2026Q1 (stime finali fuori dalla settimana di rilascio)
+metodi (8): fed_overlap/gaussian, fed_overlap/gaussian_ar1, fed_overlap/student_t, fed_overlap/student_t_ar1, fed_overlap/student_t_ar1_shared, nyfed, ar2, mean
+
+AVVERTENZA  campione corto e tutto dentro la Grande Recessione: sono
+differenze descrittive, non risultati con un errore standard.  I valori
+Fed fino a 2015Q4 sono ricostruzioni su dati real-time, non pubblicazioni
+avvenute davvero; il mio esercizio e' pseudo-real-time.  Confronto equo
+fra due pseudo-real-time, non fra un pseudo e un vero.
+
+============================================================================================
+1. ACCURATEZZA contro il realizzato  (RMSE_rel_fed < 1 batte la NY Fed)
+============================================================================================
+                          metodo  n settimana  RMSE   MAE   Bias   corr RMSE_rel_fed RMSE_rel_ar2
+            fed_overlap/gaussian 70      16.9 2.986 1.903 +0.106 +0.904        0.841        0.378
+        fed_overlap/gaussian_ar1 70      16.9 3.477 2.072 +0.394 +0.857        0.979        0.440
+           fed_overlap/student_t 70      16.9 3.481 1.940 +0.059 +0.892        0.980        0.440
+       fed_overlap/student_t_ar1 70      16.9 3.042 1.946 +0.239 +0.894        0.856        0.385
+fed_overlap/student_t_ar1_shared 70      16.9 3.340 1.963 +0.277 +0.883        0.940        0.422
+                           nyfed 70      16.9 3.552 1.946 +0.012 +0.894        1.000        0.449
+                             ar2 70      16.9 7.908 3.079 -0.364 -0.499        2.226        1.000
+                            mean 70      16.9 5.937 2.612 +0.592 -0.274        1.672        0.751
+
+============================================================================================
+2. IO CONTRO LA FED  (diff = mio - fed; quota_meglio = trimestri in cui sbaglio meno)
+============================================================================================
+                          metodo  n diff_media diff_sd corr_fed  RMSE RMSE_fed quota_meglio
+            fed_overlap/gaussian 70     +0.094   1.667   +0.902 2.986    3.552         0.49
+        fed_overlap/gaussian_ar1 70     +0.382   1.630   +0.875 3.477    3.552         0.49
+           fed_overlap/student_t 70     +0.047   1.193   +0.918 3.481    3.552         0.54
+       fed_overlap/student_t_ar1 70     +0.227   1.694   +0.902 3.042    3.552         0.47
+fed_overlap/student_t_ar1_shared 70     +0.265   1.155   +0.941 3.340    3.552         0.44
+                             ar2 70     -0.376   4.891   -0.320 7.908    3.552         0.50
+                            mean 70     +0.580   2.906   -0.206 5.937    3.552         0.43
+
+============================================================================================
+3. LA FED TRIMESTRE PER TRIMESTRE  (quanto vale il metro)
+============================================================================================
+trimestre realizzato    fed err_fed                     mio_migliore err_migliore                     mio_peggiore err_peggiore
+   2006Q4      +3.48  +1.78   -1.70             fed_overlap/gaussian        -0.95 fed_overlap/student_t_ar1_shared        -1.70
+   2007Q1      +1.21  +2.40   +1.19         fed_overlap/gaussian_ar1        +2.18        fed_overlap/student_t_ar1        +2.57
+   2007Q2      +2.47  +3.25   +0.78            fed_overlap/student_t        +1.20 fed_overlap/student_t_ar1_shared        +1.73
+   2007Q3      +2.32  +1.99   -0.33            fed_overlap/student_t        +0.05         fed_overlap/gaussian_ar1        -0.42
+   2007Q4      +2.54  +1.49   -1.05             fed_overlap/gaussian        +0.06         fed_overlap/gaussian_ar1        -0.21
+   2008Q1      -1.70  +1.43   +3.13         fed_overlap/gaussian_ar1        +3.11 fed_overlap/student_t_ar1_shared        +3.30
+   2008Q2      +2.40  +1.99   -0.41 fed_overlap/student_t_ar1_shared        -2.45             fed_overlap/gaussian        -3.00
+   2008Q3      -2.08  -0.52   +1.56 fed_overlap/student_t_ar1_shared        -0.08         fed_overlap/gaussian_ar1        -0.66
+   2008Q4      -8.47  -3.47   +5.00 fed_overlap/student_t_ar1_shared        +5.30         fed_overlap/gaussian_ar1        +7.60
+   2009Q1      -4.46  -3.57   +0.89            fed_overlap/student_t        -0.62         fed_overlap/gaussian_ar1        -2.65
+   2009Q2      -0.71  +0.04   +0.75            fed_overlap/student_t        -0.59         fed_overlap/gaussian_ar1        -2.00
+   2009Q3      +1.41  +5.20   +3.79            fed_overlap/student_t        +3.00        fed_overlap/student_t_ar1        +3.85
+   2009Q4      +4.39  +4.32   -0.07            fed_overlap/student_t        -0.04 fed_overlap/student_t_ar1_shared        +0.30
+   2010Q1      +1.95  +3.98   +2.03 fed_overlap/student_t_ar1_shared        +2.63             fed_overlap/gaussian        +3.04
+   2010Q2      +3.93  +4.96   +1.03            fed_overlap/student_t        +0.39 fed_overlap/student_t_ar1_shared        +1.23
+   2010Q3      +3.12  +2.27   -0.85 fed_overlap/student_t_ar1_shared        +0.06             fed_overlap/gaussian        +0.79
+   2010Q4      +2.12  +2.90   +0.78            fed_overlap/student_t        +0.29         fed_overlap/gaussian_ar1        +0.86
+   2011Q1      -0.95  +4.37   +5.32            fed_overlap/student_t        +3.28         fed_overlap/gaussian_ar1        +4.08
+   2011Q2      +2.73  +3.17   +0.44        fed_overlap/student_t_ar1        +0.02            fed_overlap/student_t        -0.74
+   2011Q3      -0.09  +2.09   +2.18 fed_overlap/student_t_ar1_shared        +3.22             fed_overlap/gaussian        +3.75
+   2011Q4      +4.57  +3.22   -1.35        fed_overlap/student_t_ar1        -0.80 fed_overlap/student_t_ar1_shared        -1.14
+   2012Q1      +3.40  +3.28   -0.12             fed_overlap/gaussian        +0.03 fed_overlap/student_t_ar1_shared        -0.65
+   2012Q2      +1.80  +2.88   +1.08             fed_overlap/gaussian        +1.10 fed_overlap/student_t_ar1_shared        +1.44
+   2012Q3      +0.58  +1.64   +1.06 fed_overlap/student_t_ar1_shared        +1.26            fed_overlap/student_t        +1.73
+   2012Q4      +0.46  +2.66   +2.20 fed_overlap/student_t_ar1_shared        +2.08            fed_overlap/student_t        +2.27
+   2013Q1      +4.01  +3.83   -0.18            fed_overlap/student_t        -0.95 fed_overlap/student_t_ar1_shared        -1.01
+   2013Q2      +1.07  +1.95   +0.88         fed_overlap/gaussian_ar1        +1.28            fed_overlap/student_t        +1.68
+   2013Q3      +3.45  +2.15   -1.30 fed_overlap/student_t_ar1_shared        -0.51             fed_overlap/gaussian        -0.89
+   2013Q4      +3.53  +3.42   -0.11            fed_overlap/student_t        -0.56        fed_overlap/student_t_ar1        -0.86
+   2014Q1      -1.37  +2.23   +3.60             fed_overlap/gaussian        +4.27 fed_overlap/student_t_ar1_shared        +4.61
+   2014Q2      +5.27  +3.07   -2.20 fed_overlap/student_t_ar1_shared        -0.80            fed_overlap/student_t        -1.44
+   2014Q3      +4.95  +2.20   -2.75            fed_overlap/student_t        -2.28        fed_overlap/student_t_ar1        -2.76
+   2014Q4      +2.04  +2.56   +0.52             fed_overlap/gaussian        +0.68         fed_overlap/gaussian_ar1        +1.07
+   2015Q1      +3.65  +0.64   -3.01 fed_overlap/student_t_ar1_shared        -2.80             fed_overlap/gaussian        -3.18
+   2015Q2      +2.50  +2.20   -0.30         fed_overlap/gaussian_ar1        -1.85        fed_overlap/student_t_ar1        -2.63
+   2015Q3      +1.61  +2.02   +0.41             fed_overlap/gaussian        +0.65         fed_overlap/gaussian_ar1        +1.63
+   2015Q4      +0.74  +1.42   +0.68            fed_overlap/student_t        -0.08         fed_overlap/gaussian_ar1        +0.45
+   2016Q1      +2.34  +0.70   -1.64         fed_overlap/gaussian_ar1        -0.36        fed_overlap/student_t_ar1        -1.18
+   2016Q2      +1.29  +2.17   +0.88             fed_overlap/gaussian        +0.31 fed_overlap/student_t_ar1_shared        +1.12
+   2016Q3      +2.87  +2.22   -0.65 fed_overlap/student_t_ar1_shared        +0.08             fed_overlap/gaussian        -0.52
+   2016Q4      +2.24  +2.02   -0.22         fed_overlap/gaussian_ar1        +0.08             fed_overlap/gaussian        -0.42
+   2017Q1      +1.96  +2.65   +0.69             fed_overlap/gaussian        -0.09 fed_overlap/student_t_ar1_shared        +0.90
+   2017Q2      +2.26  +2.04   -0.22            fed_overlap/student_t        +1.54         fed_overlap/gaussian_ar1        +2.48
+   2017Q3      +3.19  +1.60   -1.59 fed_overlap/student_t_ar1_shared        -1.03             fed_overlap/gaussian        -1.72
+   2017Q4      +4.58  +3.88   -0.70         fed_overlap/gaussian_ar1        +0.17            fed_overlap/student_t        -0.99
+   2018Q1      +3.29  +2.97   -0.32        fed_overlap/student_t_ar1        +0.11            fed_overlap/student_t        -0.93
+   2018Q2      +2.14  +2.78   +0.64            fed_overlap/student_t        +0.94         fed_overlap/gaussian_ar1        +2.00
+   2018Q3      +2.52  +2.18   -0.34            fed_overlap/student_t        +0.18         fed_overlap/gaussian_ar1        +1.02
+   2018Q4      +0.57  +2.57   +2.00            fed_overlap/student_t        +1.49        fed_overlap/student_t_ar1        +1.80
+   2019Q1      +2.52  +1.43   -1.09        fed_overlap/student_t_ar1        -1.57             fed_overlap/gaussian        -1.87
+   2019Q2      +3.38  +1.50   -1.88            fed_overlap/student_t        -2.03         fed_overlap/gaussian_ar1        -2.21
+   2019Q3      +4.76  +1.91   -2.85 fed_overlap/student_t_ar1_shared        -2.21             fed_overlap/gaussian        -2.68
+   2019Q4      +2.76  +1.22   -1.54         fed_overlap/gaussian_ar1        -1.02             fed_overlap/gaussian        -1.31
+   2020Q1      -5.16  -0.40   +4.76             fed_overlap/gaussian        +5.23 fed_overlap/student_t_ar1_shared        +5.89
+   2020Q2     -27.98 -14.27  +13.71             fed_overlap/gaussian       +13.63         fed_overlap/gaussian_ar1       +17.19
+   2020Q3     +34.86 +13.75  -21.11        fed_overlap/student_t_ar1       -11.46            fed_overlap/student_t       -18.39
+   2020Q4      +4.61  +2.58   -2.03            fed_overlap/student_t        +0.22         fed_overlap/gaussian_ar1        +3.68
+   2021Q1      +5.70  +6.86   +1.16 fed_overlap/student_t_ar1_shared        -0.03             fed_overlap/gaussian        -4.50
+   2021Q2      +6.98  +3.16   -3.82         fed_overlap/gaussian_ar1        +0.37            fed_overlap/student_t        -3.38
+   2023Q1      +2.93  +1.72   -1.21            fed_overlap/student_t        -0.33         fed_overlap/gaussian_ar1        -0.84
+   2023Q2      +2.54  +1.08   -1.46            fed_overlap/student_t        -0.10         fed_overlap/gaussian_ar1        -0.52
+   2023Q3      +4.69  +2.58   -2.11             fed_overlap/gaussian        -1.77 fed_overlap/student_t_ar1_shared        -2.42
+   2023Q4      +3.42  +2.41   -1.01            fed_overlap/student_t        -1.34        fed_overlap/student_t_ar1        -1.85
+   2024Q1      +0.84  +2.25   +1.41             fed_overlap/gaussian        +0.03            fed_overlap/student_t        +0.43
+   2024Q2      +3.59  +2.02   -1.57        fed_overlap/student_t_ar1        +0.01            fed_overlap/student_t        -0.29
+   2024Q3      +3.34  +2.91   -0.43            fed_overlap/student_t        -2.03        fed_overlap/student_t_ar1        -2.53
+   2024Q4      +1.85  +2.56   +0.71            fed_overlap/student_t        -0.13        fed_overlap/student_t_ar1        -0.42
+   2025Q1      -0.65  +2.63   +3.28            fed_overlap/student_t        +4.54        fed_overlap/student_t_ar1        +5.15
+   2025Q2      +3.84  +1.68   -2.16 fed_overlap/student_t_ar1_shared        -0.88            fed_overlap/student_t        -1.56
+   2025Q3      +4.38  +2.35   -2.03         fed_overlap/gaussian_ar1        -1.37 fed_overlap/student_t_ar1_shared        -2.11
+
+============================================================================================
+4. VERIFICA DELL'ALLINEAMENTO  (stessa_data False = si confrontano istanti diversi)
+============================================================================================
+trimestre  mia_as_of  mia_sett  fed_as_of  fed_sett rilascio_pil  scarto_gg  stessa_data
+   2006Q4 2007-01-26        17 2007-01-26        17   2007-01-28          0         True
+   2007Q1 2007-04-27        17 2007-04-27        17   2007-04-28          0         True
+   2007Q2 2007-07-27        17 2007-07-27        17   2007-07-28          0         True
+   2007Q3 2007-10-26        17 2007-10-26        17   2007-10-28          0         True
+   2007Q4 2008-01-25        17 2008-01-25        17   2008-01-28          0         True
+   2008Q1 2008-04-25        17 2008-04-25        17   2008-04-28          0         True
+   2008Q2 2008-07-25        17 2008-07-25        17   2008-07-28          0         True
+   2008Q3 2008-10-24        17 2008-10-24        17   2008-10-28          0         True
+   2008Q4 2009-01-23        17 2009-01-23        17   2009-01-28          0         True
+   2009Q1 2009-04-24        17 2009-04-24        17   2009-04-28          0         True
+   2009Q2 2009-07-24        17 2009-07-24        17   2009-07-28          0         True
+   2009Q3 2009-10-23        17 2009-10-23        17   2009-10-28          0         True
+   2009Q4 2010-01-22        17 2010-01-22        17   2010-01-28          0         True
+   2010Q1 2010-04-23        17 2010-04-23        17   2010-04-28          0         True
+   2010Q2 2010-07-23        17 2010-07-23        17   2010-07-28          0         True
+   2010Q3 2010-10-22        17 2010-10-22        17   2010-10-28          0         True
+   2010Q4 2011-01-21        17 2011-01-21        17   2011-01-28          0         True
+   2011Q1 2011-04-22        16 2011-04-22        16   2011-04-28          0         True
+   2011Q2 2011-07-22        17 2011-07-22        17   2011-07-28          0         True
+   2011Q3 2011-10-21        17 2011-10-21        17   2011-10-28          0         True
+   2011Q4 2012-01-27        17 2012-01-27        17   2012-01-28          0         True
+   2012Q1 2012-04-27        17 2012-04-27        17   2012-04-28          0         True
+   2012Q2 2012-07-27        17 2012-07-27        17   2012-07-28          0         True
+   2012Q3 2012-10-26        17 2012-10-26        17   2012-10-28          0         True
+   2012Q4 2013-01-25        17 2013-01-25        17   2013-01-28          0         True
+   2013Q1 2013-04-26        17 2013-04-26        17   2013-04-28          0         True
+   2013Q2 2013-07-26        17 2013-07-26        17   2013-07-28          0         True
+   2013Q3 2013-10-25        17 2013-10-25        17   2013-10-28          0         True
+   2013Q4 2014-01-24        17 2014-01-24        17   2014-01-28          0         True
+   2014Q1 2014-04-25        17 2014-04-25        17   2014-04-28          0         True
+   2014Q2 2014-07-25        17 2014-07-25        17   2014-07-28          0         True
+   2014Q3 2014-10-24        17 2014-10-24        17   2014-10-28          0         True
+   2014Q4 2015-01-23        17 2015-01-23        17   2015-01-28          0         True
+   2015Q1 2015-04-24        17 2015-04-24        17   2015-04-28          0         True
+   2015Q2 2015-07-24        17 2015-07-24        17   2015-07-28          0         True
+   2015Q3 2015-10-23        17 2015-10-23        17   2015-10-28          0         True
+   2015Q4 2016-01-22        17 2016-01-22        17   2016-01-28          0         True
+   2016Q1 2016-04-22        17 2016-04-22        17   2016-04-28          0         True
+   2016Q2 2016-07-22        17 2016-07-22        17   2016-07-28          0         True
+   2016Q3 2016-10-21        17 2016-10-21        17   2016-10-28          0         True
+   2016Q4 2017-01-27        17 2017-01-27        17   2017-01-28          0         True
+   2017Q1 2017-04-21        16 2017-04-21        16   2017-04-28          0         True
+   2017Q2 2017-07-21        16 2017-07-21        16   2017-07-28          0         True
+   2017Q3 2017-10-27        17 2017-10-27        17   2017-10-28          0         True
+   2017Q4 2018-01-26        17 2018-01-26        17   2018-01-28          0         True
+   2018Q1 2018-04-27        17 2018-04-27        17   2018-04-28          0         True
+   2018Q2 2018-07-27        17 2018-07-27        17   2018-07-28          0         True
+   2018Q3 2018-10-26        17 2018-10-26        17   2018-10-28          0         True
+   2018Q4 2019-01-25        17 2019-01-25        17   2019-01-28          0         True
+   2019Q1 2019-04-26        17 2019-04-26        17   2019-04-28          0         True
+   2019Q2 2019-07-26        17 2019-07-26        17   2019-07-28          0         True
+   2019Q3 2019-10-25        17 2019-10-25        17   2019-10-28          0         True
+   2019Q4 2020-01-24        17 2020-01-24        17   2020-01-28          0         True
+   2020Q1 2020-04-24        17 2020-04-24        17   2020-04-28          0         True
+   2020Q2 2020-07-24        17 2020-07-24        17   2020-07-28          0         True
+   2020Q3 2020-10-23        17 2020-10-23        17   2020-10-28          0         True
+   2020Q4 2021-01-22        17 2021-01-22        17   2021-01-28          0         True
+   2021Q1 2021-04-23        17 2021-04-23        17   2021-04-28          0         True
+   2021Q2 2021-07-23        17 2021-07-23        17   2021-07-28          0         True
+   2023Q1 2023-04-21        16 2023-04-21        16   2023-04-28          0         True
+   2023Q2 2023-07-21        16 2023-07-21        16   2023-07-28          0         True
+   2023Q3 2023-10-27        17 2023-10-27        17   2023-10-28          0         True
+   2023Q4 2024-01-26        17 2024-01-26        17   2024-01-28          0         True
+   2024Q1 2024-04-26        17 2024-04-26        17   2024-04-28          0         True
+   2024Q2 2024-07-26        17 2024-07-26        17   2024-07-28          0         True
+   2024Q3 2024-10-25        17 2024-10-25        17   2024-10-28          0         True
+   2024Q4 2025-01-24        17 2025-01-24        17   2025-01-28          0         True
+   2025Q1 2025-04-25        17 2025-04-25        17   2025-04-28          0         True
+   2025Q2 2025-07-25        17 2025-07-25        17   2025-07-28          0         True
+   2025Q3 2025-10-24        17 2025-10-24        17   2025-10-28          0         True
+
+============================================================================================
+5. COMPOSIZIONE DEL CAMPIONE  (cosa e' entrato e cosa no)
+============================================================================================
+trimestre  n_metodi  completo  allineato  spread_gg  tenuto                                         motivo
+   2006Q4         8      True       True          0    True                                               
+   2007Q1         8      True       True          0    True                                               
+   2007Q2         8      True       True          0    True                                               
+   2007Q3         8      True       True          0    True                                               
+   2007Q4         8      True       True          0    True                                               
+   2008Q1         8      True       True          0    True                                               
+   2008Q2         8      True       True          0    True                                               
+   2008Q3         8      True       True          0    True                                               
+   2008Q4         8      True       True          0    True                                               
+   2009Q1         8      True       True          0    True                                               
+   2009Q2         8      True       True          0    True                                               
+   2009Q3         8      True       True          0    True                                               
+   2009Q4         8      True       True          0    True                                               
+   2010Q1         8      True       True          0    True                                               
+   2010Q2         8      True       True          0    True                                               
+   2010Q3         8      True       True          0    True                                               
+   2010Q4         8      True       True          0    True                                               
+   2011Q1         8      True       True          0    True                                               
+   2011Q2         8      True       True          0    True                                               
+   2011Q3         8      True       True          0    True                                               
+   2011Q4         8      True       True          0    True                                               
+   2012Q1         8      True       True          0    True                                               
+   2012Q2         8      True       True          0    True                                               
+   2012Q3         8      True       True          0    True                                               
+   2012Q4         8      True       True          0    True                                               
+   2013Q1         8      True       True          0    True                                               
+   2013Q2         8      True       True          0    True                                               
+   2013Q3         8      True       True          0    True                                               
+   2013Q4         8      True       True          0    True                                               
+   2014Q1         8      True       True          0    True                                               
+   2014Q2         8      True       True          0    True                                               
+   2014Q3         8      True       True          0    True                                               
+   2014Q4         8      True       True          0    True                                               
+   2015Q1         8      True       True          0    True                                               
+   2015Q2         8      True       True          0    True                                               
+   2015Q3         8      True       True          0    True                                               
+   2015Q4         8      True       True          0    True                                               
+   2016Q1         8      True       True          0    True                                               
+   2016Q2         8      True       True          0    True                                               
+   2016Q3         8      True       True          0    True                                               
+   2016Q4         8      True       True          0    True                                               
+   2017Q1         8      True       True          0    True                                               
+   2017Q2         8      True       True          0    True                                               
+   2017Q3         8      True       True          0    True                                               
+   2017Q4         8      True       True          0    True                                               
+   2018Q1         8      True       True          0    True                                               
+   2018Q2         8      True       True          0    True                                               
+   2018Q3         8      True       True          0    True                                               
+   2018Q4         8      True       True          0    True                                               
+   2019Q1         8      True       True          0    True                                               
+   2019Q2         8      True       True          0    True                                               
+   2019Q3         8      True       True          0    True                                               
+   2019Q4         8      True       True          0    True                                               
+   2020Q1         8      True       True          0    True                                               
+   2020Q2         8      True       True          0    True                                               
+   2020Q3         8      True       True          0    True                                               
+   2020Q4         8      True       True          0    True                                               
+   2021Q1         8      True       True          0    True                                               
+   2021Q2         8      True       True          0    True                                               
+   2021Q3         8      True      False         56   False stime finali fuori dalla settimana di rilascio
+   2021Q4         7     False      False          0   False                                metodi mancanti
+   2022Q1         7     False      False          0   False                                metodi mancanti
+   2022Q2         7     False      False          0   False                                metodi mancanti
+   2022Q3         7     False      False          0   False                                metodi mancanti
+   2022Q4         7     False      False          0   False                                metodi mancanti
+   2023Q1         8      True       True          0    True                                               
+   2023Q2         8      True       True          0    True                                               
+   2023Q3         8      True       True          0    True                                               
+   2023Q4         8      True       True          0    True                                               
+   2024Q1         8      True       True          0    True                                               
+   2024Q2         8      True       True          0    True                                               
+   2024Q3         8      True       True          0    True                                               
+   2024Q4         8      True       True          0    True                                               
+   2025Q1         8      True       True          0    True                                               
+   2025Q2         8      True       True          0    True                                               
+   2025Q3         8      True       True          0    True                                               
+   2025Q4         8      True      False         28   False stime finali fuori dalla settimana di rilascio
+   2026Q1         8      True      False        119   False stime finali fuori dalla settimana di rilascio
+
+====================================================================================
+SPEC fed_overlap  —  FINESTRA 2007-2010
+====================================================================================
+IO CONTRO LA NEW YORK FED — ultima stima prima del rilascio del PIL
+errore in punti BEA (nowcast - realizzato), realizzato = GDPC1 versione corrente
+trimestri nel campione (16): 2006Q4, 2007Q1, 2007Q2, 2007Q3, 2007Q4, 2008Q1, 2008Q2, 2008Q3, 2008Q4, 2009Q1, 2009Q2, 2009Q3, 2009Q4, 2010Q1, 2010Q2, 2010Q3
+esclusi: 2010Q4 (stime finali fuori dalla settimana di rilascio); 2011Q1 (stime finali fuori dalla settimana di rilascio)
+metodi (8): fed_overlap/gaussian, fed_overlap/gaussian_ar1, fed_overlap/student_t, fed_overlap/student_t_ar1, fed_overlap/student_t_ar1_shared, nyfed, ar2, mean
+
+AVVERTENZA  campione corto e tutto dentro la Grande Recessione: sono
+differenze descrittive, non risultati con un errore standard.  I valori
+Fed fino a 2015Q4 sono ricostruzioni su dati real-time, non pubblicazioni
+avvenute davvero; il mio esercizio e' pseudo-real-time.  Confronto equo
+fra due pseudo-real-time, non fra un pseudo e un vero.
+
+============================================================================================
+1. ACCURATEZZA contro il realizzato  (RMSE_rel_fed < 1 batte la NY Fed)
+============================================================================================
+                          metodo  n settimana  RMSE   MAE   Bias   corr RMSE_rel_fed RMSE_rel_ar2
+            fed_overlap/gaussian 16      17.0 2.273 1.729 +0.827 +0.796        1.126        0.689
+        fed_overlap/gaussian_ar1 16      17.0 2.682 2.011 +0.757 +0.701        1.329        0.813
+           fed_overlap/student_t 16      17.0 2.194 1.547 +0.885 +0.803        1.087        0.666
+       fed_overlap/student_t_ar1 16      17.0 2.439 1.936 +0.766 +0.767        1.208        0.740
+fed_overlap/student_t_ar1_shared 16      17.0 2.292 1.769 +0.811 +0.791        1.136        0.695
+                           nyfed 16      17.0 2.018 1.536 +0.984 +0.856        1.000        0.612
+                             ar2 16      17.0 3.297 2.160 +0.854 +0.363        1.634        1.000
+                            mean 16      17.0 4.039 2.671 +2.241 -0.104        2.001        1.225
+
+============================================================================================
+2. IO CONTRO LA FED  (diff = mio - fed; quota_meglio = trimestri in cui sbaglio meno)
+============================================================================================
+                          metodo  n diff_media diff_sd corr_fed  RMSE RMSE_fed quota_meglio
+            fed_overlap/gaussian 16     -0.156   1.389   +0.927 2.273    2.018         0.44
+        fed_overlap/gaussian_ar1 16     -0.227   1.657   +0.884 2.682    2.018         0.44
+           fed_overlap/student_t 16     -0.099   1.169   +0.926 2.194    2.018         0.62
+       fed_overlap/student_t_ar1 16     -0.218   1.493   +0.930 2.439    2.018         0.25
+fed_overlap/student_t_ar1_shared 16     -0.173   1.204   +0.954 2.292    2.018         0.25
+                             ar2 16     -0.130   2.555   +0.394 3.297    2.018         0.56
+                            mean 16     +1.258   2.641   -0.260 4.039    2.018         0.38
+
+============================================================================================
+3. LA FED TRIMESTRE PER TRIMESTRE  (quanto vale il metro)
+============================================================================================
+trimestre realizzato   fed err_fed                     mio_migliore err_migliore                     mio_peggiore err_peggiore
+   2006Q4      +3.48 +1.78   -1.70             fed_overlap/gaussian        -0.95 fed_overlap/student_t_ar1_shared        -1.70
+   2007Q1      +1.21 +2.40   +1.19         fed_overlap/gaussian_ar1        +2.18        fed_overlap/student_t_ar1        +2.57
+   2007Q2      +2.47 +3.25   +0.78            fed_overlap/student_t        +1.20 fed_overlap/student_t_ar1_shared        +1.73
+   2007Q3      +2.32 +1.99   -0.33            fed_overlap/student_t        +0.05         fed_overlap/gaussian_ar1        -0.42
+   2007Q4      +2.54 +1.49   -1.05             fed_overlap/gaussian        +0.06         fed_overlap/gaussian_ar1        -0.21
+   2008Q1      -1.70 +1.43   +3.13         fed_overlap/gaussian_ar1        +3.11 fed_overlap/student_t_ar1_shared        +3.30
+   2008Q2      +2.40 +1.99   -0.41 fed_overlap/student_t_ar1_shared        -2.45             fed_overlap/gaussian        -3.00
+   2008Q3      -2.08 -0.52   +1.56 fed_overlap/student_t_ar1_shared        -0.08         fed_overlap/gaussian_ar1        -0.66
+   2008Q4      -8.47 -3.47   +5.00 fed_overlap/student_t_ar1_shared        +5.30         fed_overlap/gaussian_ar1        +7.60
+   2009Q1      -4.46 -3.57   +0.89            fed_overlap/student_t        -0.62         fed_overlap/gaussian_ar1        -2.65
+   2009Q2      -0.71 +0.04   +0.75            fed_overlap/student_t        -0.59         fed_overlap/gaussian_ar1        -2.00
+   2009Q3      +1.41 +5.20   +3.79            fed_overlap/student_t        +3.00        fed_overlap/student_t_ar1        +3.85
+   2009Q4      +4.39 +4.32   -0.07            fed_overlap/student_t        -0.04 fed_overlap/student_t_ar1_shared        +0.30
+   2010Q1      +1.95 +3.98   +2.03 fed_overlap/student_t_ar1_shared        +2.63             fed_overlap/gaussian        +3.04
+   2010Q2      +3.93 +4.96   +1.03            fed_overlap/student_t        +0.39 fed_overlap/student_t_ar1_shared        +1.23
+   2010Q3      +3.12 +2.27   -0.85 fed_overlap/student_t_ar1_shared        +0.06             fed_overlap/gaussian        +0.79
+
+============================================================================================
+4. VERIFICA DELL'ALLINEAMENTO  (stessa_data False = si confrontano istanti diversi)
+============================================================================================
+trimestre  mia_as_of  mia_sett  fed_as_of  fed_sett rilascio_pil  scarto_gg  stessa_data
+   2006Q4 2007-01-26        17 2007-01-26        17   2007-01-28          0         True
+   2007Q1 2007-04-27        17 2007-04-27        17   2007-04-28          0         True
+   2007Q2 2007-07-27        17 2007-07-27        17   2007-07-28          0         True
+   2007Q3 2007-10-26        17 2007-10-26        17   2007-10-28          0         True
+   2007Q4 2008-01-25        17 2008-01-25        17   2008-01-28          0         True
+   2008Q1 2008-04-25        17 2008-04-25        17   2008-04-28          0         True
+   2008Q2 2008-07-25        17 2008-07-25        17   2008-07-28          0         True
+   2008Q3 2008-10-24        17 2008-10-24        17   2008-10-28          0         True
+   2008Q4 2009-01-23        17 2009-01-23        17   2009-01-28          0         True
+   2009Q1 2009-04-24        17 2009-04-24        17   2009-04-28          0         True
+   2009Q2 2009-07-24        17 2009-07-24        17   2009-07-28          0         True
+   2009Q3 2009-10-23        17 2009-10-23        17   2009-10-28          0         True
+   2009Q4 2010-01-22        17 2010-01-22        17   2010-01-28          0         True
+   2010Q1 2010-04-23        17 2010-04-23        17   2010-04-28          0         True
+   2010Q2 2010-07-23        17 2010-07-23        17   2010-07-28          0         True
+   2010Q3 2010-10-22        17 2010-10-22        17   2010-10-28          0         True
+
+============================================================================================
+5. COMPOSIZIONE DEL CAMPIONE  (cosa e' entrato e cosa no)
+============================================================================================
+trimestre  n_metodi  completo  allineato  spread_gg  tenuto                                         motivo
+   2006Q4         8      True       True          0    True                                               
+   2007Q1         8      True       True          0    True                                               
+   2007Q2         8      True       True          0    True                                               
+   2007Q3         8      True       True          0    True                                               
+   2007Q4         8      True       True          0    True                                               
+   2008Q1         8      True       True          0    True                                               
+   2008Q2         8      True       True          0    True                                               
+   2008Q3         8      True       True          0    True                                               
+   2008Q4         8      True       True          0    True                                               
+   2009Q1         8      True       True          0    True                                               
+   2009Q2         8      True       True          0    True                                               
+   2009Q3         8      True       True          0    True                                               
+   2009Q4         8      True       True          0    True                                               
+   2010Q1         8      True       True          0    True                                               
+   2010Q2         8      True       True          0    True                                               
+   2010Q3         8      True       True          0    True                                               
+   2010Q4         8      True      False         21   False stime finali fuori dalla settimana di rilascio
+   2011Q1         8      True      False        112   False stime finali fuori dalla settimana di rilascio
+
+====================================================================================
+SPEC fed_overlap  —  FINESTRA 2019-2021
+====================================================================================
+IO CONTRO LA NEW YORK FED — ultima stima prima del rilascio del PIL
+errore in punti BEA (nowcast - realizzato), realizzato = GDPC1 versione corrente
+trimestri nel campione (11): 2018Q4, 2019Q1, 2019Q2, 2019Q3, 2019Q4, 2020Q1, 2020Q2, 2020Q3, 2020Q4, 2021Q1, 2021Q2
+esclusi: 2021Q3 (stime finali fuori dalla settimana di rilascio); 2021Q4 (metodi mancanti); 2022Q1 (metodi mancanti)
+metodi (8): fed_overlap/gaussian, fed_overlap/gaussian_ar1, fed_overlap/student_t, fed_overlap/student_t_ar1, fed_overlap/student_t_ar1_shared, nyfed, ar2, mean
+
+AVVERTENZA  campione corto e tutto dentro la Grande Recessione: sono
+differenze descrittive, non risultati con un errore standard.  I valori
+Fed fino a 2015Q4 sono ricostruzioni su dati real-time, non pubblicazioni
+avvenute davvero; il mio esercizio e' pseudo-real-time.  Confronto equo
+fra due pseudo-real-time, non fra un pseudo e un vero.
+
+============================================================================================
+1. ACCURATEZZA contro il realizzato  (RMSE_rel_fed < 1 batte la NY Fed)
+============================================================================================
+                          metodo  n settimana   RMSE    MAE   Bias   corr RMSE_rel_fed RMSE_rel_ar2
+            fed_overlap/gaussian 11      17.0  6.083  4.428 -0.543 +0.978        0.765        0.316
+        fed_overlap/gaussian_ar1 11      17.0  7.306  4.799 +0.422 +0.960        0.919        0.380
+           fed_overlap/student_t 11      17.0  7.673  5.071 -0.984 +0.982        0.965        0.399
+       fed_overlap/student_t_ar1 11      17.0  6.079  4.180 +0.011 +0.980        0.765        0.316
+fed_overlap/student_t_ar1_shared 11      17.0  7.125  4.567 -0.301 +0.972        0.896        0.370
+                           nyfed 11      17.0  7.950  5.086 -1.154 +0.963        1.000        0.413
+                             ar2 11      17.0 19.246 11.053 -3.918 -0.641        2.421        1.000
+                            mean 11      17.0 13.803  7.785 -0.388 -0.679        1.736        0.717
+
+============================================================================================
+2. IO CONTRO LA FED  (diff = mio - fed; quota_meglio = trimestri in cui sbaglio meno)
+============================================================================================
+                          metodo  n diff_media diff_sd corr_fed   RMSE RMSE_fed quota_meglio
+            fed_overlap/gaussian 11     +0.611   3.477   +0.924  6.083    7.950         0.64
+        fed_overlap/gaussian_ar1 11     +1.576   2.893   +0.919  7.306    7.950         0.45
+           fed_overlap/student_t 11     +0.170   2.124   +0.949  7.673    7.950         0.55
+       fed_overlap/student_t_ar1 11     +1.165   3.293   +0.932  6.079    7.950         0.55
+fed_overlap/student_t_ar1_shared 11     +0.853   1.687   +0.976  7.125    7.950         0.55
+                             ar2 11     -2.764  11.991   -0.523 19.246    7.950         0.45
+                            mean 11     +0.766   6.649   -0.575 13.803    7.950         0.36
+
+============================================================================================
+3. LA FED TRIMESTRE PER TRIMESTRE  (quanto vale il metro)
+============================================================================================
+trimestre realizzato    fed err_fed                     mio_migliore err_migliore                     mio_peggiore err_peggiore
+   2018Q4      +0.57  +2.57   +2.00            fed_overlap/student_t        +1.49        fed_overlap/student_t_ar1        +1.80
+   2019Q1      +2.52  +1.43   -1.09        fed_overlap/student_t_ar1        -1.57             fed_overlap/gaussian        -1.87
+   2019Q2      +3.38  +1.50   -1.88            fed_overlap/student_t        -2.03         fed_overlap/gaussian_ar1        -2.21
+   2019Q3      +4.76  +1.91   -2.85 fed_overlap/student_t_ar1_shared        -2.21             fed_overlap/gaussian        -2.68
+   2019Q4      +2.76  +1.22   -1.54         fed_overlap/gaussian_ar1        -1.02             fed_overlap/gaussian        -1.31
+   2020Q1      -5.16  -0.40   +4.76             fed_overlap/gaussian        +5.23 fed_overlap/student_t_ar1_shared        +5.89
+   2020Q2     -27.98 -14.27  +13.71             fed_overlap/gaussian       +13.63         fed_overlap/gaussian_ar1       +17.19
+   2020Q3     +34.86 +13.75  -21.11        fed_overlap/student_t_ar1       -11.46            fed_overlap/student_t       -18.39
+   2020Q4      +4.61  +2.58   -2.03            fed_overlap/student_t        +0.22         fed_overlap/gaussian_ar1        +3.68
+   2021Q1      +5.70  +6.86   +1.16 fed_overlap/student_t_ar1_shared        -0.03             fed_overlap/gaussian        -4.50
+   2021Q2      +6.98  +3.16   -3.82         fed_overlap/gaussian_ar1        +0.37            fed_overlap/student_t        -3.38
+
+============================================================================================
+4. VERIFICA DELL'ALLINEAMENTO  (stessa_data False = si confrontano istanti diversi)
+============================================================================================
+trimestre  mia_as_of  mia_sett  fed_as_of  fed_sett rilascio_pil  scarto_gg  stessa_data
+   2018Q4 2019-01-25        17 2019-01-25        17   2019-01-28          0         True
+   2019Q1 2019-04-26        17 2019-04-26        17   2019-04-28          0         True
+   2019Q2 2019-07-26        17 2019-07-26        17   2019-07-28          0         True
+   2019Q3 2019-10-25        17 2019-10-25        17   2019-10-28          0         True
+   2019Q4 2020-01-24        17 2020-01-24        17   2020-01-28          0         True
+   2020Q1 2020-04-24        17 2020-04-24        17   2020-04-28          0         True
+   2020Q2 2020-07-24        17 2020-07-24        17   2020-07-28          0         True
+   2020Q3 2020-10-23        17 2020-10-23        17   2020-10-28          0         True
+   2020Q4 2021-01-22        17 2021-01-22        17   2021-01-28          0         True
+   2021Q1 2021-04-23        17 2021-04-23        17   2021-04-28          0         True
+   2021Q2 2021-07-23        17 2021-07-23        17   2021-07-28          0         True
+
+============================================================================================
+5. COMPOSIZIONE DEL CAMPIONE  (cosa e' entrato e cosa no)
+============================================================================================
+trimestre  n_metodi  completo  allineato  spread_gg  tenuto                                         motivo
+   2018Q4         8      True       True          0    True                                               
+   2019Q1         8      True       True          0    True                                               
+   2019Q2         8      True       True          0    True                                               
+   2019Q3         8      True       True          0    True                                               
+   2019Q4         8      True       True          0    True                                               
+   2020Q1         8      True       True          0    True                                               
+   2020Q2         8      True       True          0    True                                               
+   2020Q3         8      True       True          0    True                                               
+   2020Q4         8      True       True          0    True                                               
+   2021Q1         8      True       True          0    True                                               
+   2021Q2         8      True       True          0    True                                               
+   2021Q3         8      True      False         56   False stime finali fuori dalla settimana di rilascio
+   2021Q4         7     False      False          0   False                                metodi mancanti
+   2022Q1         7     False      False          0   False                                metodi mancanti
+
+====================================================================================
+SPEC fed_overlap  —  FINESTRA 2024-2025
+====================================================================================
+IO CONTRO LA NEW YORK FED — ultima stima prima del rilascio del PIL
+errore in punti BEA (nowcast - realizzato), realizzato = GDPC1 versione corrente
+trimestri nel campione (8): 2023Q4, 2024Q1, 2024Q2, 2024Q3, 2024Q4, 2025Q1, 2025Q2, 2025Q3
+esclusi: 2025Q4 (stime finali fuori dalla settimana di rilascio); 2026Q1 (stime finali fuori dalla settimana di rilascio)
+metodi (8): fed_overlap/gaussian, fed_overlap/gaussian_ar1, fed_overlap/student_t, fed_overlap/student_t_ar1, fed_overlap/student_t_ar1_shared, nyfed, ar2, mean
+
+AVVERTENZA  campione corto e tutto dentro la Grande Recessione: sono
+differenze descrittive, non risultati con un errore standard.  I valori
+Fed fino a 2015Q4 sono ricostruzioni su dati real-time, non pubblicazioni
+avvenute davvero; il mio esercizio e' pseudo-real-time.  Confronto equo
+fra due pseudo-real-time, non fra un pseudo e un vero.
+
+============================================================================================
+1. ACCURATEZZA contro il realizzato  (RMSE_rel_fed < 1 batte la NY Fed)
+============================================================================================
+                          metodo  n settimana  RMSE   MAE   Bias   corr RMSE_rel_fed RMSE_rel_ar2
+            fed_overlap/gaussian  8      17.0 2.164 1.534 -0.267 -0.150        1.208        1.331
+        fed_overlap/gaussian_ar1  8      17.0 2.134 1.532 -0.257 -0.137        1.191        1.312
+           fed_overlap/student_t  8      17.0 2.011 1.510 -0.268 -0.206        1.123        1.237
+       fed_overlap/student_t_ar1  8      17.0 2.229 1.558 -0.268 -0.156        1.244        1.371
+fed_overlap/student_t_ar1_shared  8      17.0 2.095 1.530 -0.292 -0.200        1.169        1.288
+                           nyfed  8      17.0 1.792 1.574 -0.224 -0.345        1.000        1.102
+                             ar2  8      17.0 1.626 1.375 +0.066 +0.055        0.908        1.000
+                            mean  8      17.0 1.630 1.411 +0.060 -0.602        0.909        1.002
+
+============================================================================================
+2. IO CONTRO LA FED  (diff = mio - fed; quota_meglio = trimestri in cui sbaglio meno)
+============================================================================================
+                          metodo  n diff_media diff_sd corr_fed  RMSE RMSE_fed quota_meglio
+            fed_overlap/gaussian  8     -0.042   1.410   -0.249 2.164    1.792         0.62
+        fed_overlap/gaussian_ar1  8     -0.033   1.382   -0.252 2.134    1.792         0.62
+           fed_overlap/student_t  8     -0.044   1.068   -0.187 2.011    1.792         0.62
+       fed_overlap/student_t_ar1  8     -0.043   1.526   -0.319 2.229    1.792         0.62
+fed_overlap/student_t_ar1_shared  8     -0.067   1.256   -0.335 2.095    1.792         0.50
+                             ar2  8     +0.290   0.558   -0.690 1.626    1.792         0.50
+                            mean  8     +0.284   0.375   +0.667 1.630    1.792         0.50
+
+============================================================================================
+3. LA FED TRIMESTRE PER TRIMESTRE  (quanto vale il metro)
+============================================================================================
+trimestre realizzato   fed err_fed                     mio_migliore err_migliore                     mio_peggiore err_peggiore
+   2023Q4      +3.42 +2.41   -1.01            fed_overlap/student_t        -1.34        fed_overlap/student_t_ar1        -1.85
+   2024Q1      +0.84 +2.25   +1.41             fed_overlap/gaussian        +0.03            fed_overlap/student_t        +0.43
+   2024Q2      +3.59 +2.02   -1.57        fed_overlap/student_t_ar1        +0.01            fed_overlap/student_t        -0.29
+   2024Q3      +3.34 +2.91   -0.43            fed_overlap/student_t        -2.03        fed_overlap/student_t_ar1        -2.53
+   2024Q4      +1.85 +2.56   +0.71            fed_overlap/student_t        -0.13        fed_overlap/student_t_ar1        -0.42
+   2025Q1      -0.65 +2.63   +3.28            fed_overlap/student_t        +4.54        fed_overlap/student_t_ar1        +5.15
+   2025Q2      +3.84 +1.68   -2.16 fed_overlap/student_t_ar1_shared        -0.88            fed_overlap/student_t        -1.56
+   2025Q3      +4.38 +2.35   -2.03         fed_overlap/gaussian_ar1        -1.37 fed_overlap/student_t_ar1_shared        -2.11
+
+============================================================================================
+4. VERIFICA DELL'ALLINEAMENTO  (stessa_data False = si confrontano istanti diversi)
+============================================================================================
+trimestre  mia_as_of  mia_sett  fed_as_of  fed_sett rilascio_pil  scarto_gg  stessa_data
+   2023Q4 2024-01-26        17 2024-01-26        17   2024-01-28          0         True
+   2024Q1 2024-04-26        17 2024-04-26        17   2024-04-28          0         True
+   2024Q2 2024-07-26        17 2024-07-26        17   2024-07-28          0         True
+   2024Q3 2024-10-25        17 2024-10-25        17   2024-10-28          0         True
+   2024Q4 2025-01-24        17 2025-01-24        17   2025-01-28          0         True
+   2025Q1 2025-04-25        17 2025-04-25        17   2025-04-28          0         True
+   2025Q2 2025-07-25        17 2025-07-25        17   2025-07-28          0         True
+   2025Q3 2025-10-24        17 2025-10-24        17   2025-10-28          0         True
+
+============================================================================================
+5. COMPOSIZIONE DEL CAMPIONE  (cosa e' entrato e cosa no)
+============================================================================================
+trimestre  n_metodi  completo  allineato  spread_gg  tenuto                                         motivo
+   2023Q4         8      True       True          0    True                                               
+   2024Q1         8      True       True          0    True                                               
+   2024Q2         8      True       True          0    True                                               
+   2024Q3         8      True       True          0    True                                               
+   2024Q4         8      True       True          0    True                                               
+   2025Q1         8      True       True          0    True                                               
+   2025Q2         8      True       True          0    True                                               
+   2025Q3         8      True       True          0    True                                               
+   2025Q4         8      True      False         28   False stime finali fuori dalla settimana di rilascio
+   2026Q1         8      True      False        119   False stime finali fuori dalla settimana di rilascio

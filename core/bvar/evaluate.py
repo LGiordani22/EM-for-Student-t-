@@ -254,21 +254,23 @@ piu' che qui e' obbligatoria e li' non serviva.
     committare a passata in corso) ma invalida le CACHE, che sono oggetti
     Python dipendenti dal codice che li ha prodotti.
 
-    RIPRENDERE NON CAMBIA I NUMERI.  Il seme e' `seed + i` con `i` l'indice
-    della settimana nella griglia, non un contatore di quante ne sono state
-    fatte: una settimana ricalcolata dopo un'interruzione riparte dallo stesso
-    stato del generatore e da' la stessa riga.
+    RIPRENDERE O SPEZZARE IN BLOCCHI NON CAMBIA I NUMERI.  Il seme della
+    settimana deriva dalla sua DATA assoluta, non dall'indice locale nella
+    griglia: la stessa settimana usa quindi lo stesso stream sia nella passata
+    continua sia in un blocco parallelo, e anche dopo un'interruzione.
 """
 
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import pickle
 import shutil
 import subprocess
 import time
+import zipfile
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -292,6 +294,27 @@ from core.forecast.release_calendar import (
     weekly_grid,
 )
 from core.forecast.weekly_nowcast import COLUMNS
+
+
+# Cambiare questa stringa invalida esplicitamente i manifesti di checkpoint:
+# una ripresa non deve mai mescolare righe prodotte da schemi di seed diversi.
+_SEED_SCHEME = "date-ordinal-v1"
+
+
+def _rng_for_week(seed: int, as_of) -> np.random.Generator:
+    """Generatore stabile rispetto a resume e sharding temporale.
+
+    L'ordinale del calendario gregoriano e' indipendente dall'inizio della
+    griglia passata a ``run_realtime``. Con ``seed + i`` invece ``i`` tornava a
+    zero in ogni blocco BVAR: una passata spezzata era riproducibile con se'
+    stessa, ma non bit-identica alla passata continua che la documentazione
+    dichiarava equivalente.
+    """
+    seed_i = int(seed)
+    if seed_i < 0:
+        raise ValueError("seed deve essere non negativo")
+    ordinal = pd.Timestamp(as_of).date().toordinal()
+    return np.random.default_rng(np.random.SeedSequence([seed_i, ordinal]))
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -691,9 +714,11 @@ def _paths(root: str | None, start: str, end: str) -> dict[str, str]:
     I quattro posti in cui una passata scrive.
 
     Risultati (`csv`, `npz`, `ls`) sotto `<root>/csv/`, che di default e'
-    `forecast_weekly/csv/bvar/`; il CHECKPOINT invece fuori dall'albero di
-    consegna, perche' e' cache di ripresa e pesa ordini di grandezza piu' dei
-    risultati.
+    `forecast_weekly/csv/bvar/`. Nella passata vera il checkpoint resta in
+    `output/_checkpoint/`; con una root alternativa (test/pilota) vive invece
+    in `<root>/_checkpoint/`. Senza questa simmetria due piloti sullo stesso
+    periodo — o un test e la passata vera — condividerebbero marcatori e cache
+    pur avendo CSV separati.
 
     `root` VA ONORATO, e la riga qui sotto e' il fix di un difetto vero: la
     funzione riceveva `root` e lo ignorava, cablando `bvar_csv_dir()`.  Il
@@ -707,7 +732,10 @@ def _paths(root: str | None, start: str, end: str) -> dict[str, str]:
     """
     csv_dir = (os.path.join(root, "csv") if root and root != OUTPUT_ROOT
                else _layout.bvar_csv_dir())
-    ck = os.path.join(_layout.checkpoint_dir(), "bvar", f"{start}_{end}")
+    ck_root = (os.path.join(os.path.abspath(root), "_checkpoint")
+               if root and root != OUTPUT_ROOT
+               else _layout.checkpoint_dir())
+    ck = os.path.join(ck_root, "bvar", f"{start}_{end}")
     return {
         "csv": os.path.join(csv_dir, f"bvar_realtime_{start}_{end}.csv"),
         "npz": os.path.join(csv_dir, f"bvar_realtime_{start}_{end}_quantiles.npz"),
@@ -762,6 +790,7 @@ def _manifest(start: str, end: str, models, seed: int, horizon: int,
               n_ahead: int, S_of: dict) -> dict:
     """L'identita' della passata: due passate con manifesti diversi non si mescolano."""
     return {"start": start, "end": end, "models": list(models), "seed": int(seed),
+            "seed_scheme": _SEED_SCHEME,
             "horizon": int(horizon), "n_ahead": int(n_ahead),
             "draws": {m: int(S_of[m]) for m in models}}
 
@@ -940,21 +969,32 @@ def _persist(paths: dict, rows: list[dict], quants: dict, ls_rows: list[dict]) -
         df = df.sort_values(list(_KEY), kind="stable").reset_index(drop=True)
     _atomic(lambda t: df.to_csv(t, index=False), paths["csv"])
 
-    keys = np.array([f"{a}|{b}|{c}" for a, b, c in quants]) if quants else np.array([])
-    vals = (np.array(list(quants.values())) if quants
+    quant_items = sorted(quants.items())
+    keys = (np.array([f"{a}|{b}|{c}" for (a, b, c), _ in quant_items])
+            if quant_items else np.array([]))
+    vals = (np.array([value for _, value in quant_items]) if quant_items
             else np.zeros((0, len(QUANTILES))))
 
     def _npz(t: str) -> None:
-        # SUL FILE APERTO, non sul nome: `savez_compressed` appiccica `.npz` a
-        # un percorso che non ce l'ha, e scriverebbe `....npz.tmp.npz` — un file
-        # che poi `os.replace` non troverebbe.
-        with open(t, "wb") as fh:
-            np.savez_compressed(fh, keys=keys, values=vals,
-                                quantiles=np.array(QUANTILES))
+        # `np.savez_compressed` mette l'ora corrente negli header ZIP: due file
+        # con array identici non sono quindi identici byte per byte.  Header
+        # fissi rendono verificabile in senso letterale seriale == shard+merge.
+        arrays = {"keys": keys, "values": vals,
+                  "quantiles": np.array(QUANTILES)}
+        with zipfile.ZipFile(t, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for name, array in arrays.items():
+                payload = io.BytesIO()
+                np.lib.format.write_array(payload, np.asarray(array),
+                                          allow_pickle=False)
+                info = zipfile.ZipInfo(f"{name}.npy", (1980, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                zf.writestr(info, payload.getvalue())
 
     _atomic(_npz, paths["npz"])
 
     ls = pd.DataFrame(ls_rows)
+    if len(ls):
+        ls = ls.sort_values(list(_KEY), kind="stable").reset_index(drop=True)
     _atomic(lambda t: ls.to_csv(t, index=False), paths["ls"])
 
 
@@ -984,6 +1024,77 @@ def _reload(paths: dict) -> tuple[list[dict], dict, list[dict]]:
     except Exception as exc:
         print(f"  [attenzione] log score illeggibile ({type(exc).__name__}: {exc}).")
     return rows, quants, ls_rows
+
+
+def merge_model_runs(start: str, end: str, shard_roots: dict[str, str], *,
+                     output_root: str | None = None) -> pd.DataFrame:
+    """Merge four independent model runs into the ordinary block artifacts.
+
+    Each shard is a normal ``run_realtime`` output under its own root, hence
+    it has an isolated checkpoint and cannot collide with another model.  The
+    merge requires every configured BVAR model and writes only after all three
+    artifacts from every shard have been read successfully.
+    """
+    expected = tuple(_layout.BVAR_MODELS)
+    missing_roots = [m for m in expected if m not in shard_roots]
+    if missing_roots:
+        raise ValueError(f"radici shard mancanti: {missing_roots}")
+
+    all_rows: list[dict] = []
+    all_quants: dict = {}
+    all_ls: list[dict] = []
+    seen_rows: set[tuple[str, ...]] = set()
+    seen_ls: set[tuple[str, ...]] = set()
+
+    for model in expected:
+        paths = _paths(shard_roots[model], start, end)
+        absent = [name for name in ("csv", "npz", "ls")
+                  if not os.path.isfile(paths[name])]
+        if absent:
+            raise FileNotFoundError(
+                f"shard {model} incompleto ({', '.join(absent)}): {shard_roots[model]}")
+        expected_weeks = {str(day.date()) for day in weekly_grid(start, end)}
+        done_weeks = _done_weeks(paths)
+        if done_weeks != expected_weeks:
+            raise ValueError(
+                f"shard {model} parziale: {len(done_weeks)}/{len(expected_weeks)} "
+                "settimane concluse")
+        rows, quants, ls_rows = _reload(paths)
+        if not any(str(row.get("spec")) == model for row in rows):
+            raise ValueError(f"shard {model} non contiene righe {model}")
+        if not any(str(key[1]) == model for key in quants):
+            raise ValueError(f"shard {model} non contiene quantili {model}")
+        if not any(str(row.get("spec")) == model for row in ls_rows):
+            raise ValueError(f"shard {model} non contiene log score {model}")
+        foreign = {str(row.get("spec")) for row in rows
+                   if str(row.get("spec")) not in {model, BENCHMARK_SPEC}}
+        if foreign:
+            raise ValueError(f"shard {model} contiene modelli estranei: {sorted(foreign)}")
+        foreign_quants = {str(key[1]) for key in quants if str(key[1]) != model}
+        if foreign_quants:
+            raise ValueError(
+                f"shard {model} contiene quantili estranei: {sorted(foreign_quants)}")
+
+        for row in rows:
+            key = tuple(str(row[c]) for c in _KEY)
+            if key in seen_rows:
+                raise ValueError(f"riga duplicata fra shard: {key}")
+            seen_rows.add(key)
+            all_rows.append(row)
+        for key, value in quants.items():
+            if key in all_quants:
+                raise ValueError(f"quantile duplicato fra shard: {key}")
+            all_quants[key] = value
+        for row in ls_rows:
+            key = tuple(str(row[c]) for c in _KEY)
+            if key in seen_ls:
+                raise ValueError(f"log score duplicato fra shard: {key}")
+            seen_ls.add(key)
+            all_ls.append(row)
+
+    destination = _paths(output_root or OUTPUT_ROOT, start, end)
+    _persist(destination, all_rows, all_quants, all_ls)
+    return pd.read_csv(destination["csv"])
 
 
 # ─── 6. Il ciclo real-time ────────────────────────────────────────────────────
@@ -1146,7 +1257,7 @@ def run_realtime(
             """
             Aggiunge una riga se non c'e' gia'.  Serve al riavvolgimento: la
             settimana di stima piena rifatta produce le STESSE righe (stesso
-            seme, stesso indice), e senza questo il CSV le avrebbe in doppio.
+            seme derivato dalla data), e senza questo il CSV le avrebbe in doppio.
             """
             k = tuple(str(r[c]) for c in _KEY)
             if k in keyed:
@@ -1155,7 +1266,7 @@ def run_realtime(
             target.append(r)
 
         for m in models:
-            rng = np.random.default_rng(seed + i)
+            rng = _rng_for_week(seed, D)
             per_q, caches[m] = run_model(
                 m, D, qs, caches[m], full=full, spec=specs[m], raw=raw,
                 rng=rng, horizon=horizon, verbose=False, n_draws=S_of[m])

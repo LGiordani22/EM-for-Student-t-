@@ -1,0 +1,14 @@
+{
+  "start": "2015-01-30",
+  "end": "2015-04-24",
+  "models": [
+    "cbvar"
+  ],
+  "seed": 20260801,
+  "seed_scheme": "date-ordinal-v1",
+  "horizon": 24,
+  "n_ahead": 1,
+  "draws": {
+    "cbvar": 1000
+  }
+}

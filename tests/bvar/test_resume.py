@@ -14,9 +14,10 @@ In quel tempo il PC si riavvia, e la domanda a cui questo file risponde non e'
 Se la risposta fosse no, il checkpoint sarebbe peggio di niente: produrrebbe
 risultati che dipendono da QUANDO e' andata via la corrente, cioe' non
 riproducibili, e non ci sarebbe modo di accorgersene guardando il CSV.  La
-risposta e' si' per costruzione — il seme e' `seed + i` con `i` l'indice della
-settimana nella griglia, non un contatore di quante ne sono state fatte — e i
-§1-§2 lo verificano invece di assumerlo.
+risposta e' si' per costruzione: il seme deriva dalla data assoluta della
+settimana, non dal suo indice locale nella griglia. Ripresa e blocchi
+paralleli usano quindi lo stesso stream della passata continua. I §1-§2
+verificano la ripresa; il §0 verifica l'invarianza rispetto allo shard.
 
 I QUATTRO TEST, che sono i quattro modi in cui il checkpoint puo' tradire:
 
@@ -108,6 +109,16 @@ def main() -> None:
     rotto = os.path.join(tmp, "rotto")
     esiti = []
     try:
+        # ── §0 il seed non dipende dal confine del blocco ────────────────────
+        D = pd.Timestamp("2008-01-18")
+        a = evaluate._rng_for_week(20260801, D).standard_normal(16)
+        b = evaluate._rng_for_week(20260801, D).standard_normal(16)
+        c = evaluate._rng_for_week(
+            20260801, D + pd.Timedelta(days=7)).standard_normal(16)
+        esiti.append(("0   seed stabile per data, non per shard",
+                      bool((a == b).all() and not (a == c).all()),
+                      "stessa data = stesso stream; data diversa = stream diverso"))
+
         print("  passata di riferimento (non interrotta) ...")
         _run(intero)
         rif = _csv(intero)
