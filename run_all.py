@@ -103,7 +103,14 @@ def run(job: Job) -> Result:
 
 
 def discover(job: Job) -> list[tuple[str, str]]:
-    """Read a two-column job list from --list or --list-blocks."""
+    """Read a two-column job list from --list or --list-blocks.
+
+    One-column lines are ignored on purpose: ``run_dfm.py --list`` ends with a
+    bare ``benchmark`` line, which is a job without a spec or a variant and so
+    has no second column to give.  It is added explicitly in ``main`` instead of
+    being parsed here -- silently dropping it would leave the run without AR(2)
+    and the expanding mean, and nothing downstream would say so.
+    """
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     completed = subprocess.run(
         [sys.executable, *job.command], cwd=ROOT, env=environment(),
@@ -153,6 +160,13 @@ def main() -> int:
              "--start", START, "--end", END))
         for spec, variant in cells
     ]
+    # I benchmark sono la sedicesima unita' del DFM, e non arrivano da
+    # `discover`: la loro riga ha un campo solo (vedi il docstring li' sopra).
+    # Vanno prima delle celle perche' non fanno EM e finiscono in minuti,
+    # liberando subito lo slot.
+    jobs.insert(0, Job("dfm_benchmark",
+                       ("scripts/run_dfm.py", "--benchmark",
+                        "--start", START, "--end", END)))
     # Longest jobs first minimizes the tail once fewer than 224 jobs remain.
     for model in ("lbvar", "bbvar", "cbvar", "qbvar"):
         for start, end in blocks:
