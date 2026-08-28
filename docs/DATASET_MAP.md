@@ -264,7 +264,7 @@ sbilanciamento (`W_t` salta i `NaN`), ma le serie non partono tutte insieme.
 |---|---|---|
 | **1985 (17 M + 3 Q)** | PAYEMS, CPIAUCSL, CPILFESL, PCEPI, PCEPILFE, DSPIC96, INDPRO, TCU, UNRATE, HOUST, HSN1F, PERMIT, USPRIV, Philly, ISM_PMI/PRICES/EMP; le 3 trimestrali da 1985-03 | copertura piena |
 | **1989** | `IR`, `IQ` | mensili solo dal 1989 (prima trimestrali) |
-| **1992-93 (9)** | DGORDER, RSAFS, AMDMVS, AMTMUO, AMDMTI, BUSINV, WHLSLRIMSA, BOPTEXP, BOPTIMP (1992), TTLCONS (1993) | base NAICS corrente del Census: niente pre-1992 su FRED |
+| **1992-93 (10)** | DGORDER, RSAFS, AMDMVS, AMTMUO, AMDMTI, BUSINV, WHLSLRIMSA, BOPTEXP, BOPTIMP (1992), TTLCONS (1993) | base NAICS corrente del Census: niente pre-1992 su FRED |
 | **1997-2001** | ISM_NMI (1997-07), JTSJOL (2001-01), Empire (2001-07) | accettate |
 | **2007** | `PCEC96` | la serie **mensile** FRED parte 2007-02 → 53.5% NaN |
 | **2009** | `PPIFIS` | concetto BLS nato nel 2009 → 60.1% NaN |

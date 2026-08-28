@@ -36,10 +36,13 @@ allora
 
 cioe' l'idiosincratico va aggregato **esattamente come** la parte comune, con
 gli stessi pesi c = {1/3, 2/3, 1, 2/3, 1/3}. Usare un blocco identita' I_M
-(come fa la versione attuale della sezione AR(1) del .tex, eq:ar1-check-Lambda)
 spalmerebbe la parte comune sui 5 lag e non l'idio: due meta' della stessa
 equazione trattate in modo diverso, con la distorsione concentrata proprio sul
 target trimestrale. Banbura & Modugno (2014) aggregano entrambe.
+
+Riferimento nella tesi: model.tex, subsec:ar1 (sezione 3.6), eq:ar1-quarterly
+per l'aggregazione delle due meta' e eq:ar1-obs per il blocco C. Il .tex e' in
+accordo con questo modulo: la versione con I_M non esiste piu'.
 
 Conseguenza sul layout: le trimestrali portano nello stato 5 lag del proprio
 eps, le mensili uno solo.
@@ -194,7 +197,8 @@ def build_C_idio(layout: IdioLayout,
     Riga i TRIMESTRALE  : i pesi MM {1/3, 2/3, 1, 2/3, 1/3} sui suoi 5 slot —
                           la stessa aggregazione applicata alla parte comune.
 
-    E' questo il blocco che sostituisce l'`I_M` della versione attuale del .tex.
+    E' la matrice C di eq:ar1-obs (model.tex, subsec:ar1): NON un blocco
+    identita', che tratterebbe diversamente le due meta' di eq:ar1-quarterly.
     """
     c = MM_WEIGHTS if mm_weights is None else np.asarray(mm_weights, float)
     if c.size != 5:
