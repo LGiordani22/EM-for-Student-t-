@@ -183,9 +183,14 @@ def main() -> int:
             list(pool.map(run, jobs))
 
     print(f"\nBVAR MERGE: {len(blocks)} blocks")
+    # `--allow-missing` e' coerente con la regola di questo file: "un lavoro
+    # fallito viene riportato ma non ferma gli indipendenti".  Senza, un solo
+    # modello morto si porterebbe via anche i tre che hanno finito, e la loro
+    # riga di fallimento c'e' gia' nel riepilogo qui sotto.
     merges = [
         Job(f"merge_bvar_{start}",
-            ("scripts/merge_bvar_models.py", "--start", start, "--end", end))
+            ("scripts/merge_bvar_models.py", "--start", start, "--end", end,
+             "--allow-missing"))
         for start, end in blocks
     ]
     if merges:
