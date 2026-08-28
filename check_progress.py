@@ -48,13 +48,37 @@ def discovered_blocks() -> list[tuple[str, str]]:
     return rows
 
 
+#: Il lavoro dei benchmark: una cella per il pool, ma senza spec ne' variante.
+#: `run_dfm.py --list` lo stampa come una riga di UN campo solo, che percio' non
+#: passa il filtro a due colonne qui sotto -- e prima di questa riga spariva dal
+#: cruscotto, che mostrava quindici lavori invece di sedici.  Si rappresenta con
+#: la variante vuota: `cell_dir` e `cell_log` sanno che vuol dire.
+BENCHMARK_JOB = "benchmark"
+
+
 def discovered_cells() -> list[tuple[str, str]]:
     rows = []
     for line in read_text(LOGS / "discover_dfm_cells.log").splitlines():
         fields = line.split()
         if len(fields) == 2:
             rows.append((fields[0], fields[1]))
+        elif len(fields) == 1 and fields[0] == BENCHMARK_JOB:
+            rows.append((BENCHMARK_JOB, ""))
     return rows
+
+
+def cell_dir(spec: str, variant: str) -> Path:
+    """La cartella della cella, o quella dei benchmark se la variante e' vuota."""
+    return CELLS_ROOT / (spec if not variant else f"{spec}_{variant}")
+
+
+def cell_log(spec: str, variant: str) -> Path:
+    return LOGS / (f"dfm_{spec}.log" if not variant
+                   else f"dfm_{spec}_{variant}.log")
+
+
+def cell_label(spec: str, variant: str) -> str:
+    return spec if not variant else f"{spec}/{variant}"
 
 
 def fridays(start: date, end: date) -> list[date]:
@@ -78,7 +102,7 @@ def failed(path: Path) -> bool:
 
 def latest_dfm_date(spec: str, variant: str) -> date | None:
     latest = None
-    csv_path = CELLS_ROOT / f"{spec}_{variant}" / f"weekly_nowcast_{START}_{END}.csv"
+    csv_path = cell_dir(spec, variant) / f"weekly_nowcast_{START}_{END}.csv"
     try:
         stat = csv_path.stat()
         cached = _CSV_CACHE.get(csv_path)
@@ -87,7 +111,12 @@ def latest_dfm_date(spec: str, variant: str) -> date | None:
         else:
             with csv_path.open(newline="", encoding="utf-8") as stream:
                 for row in csv.DictReader(stream):
-                    if row.get("spec") != spec or row.get("variant") != variant:
+                    # I benchmark sono due varianti (ar2, mean) sotto la stessa
+                    # pseudo-spec: si filtra sulla sola spec, o non passerebbe
+                    # nessuna riga.
+                    if row.get("spec") != spec:
+                        continue
+                    if variant and row.get("variant") != variant:
                         continue
                     try:
                         value = date.fromisoformat(row["as_of"][:10])
@@ -98,7 +127,9 @@ def latest_dfm_date(spec: str, variant: str) -> date | None:
     except OSError:
         pass
 
-    theta = CELLS_ROOT / f"{spec}_{variant}" / "theta"
+    # I benchmark non fanno EM e non hanno una cartella `theta/`: l'OSError qui
+    # sotto e' la loro strada normale, non un guasto.
+    theta = cell_dir(spec, variant) / "theta"
     try:
         stamp = theta.stat().st_mtime_ns
         cached = _THETA_CACHE.get(theta)
@@ -255,7 +286,7 @@ def snapshot(rates: Rates) -> str:
     dfm_started = dfm_complete = dfm_failed = 0
     dfm_work = 0.0
     for spec, variant in cells:
-        log = LOGS / f"dfm_{spec}_{variant}.log"
+        log = cell_log(spec, variant)
         text = read_text(log)
         is_failed = bool(FAILURE.search(text))
         latest = latest_dfm_date(spec, variant)
@@ -274,7 +305,7 @@ def snapshot(rates: Rates) -> str:
             failure_names.append(log.stem)
         fraction = 1.0 if is_complete else dfm_fraction(latest)
         dfm_work += fraction
-        dfm_rows.append((f"{spec}/{variant}", fraction,
+        dfm_rows.append((cell_label(spec, variant), fraction,
                          latest.isoformat() if latest else "starting"))
 
     total_jobs = len(blocks) * len(MODELS) + len(cells)
