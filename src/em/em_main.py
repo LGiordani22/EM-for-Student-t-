@@ -2025,10 +2025,32 @@ def run_em(
     _tol_inner = float(theta.get("tol_inner", 1e-4))
 
     # Stato per il criterio di stallo (punto 3-bis).
+    #
+    # SI TIENE ANCHE L'ITERATO, non solo il suo valore.  Prima si registravano
+    # `best_L` e `best_j` e li si riportava soltanto nel dizionario finale: il
+    # theta restituito era quello dell'iterazione in cui il ciclo si rompe, che
+    # per costruzione ha un ELBO NON MIGLIORE del massimo visto — fino a
+    # `_EM_PATIENCE` M-step piu' in la'.  Si trovava un punto migliore e lo si
+    # buttava via.
+    #
+    # Misurato sulle 3420 stime della passata del 2026-08-27: le 753 uscite non
+    # convergenti sono TUTTE per stallo (zero hanno esaurito `max_iter`), e la
+    # mediana di `n_iter` e' 11 — il minimo possibile, cioe' `best_j = 0`.  Nel
+    # caso mediano il punto migliore e' il warm start del vintage precedente, e
+    # l'EM se n'e' allontanato per dieci passi senza mai tornarci.
+    #
+    # `e_out` va tenuto INSIEME al theta: la coppia restituita dev'essere
+    # coerente — gli stati smussati devono essere quelli calcolati su QUEL
+    # theta — ed e' gia' cosi' su tutte le altre uscite.  Basta un riferimento,
+    # niente copie: dentro questo ciclo `theta` non viene mai modificato sul
+    # posto (solo riassegnato) e `run_m_step` non scrive dentro `theta_old`.
     best_L: float = -np.inf
     best_j: int = -1
+    best_theta: dict | None = None
+    best_e_out: dict | None = None
     since_best: int = 0
     stalled: bool = False
+    used_best_iterate: bool = False
 
     for j in range(max_iter):
         # ── 1. E-step at current theta ──────────────────────────────────────
@@ -2128,6 +2150,7 @@ def run_em(
         # confronto aritmetico darebbe NaN e il contatore scatterebbe subito.)
         if not np.isfinite(best_L) or L_j > best_L:
             best_L, best_j, since_best = L_j, j, 0
+            best_theta, best_e_out = theta, e_out
         else:
             since_best += 1
             if since_best >= _EM_PATIENCE:
@@ -2183,9 +2206,38 @@ def run_em(
         # ── 7. Advance to the next iterate ──────────────────────────────────
         theta = theta_new
 
-    # ── Post-loop: handle the case where max_iter was reached without
-    #    triggering criterion (i).  Per thesis riga ~9803-9808 this is a
-    #    safety mechanism rather than a normal exit. ────────────────────────
+    # ── Post-loop: SU UNA USCITA NON CONVERGENTE SI TORNA AL MIGLIOR ITERATO ─
+    #
+    # Vale per entrambe le uscite non convergenti, e la regola si dice una
+    # volta sola: se l'EM non ha raggiunto il criterio, si consegna il punto
+    # migliore che ha trovato, non quello su cui si e' fermato.
+    #
+    #   * per STALLO  il theta in mano ha, per costruzione, un ELBO non
+    #                 migliore del massimo: e' quello il caso che si ripara;
+    #   * per MAX_ITER il ciclo esce DOPO l'M-step, quindi `theta` sarebbe
+    #                 theta^(max_iter) mentre `e_out` e' l'E-step su
+    #                 theta^(max_iter - 1): una coppia incoerente.  Tornando
+    #                 al miglior iterato si sistema anche quella.  (Sulla
+    #                 passata del 27-8 non capita mai — 0 su 753 — ma
+    #                 l'incoerenza c'era.)
+    #
+    # NON tocca la strada buona: sul criterio (i) il ciclo esce PRIMA
+    # dell'M-step, `converged` e' True e qui non si entra.
+    #
+    # E' lo stesso principio gia' applicato al criterio (i), dove pretendere
+    # `delta_L >= 0` ha corretto un caso in cui l'EM si fermava sull'
+    # oscillazione "restituendo per giunta l'iterato peggiore dei due" (vedi il
+    # commento al punto 3).  Qui l'altra uscita riceve lo stesso trattamento.
+    if not converged and best_theta is not None and best_j != n_iter - 1:
+        theta, e_out = best_theta, best_e_out
+        used_best_iterate = True
+        if verbose:
+            print(
+                f"\n[MIGLIOR ITERATO] restituito theta^({best_j}) con "
+                f"L = {best_L:.6f}, invece di theta^({n_iter - 1}): l'EM non "
+                f"ha convergiuto, e il punto d'arrivo non e' il migliore visto."
+            )
+
     if not converged and verbose:
         if stalled:
             # Uscita per stallo: NON e' max_iter, e non va segnalata come tale
@@ -2233,6 +2285,11 @@ def run_em(
         "stalled":                 stalled,
         "best_loglik":             float(best_L),
         "best_iter":               int(best_j),
+        # True quando `theta` e `e_step_output` sono quelli di `best_iter` e non
+        # dell'ultima iterazione.  Stesso nome e stesso significato del flag che
+        # il ciclo INTERNO (ECM) espone da sempre: li' il best iterate si teneva
+        # gia', qui no.
+        "used_best_iterate":       bool(used_best_iterate),
     }
 
 
