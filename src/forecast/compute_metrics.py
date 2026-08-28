@@ -96,8 +96,22 @@ def _csv_dir() -> str:
     return layout.dfm_csv_dir()
 
 
+def _benchmark_csv_dir() -> str:
+    from src import output_layout as layout
+    return layout.benchmark_csv_dir()
+
+
 def discover_csvs(paths: list[str] | None = None) -> list[str]:
-    """I CSV da leggere: quelli dati, o tutti quelli presenti."""
+    """
+    I CSV da leggere: quelli dati, o tutti quelli presenti.
+
+    DUE CARTELLE, NON UNA.  Le celle stanno in `csv/dfm/`, i benchmark in
+    `csv/benchmark/`: sono lo stesso formato lungo e vanno concatenati, ma non
+    sono la stessa cosa e non devono stare nello stesso posto — chi conta i
+    file di `csv/dfm/` conta le celle.  L'assenza dei benchmark non e' un
+    errore (una passata con `--no-benchmarks` e' legittima): manca solo la
+    riga di paragone nelle tabelle.
+    """
     if paths:
         return list(paths)
     found = sorted(glob.glob(os.path.join(_csv_dir(), "weekly_nowcast_*.csv")))
@@ -107,6 +121,8 @@ def discover_csvs(paths: list[str] | None = None) -> list[str]:
             f"Generane uno con:  python -m src.forecast.weekly_nowcast "
             f"--start YYYY-MM-DD --end YYYY-MM-DD"
         )
+    found += sorted(glob.glob(os.path.join(_benchmark_csv_dir(),
+                                           "weekly_nowcast_*.csv")))
     return found
 
 

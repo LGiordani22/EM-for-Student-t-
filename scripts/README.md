@@ -16,11 +16,12 @@ numeri che sono stati *misurati* su questo progetto invece che stimati.
 
 | | unità | quante | indipendenti? |
 |---|---|---|---|
-| DFM | la **cella** (spec × variante) | 15 | sì, fra loro |
+| DFM | la **cella** (spec × variante), più il lavoro dei **benchmark** | 15 + 1 | sì, fra loro |
 | BVAR | il **blocco** (1 stima piena + le sue settimane di riuso) | 77 sul 2007-2025 | sì, per costruzione |
 
 ```
-python scripts/run_dfm.py --list          le 15 celle, 'spec variante' per riga
+python scripts/run_dfm.py --list          le 16 unità, una per riga
+python scripts/run_dfm.py --benchmark     ar2 e media espandente, da soli
 python scripts/run_bvar.py --list-blocks  i 77 blocchi, 'inizio fine' per riga
 ```
 
@@ -40,6 +41,14 @@ lenta**, non la media: le varianti `_ar1` stanno un ordine di grandezza sopra
 le altre, e nella passata di agosto `diag3/student_t_ar1` da sola ha preso
 circa 150 ore in un processo solo.
 
+**I benchmark sono la sedicesima unità, non un passeggero.** AR(2) e media
+espandente non dipendono da spec né da variante: si calcolano una volta sola.
+Prima quel «una volta» era realizzato attaccandoli alla prima cella dell'ordine
+canonico, e le loro righe finivano nel CSV di `diag3/gaussian` — tre serie in un
+file che porta il nome di una, 6831 righe dove ne dichiara 2277. Ora hanno la
+loro cartella (`csv/_cells/benchmark/` → `csv/benchmark/`), il loro stato di
+ripresa, e girano in parallelo alle celle invece che dentro una.
+
 **L'asse è la cella e non il periodo, ed è voluto.** Percorrendo il 2007-2025
 in un processo solo, la catena di θ resta continua per tutti e diciannove gli
 anni. Spezzando per periodo si interrompe a ogni confine di shard, e il costo è
@@ -51,7 +60,7 @@ va saputo prima di decidere, non dopo.
 ## Thread per processo: **uno**
 
 Il parallelismo di questo progetto è **fra lavori indipendenti**, non dentro
-l'algebra: 77 blocchi + 15 celle = 92 unità. Con molti core la quantità da
+l'algebra: 77 blocchi + 15 celle + 1 benchmark = 93 unità. Con molti core la quantità da
 minimizzare sono i **core-secondi per blocco**, cioè il rendimento per core,
 non il tempo del singolo blocco. Quindi:
 
@@ -83,7 +92,7 @@ al blocco 50, si rilancia con meno processi e i 50 finiti restano dove sono. I
 blocchi restano 77 in ogni caso — cambia solo in quante ondate.
 
 Il picco non supera comunque il numero di lavori: **al massimo 77 processi**
-per il BVAR e **15** per il DFM.
+per il BVAR e **16** per il DFM.
 
 ## Ripresa
 

@@ -61,14 +61,22 @@ buchi ripartirebbe a freddo in mezzo alla serie, e si vedrebbe come un gradino.
 
 All'avvio lo script dice sempre quante righe trova e quante sono in errore.
 
-I BENCHMARK LI CALCOLA UNA CELLA SOLA
--------------------------------------
+I BENCHMARK SONO UN LAVORO A SE'
+-------------------------------
 AR(2) e media espandente sono univariati: non dipendono ne' dalla spec ne'
 dalla variante, e quindici copie identiche gonfierebbero il conteggio `n`
-delle tabelle senza cambiare un solo RMSE.  Li prende la PRIMA cella
-dell'ordine canonico (diag3/gaussian), da sola e senza doverlo dire — cosi'
-l'invocazione di uno shard non ha bisogno di sapere che cosa fanno gli altri.
-`--benchmarks` / `--no-benchmarks` scavalcano la regola.
+delle tabelle senza cambiare un solo RMSE.  Si calcolano percio' UNA volta.
+
+Prima quel "una volta" era realizzato attaccandoli alla PRIMA cella dell'ordine
+canonico, e le loro righe finivano nel CSV di `diag3/gaussian`: quel file
+conteneva tre serie (ar2, mean, diag3/gaussian) sotto il nome di una sola, e
+6831 righe dove ne dichiarava 2277.  Ora sono un'unita' di lavoro propria —
+
+    python scripts/run_dfm.py --benchmark
+
+con la sua cartella (`csv/_cells/benchmark/`), il suo stato di ripresa e la sua
+destinazione (`csv/benchmark/`).  Gira in parallelo alle celle invece di essere
+saldata alla prima, e `--list` la elenca come sedicesima unita'.
 
 CODICE D'USCITA
 ---------------
@@ -87,12 +95,24 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src import output_layout as layout
-from src.forecast.collect import publish_cell
+from src.forecast.collect import publish_benchmark, publish_cell
 
 
 def cells() -> list[tuple[str, str]]:
-    """Le quindici celle nell'ordine canonico. La prima porta i benchmark."""
+    """Le quindici celle nell'ordine canonico."""
     return [(s, v) for s in layout.SPECS for v in layout.VARIANTS]
+
+
+def jobs() -> list[str]:
+    """
+    Le sedici unita' di lavoro indipendenti: le quindici celle piu' i benchmark.
+
+    E' la lista che `--list` stampa e che un orchestratore rilegge per lanciare
+    uno shard per riga.  Le celle escono come `'<spec> <variante>'`, i benchmark
+    come la sola parola `benchmark`: una riga di un campo sola, perche' un
+    lavoro senza spec ne' variante non ha due campi da riempire.
+    """
+    return [f"{s} {v}" for s, v in cells()] + [layout.BENCHMARK_JOB]
 
 
 def main() -> int:
@@ -106,11 +126,10 @@ def main() -> int:
     p.add_argument("--start", default=start_def, help=f"default: {start_def}")
     p.add_argument("--end", default=end_def, help=f"default: {end_def}")
     p.add_argument("--list", action="store_true",
-                   help="stampa le celle ('spec variante' per riga) ed esce")
-    p.add_argument("--benchmarks", dest="benchmarks", action="store_true",
-                   default=None, help="calcola ar2 e mean in questa cella")
-    p.add_argument("--no-benchmarks", dest="benchmarks", action="store_false",
-                   help="non calcolarli (li porta un'altra cella)")
+                   help="stampa le sedici unita' di lavoro, una per riga, ed esce")
+    p.add_argument("--benchmark", action="store_true",
+                   help="esegue il lavoro dei benchmark (ar2 e mean) invece di "
+                        "una cella: non vuole --spec ne' --variant")
     p.add_argument("--em-frequency", choices=["weekly", "monthly"],
                    default="monthly", help="quando ri-stimare l'EM")
     p.add_argument("--n-ahead", type=int, default=1,
@@ -125,23 +144,28 @@ def main() -> int:
     a = p.parse_args()
 
     if a.list:
-        for spec, variant in cells():
-            print(f"{spec} {variant}")
+        for job in jobs():
+            print(job)
         return 0
 
-    if not a.spec or not a.variant:
-        p.error("servono --spec e --variant (oppure --list).")
+    if a.benchmark:
+        if a.spec or a.variant:
+            p.error("--benchmark non vuole --spec ne' --variant: "
+                    "i benchmark non dipendono da nessuna delle due.")
+    elif not a.spec or not a.variant:
+        p.error("servono --spec e --variant (oppure --benchmark, oppure --list).")
 
-    # La prima cella dell'ordine canonico porta i benchmark, se non si dice altro.
-    benchmarks = (cells()[0] == (a.spec, a.variant)) if a.benchmarks is None \
-        else a.benchmarks
-
-    cell_dir = layout.dfm_cell_dir(a.spec, a.variant)
+    # Una cella o il lavoro dei benchmark: stessa forma, due destinazioni.
+    benchmarks = a.benchmark
+    cell_dir = (layout.benchmark_cell_dir() if a.benchmark
+                else layout.dfm_cell_dir(a.spec, a.variant))
+    etichetta = (f"benchmark ({', '.join(layout.BENCHMARKS)})" if a.benchmark
+                 else f"{a.spec} / {a.variant}")
     os.makedirs(cell_dir, exist_ok=True)
 
     print("=" * 78)
-    print(f"  DFM  {a.spec} / {a.variant}   {a.start} .. {a.end}")
-    print(f"  benchmark: {'si' if benchmarks else 'no'}       cartella: {cell_dir}")
+    print(f"  DFM  {etichetta}   {a.start} .. {a.end}")
+    print(f"  cartella: {cell_dir}")
     print("=" * 78)
 
     from src.forecast.weekly_nowcast import cell_health, run_weekly_nowcast
@@ -168,7 +192,9 @@ def main() -> int:
                 print("  per ripararle serve  --fresh  (ristima l'intera cella).")
 
     df = run_weekly_nowcast(
-        a.start, a.end, specs=(a.spec,), variants=(a.variant,),
+        a.start, a.end,
+        specs=() if a.benchmark else (a.spec,),
+        variants=() if a.benchmark else (a.variant,),
         em_frequency=a.em_frequency, n_ahead=a.n_ahead, max_iter=a.max_iter,
         benchmarks=benchmarks, output_dir=cell_dir, save=True,
         verbose_em=a.verbose_em,
@@ -187,7 +213,8 @@ def main() -> int:
     # di ripresa.  Lo stesso passo lo rifa' `run_outputs.py` su tutto l'albero,
     # per le celle arrivate da un'altra macchina; il codice sta in un posto solo.
     try:
-        dst = publish_cell(a.spec, a.variant, a.start, a.end)
+        dst = (publish_benchmark(a.start, a.end) if a.benchmark
+               else publish_cell(a.spec, a.variant, a.start, a.end))
     except FileNotFoundError as e:
         print("\n" + str(e))
         return 1

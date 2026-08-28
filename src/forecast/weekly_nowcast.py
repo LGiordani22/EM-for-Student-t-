@@ -521,9 +521,20 @@ def run_weekly_nowcast(
     Ogni cella e' una catena temporale a se': i suoi theta si passano di settimana
     in settimana, quindi le celle si percorrono una alla volta, dall'inizio alla
     fine, e non si mescolano.
+
+    I BENCHMARK SONO UN LAVORO A PARTE, NON UN PASSEGGERO
+    -----------------------------------------------------
+    `specs=()` con `benchmarks=True` calcola SOLO l'AR(2) e la media espandente:
+    e' cosi' che il lavoro dei benchmark si lancia da solo, con la sua cartella
+    (`layout.benchmark_cell_dir()`) e il suo stato di ripresa.  Prima non aveva
+    una casa: si dava `benchmarks=True` alla prima cella dell'ordine canonico e
+    le sue righe finivano nel CSV di quella cella, che percio' ne conteneva tre
+    volte tante e portava il nome di una serie sola.
     """
     if em_frequency not in ("weekly", "monthly"):
         raise ValueError(f"em_frequency {em_frequency!r}: attesi 'weekly' o 'monthly'.")
+    if not specs and not benchmarks:
+        raise ValueError("niente da calcolare: nessuna spec e benchmark disattivati.")
 
     from src import output_layout as _layout
     out_dir = output_dir or _layout.dfm_csv_dir()
@@ -557,8 +568,12 @@ def run_weekly_nowcast(
     )
 
     print(f"  griglia    : {len(grid)} settimane, {grid[0].date()} .. {grid[-1].date()}")
-    print(f"  celle      : {len(specs)} spec x {len(variants)} varianti = "
-          f"{len(specs) * len(variants)}")
+    if specs:
+        print(f"  celle      : {len(specs)} spec x {len(variants)} varianti = "
+              f"{len(specs) * len(variants)}")
+    else:
+        print(f"  celle      : nessuna — lavoro dei soli benchmark "
+              f"({', '.join(BENCHMARKS)})")
     print(f"  ri-stima   : {em_frequency}"
           + ("  (EM ogni settimana)" if em_frequency == "weekly"
              else "  (EM sul primo venerdi' del mese, poi solo stato)"))
@@ -888,15 +903,27 @@ def main() -> None:
                    help="trimestri da prevedere oltre quello corrente (default: 1)")
     p.add_argument("--max-iter", type=int, default=250)
     p.add_argument("--no-benchmarks", action="store_true",
-                   help="non calcolare ar2 e mean (sono gia' nel CSV)")
+                   help="non calcolare ar2 e mean (li fa il lavoro dedicato)")
+    p.add_argument("--only-benchmarks", action="store_true",
+                   help="calcola SOLO ar2 e mean, nessuna cella: e' il lavoro "
+                        "dei benchmark, che ha cartella e ripresa proprie")
     p.add_argument("--output-dir", default=None)
     p.add_argument("--no-save", action="store_true")
     p.add_argument("--verbose-em", action="store_true")
     a = p.parse_args()
 
-    specs = SPECS if a.all_specs else ((a.spec,) if a.spec else (SPECS[0],))
-    variants = (tuple(VARIANTS) if a.all_variants
-                else ((a.variant,) if a.variant else ("gaussian",)))
+    if a.only_benchmarks and a.no_benchmarks:
+        p.error("--only-benchmarks e --no-benchmarks si escludono.")
+
+    from src import output_layout as _layout
+
+    if a.only_benchmarks:
+        specs: tuple[str, ...] = ()
+        variants: tuple[str, ...] = ()
+    else:
+        specs = SPECS if a.all_specs else ((a.spec,) if a.spec else (SPECS[0],))
+        variants = (tuple(VARIANTS) if a.all_variants
+                    else ((a.variant,) if a.variant else ("gaussian",)))
 
     print("\n" + "=" * 78)
     print(f"  NOWCAST SETTIMANALE  {a.start} .. {a.end}")
@@ -905,7 +932,10 @@ def main() -> None:
         a.start, a.end, specs=specs, variants=variants,
         em_frequency=a.em_frequency, n_ahead=a.n_ahead, max_iter=a.max_iter,
         benchmarks=not a.no_benchmarks,
-        output_dir=a.output_dir, save=not a.no_save, verbose_em=a.verbose_em,
+        output_dir=(a.output_dir if a.output_dir is not None
+                    else (_layout.benchmark_cell_dir() if a.only_benchmarks
+                          else None)),
+        save=not a.no_save, verbose_em=a.verbose_em,
     )
 
     # ── SI ESCE CON ERRORE SE UNA CELLA NON HA PRODOTTO ──────────────────────

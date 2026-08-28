@@ -335,22 +335,27 @@ PREVENTIVO
 #  sovrascrivono a vicenda.  Con una cartella per cella i CSV non si toccano,
 #  e la fase 4 li raccoglie con nomi distinti.
 #
-#  I benchmark (AR(2), media espandente) li calcola UNA cella sola: sono
-#  univariati e non dipendono ne' dalla spec ne' dalla variante, quindi
-#  quindici copie identiche gonfierebbero soltanto il conteggio `n` delle
-#  tabelle senza cambiare un solo RMSE.
+#  I benchmark (AR(2), media espandente) sono un LAVORO A SE': sono univariati
+#  e non dipendono ne' dalla spec ne' dalla variante, quindi si calcolano una
+#  volta sola.  Prima quel "una volta" era realizzato attaccandoli alla PRIMA
+#  cella, e le loro righe finivano nel CSV di quella cella — tre serie sotto il
+#  nome di una.  Ora hanno cartella e ripresa proprie e partono come sedicesima
+#  unita', in parallelo alle altre invece che dentro una.
 # =============================================================================
-log "FASE 3/7 — DFM: $N_DFM_CELLS celle in parallelo, $START .. $END"
-cmds=(); first=1
+log "FASE 3/7 — DFM: $N_DFM_CELLS celle + benchmark in parallelo, $START .. $END"
+cmds=()
 for s in "${SPECS[@]}"; do
   for v in "${VARIANTS[@]}"; do
     d="$CELLS_DIR/${s}_${v}"; mkdir -p "$d"
-    bench=""; (( first )) || bench="--no-benchmarks"; first=0
     cmds+=("\"$PYTHON\" -m src.forecast.weekly_nowcast --start $START --end $END \
-            --spec $s --variant $v $bench --output-dir '$d' \
+            --spec $s --variant $v --no-benchmarks --output-dir '$d' \
             > '$LOGS/dfm_${s}_${v}.log' 2>&1")
   done
 done
+d="$CELLS_DIR/benchmark"; mkdir -p "$d"
+cmds+=("\"$PYTHON\" -m src.forecast.weekly_nowcast --start $START --end $END \
+        --only-benchmarks --output-dir '$d' \
+        > '$LOGS/dfm_benchmark.log' 2>&1")
 run_pool "$WORKERS" "${cmds[@]}" \
   || fail "una o piu' celle DFM sono fallite; i log stanno in $LOGS/dfm_*.log"
 

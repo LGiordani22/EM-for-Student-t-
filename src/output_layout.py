@@ -100,6 +100,13 @@ BVAR_MODELS: tuple[str, ...] = ("qbvar", "cbvar", "bbvar", "lbvar")
 #: to look at, so they get no forecast figure of their own.
 BENCHMARKS: tuple[str, ...] = ("ar2", "mean")
 
+#: Il nome del lavoro che li calcola: una cartella sotto `csv/_cells/` e una
+#: sotto `csv/`, esattamente come una cella, perche' e' un'unita' di lavoro
+#: indipendente quanto una cella. Coincide con la pseudo-spec `BENCHMARK_SPEC`
+#: che i benchmark portano nella colonna `spec`, cosi' il nome della cartella e
+#: quello delle righe che ci stanno dentro sono la stessa parola.
+BENCHMARK_JOB: str = "benchmark"
+
 
 # ─── The tree ─────────────────────────────────────────────────────────────────
 
@@ -158,9 +165,40 @@ def bvar_csv_dir() -> str:
     return os.path.join(OUTPUT_ROOT, "csv", "bvar")
 
 
+def benchmark_csv_dir() -> str:
+    """
+    `csv/benchmark/` — i nowcast dell'AR(2) e della media espandente.
+
+    PERCHE' NON DENTRO UNA CELLA.  I benchmark non dipendono ne' dalla spec ne'
+    dalla variante: si calcolano una volta per (settimana, target), non quindici.
+    Prima quel "una volta" era realizzato dando `benchmarks=True` alla PRIMA
+    cella dell'ordine canonico, e le loro righe finivano nel CSV di
+    `diag3/gaussian` sotto la pseudo-spec `benchmark`: 6831 righe in un file che
+    ne dichiara 2277, e tre serie diverse mescolate in un file che porta il nome
+    di una sola.  Chi lo apriva a mano leggeva tre passate sovrapposte.
+
+    Qui hanno la loro cartella e il loro stato di ripresa, come una cella —
+    perche' e' quello che sono: un lavoro indipendente, che ora puo' anche
+    girare in parallelo agli altri invece che saldato al primo.
+    """
+    return os.path.join(OUTPUT_ROOT, "csv", "benchmark")
+
+
 def dfm_cells_root() -> str:
     """`csv/_cells/` — la radice sotto cui sta una cartella per cella."""
     return os.path.join(OUTPUT_ROOT, "csv", "_cells")
+
+
+def benchmark_cell_dir() -> str:
+    """
+    `csv/_cells/benchmark/` — lo stato di ripresa del lavoro dei benchmark.
+
+    Sta fra le celle e non accanto perche' il lavoro ha la stessa forma: scrive
+    `weekly_nowcast_<inizio>_<fine>.csv`, riprende da quel file, e viene poi
+    pubblicato in `benchmark_csv_dir()`.  `collect.cell_parts` lo riconosce per
+    nome esatto, non provando a spezzarlo in spec e variante.
+    """
+    return os.path.join(dfm_cells_root(), BENCHMARK_JOB)
 
 
 def dfm_cell_dir(spec: str, variant: str) -> str:
@@ -256,9 +294,11 @@ def slice_window(df, name: str, column: str = "as_of_dt"):
 __all__ = [
     "OUTPUT_ROOT", "FORECAST_WINDOWS", "RMSE_PASSES", "RMSE_ZOOM_WINDOWS",
     "NYFED_COMPARISON_PASSES", "FULL_SPAN", "SPECS", "VARIANTS", "BVAR_MODELS",
-    "BENCHMARKS", "dfm_forecast_dir", "dfm_rmse_dir", "bvar_forecast_dir",
+    "BENCHMARKS", "BENCHMARK_JOB",
+    "dfm_forecast_dir", "dfm_rmse_dir", "bvar_forecast_dir",
     "bvar_rmse_dir", "bvar_logscore_dir", "comparison_dir",
-    "dfm_csv_dir", "bvar_csv_dir", "dfm_cells_root", "dfm_cell_dir",
+    "dfm_csv_dir", "bvar_csv_dir", "benchmark_csv_dir",
+    "dfm_cells_root", "dfm_cell_dir", "benchmark_cell_dir",
     "logs_dir",
     "checkpoint_dir", "all_dirs",
     "build_tree", "window", "slice_window",

@@ -96,18 +96,21 @@ log "FASE 1/6 -- guardie"
   || fail "test_common_sample fallito"
 
 run_dfm() {
+  # Sedici unita' indipendenti: le quindici celle piu' il lavoro dei benchmark.
+  # I benchmark non sono piu' attaccati alla prima cella — hanno cartella e
+  # ripresa proprie, quindi partono insieme alle altre invece che dentro una.
   local -a commands=()
-  local spec variant directory benchmark first=1
+  local spec variant directory
   for spec in "${SPECS[@]}"; do
     for variant in "${VARIANTS[@]}"; do
       directory="$CELLS_DIR/${spec}_${variant}"
       mkdir -p "$directory"
-      benchmark=""
-      (( first )) || benchmark="--no-benchmarks"
-      first=0
-      commands+=("\"$PYTHON\" -m src.forecast.weekly_nowcast --start $START --end $END --spec $spec --variant $variant $benchmark --output-dir '$directory' > '$LOGS/dfm_${spec}_${variant}.log' 2>&1")
+      commands+=("\"$PYTHON\" -m src.forecast.weekly_nowcast --start $START --end $END --spec $spec --variant $variant --no-benchmarks --output-dir '$directory' > '$LOGS/dfm_${spec}_${variant}.log' 2>&1")
     done
   done
+  directory="$CELLS_DIR/benchmark"
+  mkdir -p "$directory"
+  commands+=("\"$PYTHON\" -m src.forecast.weekly_nowcast --start $START --end $END --only-benchmarks --output-dir '$directory' > '$LOGS/dfm_benchmark.log' 2>&1")
   run_pool "$WORKERS" "${commands[@]}"
 }
 
