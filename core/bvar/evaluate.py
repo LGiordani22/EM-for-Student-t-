@@ -1026,19 +1026,91 @@ def _reload(paths: dict) -> tuple[list[dict], dict, list[dict]]:
     return rows, quants, ls_rows
 
 
+def shard_status(start: str, end: str,
+                 shard_roots: dict[str, str]) -> dict[str, str]:
+    """Per ogni modello configurato: `'pronto'`, o il motivo per cui non lo e'.
+
+    Si legge PRIMA di fondere, per sapere che cosa si sta per pubblicare invece
+    di scoprirlo da un'eccezione.  Non tocca niente e non costa niente: guarda
+    l'esistenza dei tre artefatti e i marcatori delle settimane.
+    """
+    expected_weeks = {str(day.date()) for day in weekly_grid(start, end)}
+    stato: dict[str, str] = {}
+    for model in _layout.BVAR_MODELS:
+        if model not in shard_roots:
+            stato[model] = "radice dello shard non indicata"
+            continue
+        paths = _paths(shard_roots[model], start, end)
+        absent = [name for name in ("csv", "npz", "ls")
+                  if not os.path.isfile(paths[name])]
+        if absent:
+            done = len(_done_weeks(paths))
+            stato[model] = (f"artefatti mancanti ({', '.join(absent)}); "
+                            f"{done}/{len(expected_weeks)} settimane concluse")
+            continue
+        done_weeks = _done_weeks(paths)
+        if done_weeks != expected_weeks:
+            stato[model] = (f"parziale: {len(done_weeks)}/{len(expected_weeks)} "
+                            "settimane concluse")
+            continue
+        stato[model] = "pronto"
+    return stato
+
+
 def merge_model_runs(start: str, end: str, shard_roots: dict[str, str], *,
-                     output_root: str | None = None) -> pd.DataFrame:
-    """Merge four independent model runs into the ordinary block artifacts.
+                     output_root: str | None = None,
+                     require_all: bool = True) -> pd.DataFrame:
+    """Merge the independent model runs of one block into the block artifacts.
 
     Each shard is a normal ``run_realtime`` output under its own root, hence
-    it has an isolated checkpoint and cannot collide with another model.  The
-    merge requires every configured BVAR model and writes only after all three
-    artifacts from every shard have been read successfully.
+    it has an isolated checkpoint and cannot collide with another model.
+
+    ``require_all=True`` (default) is the old behaviour: every configured BVAR
+    model must be there and complete, or nothing is written.
+
+    PERCHE' ESISTE `require_all=False`
+    ----------------------------------
+    Perche' tutto-o-niente costa piu' di quel che protegge.  Nella passata del
+    2026-08-27 il blocco `2020-07-31 .. 2020-10-23` ha perso TUTTI e quattro i
+    modelli perche' uno solo, l'L-BVAR, era morto alla prima settimana: gli
+    altri tre avevano 13/13 settimane concluse e il loro CSV era li' sul disco,
+    gia' pagato.  Il campione 2007-2025 e' sceso da 2277 righe a 2247 per una
+    stima mancante su 308.
+
+    Con `require_all=False` si pubblica quel che c'e' e si DICHIARA che cosa
+    manca.  A valle non serve altro: il blocco si autodescrive — la colonna
+    `spec` semplicemente non conterra' `lbvar` — e le tabelle hanno gia' le
+    colonne `n` accanto a `n_com` proprio per metodi con copertura diversa.
+
+    Non e' un allentamento dei controlli.  Uno shard che C'E' deve essere sano
+    esattamente come prima: righe estranee, quantili estranei e duplicati fra
+    shard restano errori.  Si rilassa una cosa sola — l'obbligo di esserci — e
+    se non resta nessun modello si solleva comunque, perche' un blocco vuoto
+    non e' un risultato.
+
+    Rifondere e' idempotente: quando lo shard mancante sara' completo bastera'
+    rilanciare il merge, che riscrive il blocco intero dagli shard.  E' cosi'
+    che si rilancia UN modello solo invece di tutti e quattro.
     """
     expected = tuple(_layout.BVAR_MODELS)
     missing_roots = [m for m in expected if m not in shard_roots]
-    if missing_roots:
+    if missing_roots and require_all:
         raise ValueError(f"radici shard mancanti: {missing_roots}")
+
+    stato = shard_status(start, end, shard_roots)
+    assenti = {m: perche for m, perche in stato.items() if perche != "pronto"}
+    if assenti and require_all:
+        model, perche = sorted(assenti.items())[0]
+        if "artefatti mancanti" in perche:
+            raise FileNotFoundError(
+                f"shard {model} incompleto ({perche}): "
+                f"{shard_roots.get(model, '(radice non indicata)')}")
+        raise ValueError(f"shard {model} {perche}")
+    presenti = [m for m in expected if stato.get(m) == "pronto"]
+    if not presenti:
+        raise FileNotFoundError(
+            f"nessuno shard utilizzabile per il blocco {start}..{end}: "
+            + "; ".join(f"{m} {p}" for m, p in sorted(assenti.items())))
 
     all_rows: list[dict] = []
     all_quants: dict = {}
@@ -1046,19 +1118,8 @@ def merge_model_runs(start: str, end: str, shard_roots: dict[str, str], *,
     seen_rows: set[tuple[str, ...]] = set()
     seen_ls: set[tuple[str, ...]] = set()
 
-    for model in expected:
+    for model in presenti:
         paths = _paths(shard_roots[model], start, end)
-        absent = [name for name in ("csv", "npz", "ls")
-                  if not os.path.isfile(paths[name])]
-        if absent:
-            raise FileNotFoundError(
-                f"shard {model} incompleto ({', '.join(absent)}): {shard_roots[model]}")
-        expected_weeks = {str(day.date()) for day in weekly_grid(start, end)}
-        done_weeks = _done_weeks(paths)
-        if done_weeks != expected_weeks:
-            raise ValueError(
-                f"shard {model} parziale: {len(done_weeks)}/{len(expected_weeks)} "
-                "settimane concluse")
         rows, quants, ls_rows = _reload(paths)
         if not any(str(row.get("spec")) == model for row in rows):
             raise ValueError(f"shard {model} non contiene righe {model}")
