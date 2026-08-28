@@ -146,7 +146,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from core.forecast.compute_metrics import load_long as load_mine
+from core.forecast.compute_metrics import (
+    core_coverage_quarters, load_long as load_mine, standard_axis,
+)
 from core import output_layout as layout
 from core.forecast import figures as fg
 from core.forecast.nyfed_nowcast import last_before_release, load_long as load_nyfed
@@ -541,80 +543,6 @@ def _apply_axes_style(ax) -> None:
                    labelsize=9, width=0.8)
     ax.grid(False)
     ax.set_facecolor("white")
-
-
-def standard_axis(df_mine: pd.DataFrame) -> frozenset:
-    """
-    L'ASSE STANDARD: l'insieme di `horizon_week` che un trimestre normale ha.
-
-    Si prende per VOTO — l'insieme di settimane piu' frequente fra i trimestri
-    del campione.  Su tutte e sei le finestre del progetto esce lo stesso:
-    `-12..+17`, trenta settimane, con 44 voti su 54 nel 2007-2019 e 6 su 10 nel
-    2024-2025.  E' una proprieta' del calendario, non della finestra, ed e' per
-    questo che si puo' usare come metro.
-
-    PERCHE' NON L'UNIONE, E PERCHE' NON UNA QUOTA
-    ---------------------------------------------
-    L'UNIONE era la regola di prima, e si rompe cosi': `horizon_week` si conta
-    dall'inizio del trimestre target, e un trimestre entra "in volo" all'inizio
-    di quello PRECEDENTE, quindi la sua prima settimana dipende da quanti
-    venerdi' aveva il trimestre prima.  Quasi sempre tredici, e si parte da
-    -12; ogni tanto quattordici, e si parte da -13.  Sul 2007-2019 capita a TRE
-    trimestri su 54 (2011Q1, 2011Q4, 2016Q4): l'unione diventava -13..+17 e gli
-    altri 51, perfettamente regolari, venivano squalificati per una settimana
-    che non potevano avere.  Ne restavano DUE, e la figura di tredici anni era
-    un RMSE su due trimestri.
-
-    Una QUOTA ("le settimane che ha almeno il 90% dei trimestri") aggiusta le
-    finestre lunghe e sbaglia le corte: ogni finestra ha quattro trimestri di
-    bordo con l'asse tagliato, che su 54 sono il 7% e su 10 sono il 40% — li'
-    il nucleo si svuotava e non restava disegnabile piu' niente.  Il voto non
-    ha questo problema, perche' i trimestri di bordo hanno assi tutti diversi
-    fra loro e non fanno maggioranza.
-    """
-    from collections import Counter
-    per_quarter = df_mine.groupby("target_quarter")["horizon_week"].apply(frozenset)
-    if not len(per_quarter):
-        return frozenset()
-    return Counter(per_quarter).most_common(1)[0][0]
-
-
-def core_coverage_quarters(df_mine: pd.DataFrame,
-                           sample: list[str] | None = None) -> list[str]:
-    """
-    I trimestri che coprono l'asse standard PER OGNI METODO disegnato.
-
-    Per ogni metodo, e non "per qualcuno": un metodo che per quel trimestre non
-    ha nemmeno una riga conta come scoperto.  Guardando la copertura sul frame
-    messo in comune fra le spec, un trimestre passava perche' lo copriva
-    qualche metodo, entrava in `n_target`, e poi i metodi che non ce l'avevano
-    fallivano `pieno` a ogni settimana e sparivano dal grafico — sul 2024-2025
-    restava disegnato UN metodo su otto.  Percio' questa funzione va chiamata
-    sul frame gia' ristretto ai metodi che si disegnano.
-
-    NON E' UN ALLENTAMENTO DELLA GUARDIA ANTI-COMPOSIZIONE
-    ------------------------------------------------------
-    Quella guardia — "un punto si disegna solo se ha tutti i trimestri del
-    campione" — vive nella colonna `pieno` di `horizon_panel` e resta identica.
-    La settimana -13 continuera' a non essere disegnata, perche' li'
-    `n_trimestri` vale 3 contro un campione di 46.  Cambia solo QUALI trimestri
-    formano il campione, non su che cosa si media un punto disegnato.
-    """
-    d = (df_mine if sample is None
-         else df_mine[df_mine["target_quarter"].isin(sample)])
-    if not len(d):
-        return []
-    asse = standard_axis(d)
-    if not asse:
-        return []
-    per = d.groupby(["target_quarter", "metodo"])["horizon_week"].apply(set)
-    quarters = list(dict.fromkeys(per.index.get_level_values(0)))
-    metodi = set(per.index.get_level_values(1))
-    tenuti = {q for q in quarters
-              if all((q, m) in per.index and asse <= per[(q, m)] for m in metodi)}
-    # L'ordine del campione lo decide il chiamante, quando ne passa uno.
-    return ([q for q in sample if q in tenuti] if sample is not None
-            else sorted(tenuti))
 
 
 def horizon_panel(df_mine: pd.DataFrame, sample: list[str],

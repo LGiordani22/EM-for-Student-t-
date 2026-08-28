@@ -50,6 +50,11 @@ def published_name(spec: str, variant: str, start: str, end: str) -> str:
     return f"weekly_nowcast_{spec}_{variant}_{start}_{end}.csv"
 
 
+def benchmark_published_name(start: str, end: str) -> str:
+    """Il nome con cui i benchmark compaiono in `csv/benchmark/`."""
+    return f"weekly_nowcast_{layout.BENCHMARK_JOB}_{start}_{end}.csv"
+
+
 def cell_parts(nome_cartella: str) -> tuple[str, str] | None:
     """
     `'fed_overlap_student_t_ar1'` -> `('fed_overlap', 'student_t_ar1')`.
@@ -87,13 +92,36 @@ def publish_cell(spec: str, variant: str, start: str, end: str) -> str:
     return dst
 
 
+def publish_benchmark(start: str, end: str) -> str:
+    """
+    Copia il CSV dei benchmark da `csv/_cells/benchmark/` a `csv/benchmark/`.
+
+    Stesso gesto di `publish_cell`, altra destinazione: i benchmark non sono una
+    cella e non devono comparire in `csv/dfm/`, dove chi legge si aspetta un
+    file per cella e conta i file per sapere quante celle ci sono.
+    """
+    src = os.path.join(layout.benchmark_cell_dir(),
+                       f"weekly_nowcast_{start}_{end}.csv")
+    if not os.path.exists(src):
+        raise FileNotFoundError(
+            f"il lavoro dei benchmark non ha un CSV su {start}..{end}:\n"
+            f"    {src}")
+    dst_dir = layout.benchmark_csv_dir()
+    os.makedirs(dst_dir, exist_ok=True)
+    dst = os.path.join(dst_dir, benchmark_published_name(start, end))
+    shutil.copyfile(src, dst)
+    return dst
+
+
 def _un_periodo_solo(paths: list[str]) -> None:
     """
-    Solleva se in `csv/dfm/` convivono periodi diversi.
+    Solleva se fra i CSV pubblicati convivono periodi diversi.
 
-    Guarda la cartella intera, non solo quel che si e' appena copiato: un file
-    rimasto da prima e' pericoloso quanto uno appena scritto, e nessuno dei
-    due si annuncia.
+    Guarda le cartelle intere — `csv/dfm/` E `csv/benchmark/` — non solo quel
+    che si e' appena copiato: un file rimasto da prima e' pericoloso quanto uno
+    appena scritto, e nessuno dei due si annuncia.  Le due cartelle si guardano
+    insieme perche' insieme vengono lette: un benchmark sul 2016 accanto a celle
+    sul 2007-2025 darebbe le stesse righe doppie di due celle discordi.
     """
     spans = {}
     for p in paths:
@@ -106,7 +134,8 @@ def _un_periodo_solo(paths: list[str]) -> None:
             f"    {a} .. {b}   ({len(f)} file, es. {f[0]})"
             for (a, b), f in sorted(spans.items()))
         raise SystemExit(
-            f"In {layout.dfm_csv_dir()} convivono {len(spans)} periodi:\n"
+            f"Fra {layout.dfm_csv_dir()} e {layout.benchmark_csv_dir()} "
+            f"convivono {len(spans)} periodi:\n"
             f"{righe}\n"
             f"Figure e tabelle concatenano TUTTO quello che trovano: cosi' "
             f"gli stessi\n(trimestre, settimana) verrebbero contati piu' "
@@ -132,6 +161,20 @@ def collect_cells(verbose: bool = True) -> list[str]:
 
     pubblicati: list[str] = []
     for cella in sorted(os.listdir(root)):
+        # I benchmark stanno fra le celle ma non SONO una cella: stesso gesto,
+        # altra destinazione (`csv/benchmark/`), e nessuna coppia spec/variante
+        # da riconoscere — il nome della cartella e' esatto.
+        if cella == layout.BENCHMARK_JOB:
+            for src in sorted(glob.glob(os.path.join(root, cella,
+                                                     "weekly_nowcast_*.csv"))):
+                m = _SPAN.search(os.path.basename(src))
+                if not m:
+                    continue
+                dst = publish_benchmark(m.group(1), m.group(2))
+                pubblicati.append(dst)
+                if verbose:
+                    print(f"  {layout.BENCHMARK_JOB} -> {os.path.basename(dst)}")
+            continue
         parti = cell_parts(cella)
         if parti is None:
             if verbose and os.path.isdir(os.path.join(root, cella)):
@@ -154,11 +197,15 @@ def collect_cells(verbose: bool = True) -> list[str]:
             f"Le celle si stimano con:  python scripts/run_dfm.py "
             f"--spec <spec> --variant <variante>")
 
-    # La guardia guarda la CARTELLA, non la lista: conta anche cio' che c'era.
-    _un_periodo_solo(sorted(glob.glob(os.path.join(layout.dfm_csv_dir(),
-                                                   "weekly_nowcast_*.csv"))))
+    # La guardia guarda le CARTELLE, non la lista: conta anche cio' che c'era.
+    _un_periodo_solo(
+        sorted(glob.glob(os.path.join(layout.dfm_csv_dir(),
+                                      "weekly_nowcast_*.csv")))
+        + sorted(glob.glob(os.path.join(layout.benchmark_csv_dir(),
+                                        "weekly_nowcast_*.csv"))))
     if verbose:
-        print(f"  {len(pubblicati)} CSV in {layout.dfm_csv_dir()}")
+        print(f"  {len(pubblicati)} CSV in {layout.dfm_csv_dir()} "
+              f"e {layout.benchmark_csv_dir()}")
     return pubblicati
 
 

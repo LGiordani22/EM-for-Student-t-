@@ -92,8 +92,13 @@ TABLE_WINDOWS: list[str] = list(layout.RMSE_PASSES) + list(layout.RMSE_ZOOM_WIND
 #: osservazioni, poi la distanza, poi la direzione.  Le `*_com` sono le stesse
 #: metriche sul campione comune e stanno APPAIATE alla loro versione libera,
 #: non in fondo: si leggono a coppie.
-_COLS = ["window", "metodo", "n", "n_com", "RMSE", "RMSE_com", "RMSE_rel_ar2",
-         "MAE", "Bias", "corr", "MDA", "MDA_com", "n_dir", "SignAcc"]
+#: `n_trimestri` sta accanto a `window` e non in fondo perche' e' parte
+#: dell'intestazione, non una metrica: dice su quanti trimestri e' calcolata
+#: TUTTA la riga.  E' lo stesso numero che la figura per orizzonte scrive nel
+#: titolo — da quando le due leggono lo stesso campione, coincide.
+_COLS = ["window", "n_trimestri", "metodo", "n", "n_com", "RMSE", "RMSE_com",
+         "RMSE_rel_ar2", "MAE", "Bias", "corr", "MDA", "MDA_com", "n_dir",
+         "SignAcc"]
 
 #: Le metriche che vengono ricalcolate sul campione comune e affiancate.
 _COMMON_COLS = {"n": "n_com", "RMSE": "RMSE_com", "MDA": "MDA_com"}
@@ -294,7 +299,10 @@ def family_tables(df: pd.DataFrame, family: str,
     sub = df[df["metodo"].isin(_methods_of(df, family))]
     by_m, by_mp = [], []
     for w in windows:
-        d = layout.slice_window(sub, w, column="as_of")
+        # La Fed non vota sul campione: comincia a -3/-4 per scelta editoriale,
+        # non per un buco, e chiederle l'asse intero lo svuoterebbe per tutti.
+        # Resta pero' nella tabella, misurata sugli stessi trimestri.
+        d, tenuti, _ = cm.window_sample(sub, w, skip=[_NYFED])
         if d.empty:
             continue
         c = common_points(d)
@@ -302,6 +310,7 @@ def family_tables(df: pd.DataFrame, family: str,
                           cm.table_by_method(c) if not c.empty else None,
                           on=["metodo"])
         t.insert(0, "window", w)
+        t.insert(1, "n_trimestri", len(tenuti))
         by_m.append(t)
 
         cp = common_points_by_phase(d)
@@ -514,6 +523,16 @@ def comparison_by_phase(dfm: pd.DataFrame, bvar: pd.DataFrame,
     if both.empty:
         return pd.DataFrame(), "  (nessun dato)"
 
+    # QUI NON SI USA `cm.window_sample`, E LA RAGIONE E' STRUTTURALE.  Quella
+    # regola chiede che OGNI metodo copra l'asse standard, ed e' giusta dove i
+    # metodi l'asse ce l'hanno tutti uguale — le tabelle per famiglia.  Qui no:
+    # questa tabella mette insieme famiglie con assi diversi PER COSTRUZIONE,
+    # la NY Fed prima di tutte (comincia a -3/-4: le settimane profonde non le
+    # pubblica, non le ha perse).  Pretendere da lei l'asse intero svuoterebbe
+    # il campione di tutti.  L'asimmetria dei bordi, qui, la governano gia'
+    # `_drop_thin_methods` e `common_points`, che sono fatti apposta per metodi
+    # con copertura diversa.  Vedi la guardia in `test_common_sample`, che
+    # costruisce apposta un q-BVAR senza backcast.
     rows, notes = [], []
     for w in windows:
         d = layout.slice_window(both, w, column="as_of")
@@ -589,6 +608,8 @@ def comparison_matrices(dfm: pd.DataFrame, bvar: pd.DataFrame,
     """
     both = _both_families(dfm, bvar)
 
+    # Come sopra: assi diversi per costruzione, quindi taglio su `as_of` e
+    # campione comune punto per punto — non `cm.window_sample`.
     rows, notes = [], []
     for w in windows:
         d = layout.slice_window(both, w, column="as_of")

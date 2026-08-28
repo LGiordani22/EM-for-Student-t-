@@ -96,8 +96,22 @@ def _csv_dir() -> str:
     return layout.dfm_csv_dir()
 
 
+def _benchmark_csv_dir() -> str:
+    from core import output_layout as layout
+    return layout.benchmark_csv_dir()
+
+
 def discover_csvs(paths: list[str] | None = None) -> list[str]:
-    """I CSV da leggere: quelli dati, o tutti quelli presenti."""
+    """
+    I CSV da leggere: quelli dati, o tutti quelli presenti.
+
+    DUE CARTELLE, NON UNA.  Le celle stanno in `csv/dfm/`, i benchmark in
+    `csv/benchmark/`: sono lo stesso formato lungo e vanno concatenati, ma non
+    sono la stessa cosa e non devono stare nello stesso posto — chi conta i
+    file di `csv/dfm/` conta le celle.  L'assenza dei benchmark non e' un
+    errore (una passata con `--no-benchmarks` e' legittima): manca solo la
+    riga di paragone nelle tabelle.
+    """
     if paths:
         return list(paths)
     found = sorted(glob.glob(os.path.join(_csv_dir(), "weekly_nowcast_*.csv")))
@@ -107,6 +121,8 @@ def discover_csvs(paths: list[str] | None = None) -> list[str]:
             f"Generane uno con:  python -m core.forecast.weekly_nowcast "
             f"--start YYYY-MM-DD --end YYYY-MM-DD"
         )
+    found += sorted(glob.glob(os.path.join(_benchmark_csv_dir(),
+                                           "weekly_nowcast_*.csv")))
     return found
 
 
@@ -315,6 +331,150 @@ def balanced_quarters(df: pd.DataFrame) -> list[str]:
     per_q = df.groupby("target_quarter")["fase"].agg(set)
     tutte = set(_PHASE_ORDER) & set(df["fase"].unique())
     return sorted(q for q, f in per_q.items() if tutte <= f)
+
+
+def standard_axis(df_mine: pd.DataFrame) -> frozenset:
+    """
+    L'ASSE STANDARD: l'insieme di `horizon_week` che un trimestre normale ha.
+
+    Si prende per VOTO — l'insieme di settimane piu' frequente fra i trimestri
+    del campione.  Su tutte e sei le finestre del progetto esce lo stesso:
+    `-12..+17`, trenta settimane, con 44 voti su 54 nel 2007-2019 e 6 su 10 nel
+    2024-2025.  E' una proprieta' del calendario, non della finestra, ed e' per
+    questo che si puo' usare come metro.
+
+    PERCHE' NON L'UNIONE, E PERCHE' NON UNA QUOTA
+    ---------------------------------------------
+    L'UNIONE era la regola di prima, e si rompe cosi': `horizon_week` si conta
+    dall'inizio del trimestre target, e un trimestre entra "in volo" all'inizio
+    di quello PRECEDENTE, quindi la sua prima settimana dipende da quanti
+    venerdi' aveva il trimestre prima.  Quasi sempre tredici, e si parte da
+    -12; ogni tanto quattordici, e si parte da -13.  Sul 2007-2019 capita a TRE
+    trimestri su 54 (2011Q1, 2011Q4, 2016Q4): l'unione diventava -13..+17 e gli
+    altri 51, perfettamente regolari, venivano squalificati per una settimana
+    che non potevano avere.  Ne restavano DUE, e la figura di tredici anni era
+    un RMSE su due trimestri.
+
+    Una QUOTA ("le settimane che ha almeno il 90% dei trimestri") aggiusta le
+    finestre lunghe e sbaglia le corte: ogni finestra ha quattro trimestri di
+    bordo con l'asse tagliato, che su 54 sono il 7% e su 10 sono il 40% — li'
+    il nucleo si svuotava e non restava disegnabile piu' niente.  Il voto non
+    ha questo problema, perche' i trimestri di bordo hanno assi tutti diversi
+    fra loro e non fanno maggioranza.
+    """
+    from collections import Counter
+    per_quarter = df_mine.groupby("target_quarter")["horizon_week"].apply(frozenset)
+    if not len(per_quarter):
+        return frozenset()
+    return Counter(per_quarter).most_common(1)[0][0]
+
+
+def core_coverage_quarters(df_mine: pd.DataFrame,
+                           sample: list[str] | None = None) -> list[str]:
+    """
+    I trimestri che coprono l'asse standard PER OGNI METODO disegnato.
+
+    Per ogni metodo, e non "per qualcuno": un metodo che per quel trimestre non
+    ha nemmeno una riga conta come scoperto.  Guardando la copertura sul frame
+    messo in comune fra le spec, un trimestre passava perche' lo copriva
+    qualche metodo, entrava in `n_target`, e poi i metodi che non ce l'avevano
+    fallivano `pieno` a ogni settimana e sparivano dal grafico — sul 2024-2025
+    restava disegnato UN metodo su otto.  Percio' questa funzione va chiamata
+    sul frame gia' ristretto ai metodi che si disegnano.
+
+    NON E' UN ALLENTAMENTO DELLA GUARDIA ANTI-COMPOSIZIONE
+    ------------------------------------------------------
+    Quella guardia — "un punto si disegna solo se ha tutti i trimestri del
+    campione" — vive nella colonna `pieno` di `horizon_panel` e resta identica.
+    La settimana -13 continuera' a non essere disegnata, perche' li'
+    `n_trimestri` vale 3 contro un campione di 46.  Cambia solo QUALI trimestri
+    formano il campione, non su che cosa si media un punto disegnato.
+    """
+    d = (df_mine if sample is None
+         else df_mine[df_mine["target_quarter"].isin(sample)])
+    if not len(d):
+        return []
+    asse = standard_axis(d)
+    if not asse:
+        return []
+    per = d.groupby(["target_quarter", "metodo"])["horizon_week"].apply(set)
+    quarters = list(dict.fromkeys(per.index.get_level_values(0)))
+    metodi = set(per.index.get_level_values(1))
+    tenuti = {q for q in quarters
+              if all((q, m) in per.index and asse <= per[(q, m)] for m in metodi)}
+    # L'ordine del campione lo decide il chiamante, quando ne passa uno.
+    return ([q for q in sample if q in tenuti] if sample is not None
+            else sorted(tenuti))
+
+
+def window_sample(df: pd.DataFrame, w: str, column: str = "as_of",
+                  skip: "Iterable[str]" = ()
+                  ) -> tuple[pd.DataFrame, list[str], list[str]]:
+    """
+    Le righe della finestra `w`, sui soli trimestri che coprono l'asse standard.
+
+    Torna `(frame, tenuti, scartati)`.  E' la finestra come la intendono LE
+    TABELLE, e da oggi coincide con quella della figura per orizzonte: stessa
+    funzione (`core_coverage_quarters`), stesso campione, stesso numero.
+
+    PERCHE' NON BASTA TAGLIARE SU `as_of`
+    -------------------------------------
+    Ogni venerdi' la passata scrive due o tre righe, una per trimestre in volo.
+    Tagliando sulla sola `as_of`, ai bordi della finestra i trimestri entrano
+    MUTILATI, e in modo asimmetrico: il piu' vecchio solo dai suoi orizzonti
+    MIGLIORI (il trimestre era gia' chiuso quando la passata comincia: solo
+    backcast), il piu' nuovo solo dai PEGGIORI (le sue settimane di nowcast e
+    backcast cadono oltre la fine della finestra: solo previsione).
+
+    In tempi normali i due bordi si compensano.  Sul 2007-2019 no, perche' il
+    bordo destro e' **2020Q1**: tredici righe di sola previsione, realizzato
+    -5.16, che sono lo 0.8% del campione e il 10.6% dell'MSE.  L'RMSE di
+    `fed_overlap/student_t` passava da 2.085 a 2.174 per quelle tredici righe.
+
+    NON E' LOOK-AHEAD, ed e' la ragione per cui il rimedio sta qui e non nella
+    pipeline di previsione: il nowcast di 2020Q1 fatto il 2019-10-04 usa solo
+    dati al 2019-10-04, ed e' corretto.  Sbagliata era la MEDIA in cui finiva.
+
+    IL PREZZO, che va dichiarato e non nascosto
+    -------------------------------------------
+    Sul 2007-2019 la regola scarta 8 trimestri su 54.  Quattro sono il difetto
+    (2006Q4 ha solo +14..+17, 2020Q1 solo -12..0); gli altri quattro (2011Q1,
+    2011Q2, 2017Q1, 2017Q2) sono trimestri INTERNI e sani, che perdono UNA
+    settimana perche' i venerdi' cadono come cadono.  Tollerare quella settimana
+    li recupererebbe — e cambia la terza cifra (2.082 contro 2.085) — ma
+    rimetterebbe tabella e figura su campioni diversi: la guardia della figura
+    e' PER PUNTO, quindi con un campione piu' largo perderebbe in silenzio i
+    suoi estremi.  Un campione solo vale piu' di quattro trimestri.
+
+    E LA COPERTURA SI CHIEDE A OGNI METODO, quindi il campione di una tabella e'
+    quello del metodo PEGGIO COPERTO: una cella guasta stringe anche le sane.
+    Nella passata del 16-8 `fed_overlap/student_t_ar1` moriva nel 2022, e da
+    sola toglieva 17 trimestri a tutti gli altri sul 2007-2025.  E' voluto — un
+    confronto vuole lo stesso campione per tutti — ma va letto sapendolo.
+
+    `skip`: I METODI CHE L'ASSE NON CE L'HANNO PER COSTRUZIONE
+    ---------------------------------------------------------
+    "Ogni metodo" vuol dire ogni metodo che l'asse potrebbe averlo.  La NY Fed
+    non pubblica prima della settimana -3/-4: quelle settimane non le ha PERSE,
+    non le fa proprio.  Chiedergliele svuoterebbe il campione di tutti — e non
+    e' un caso di scuola, `test_common_sample` lo costruisce apposta.  I metodi
+    passati in `skip` restano nel frame restituito e nelle tabelle, ma non
+    votano sul campione.  E' esattamente quello che fa gia' la figura per
+    orizzonte, che calcola il campione sui metodi disegnati e aggiunge la Fed
+    dopo (vedi `horizon_panel` in `compare_nyfed`).
+    """
+    from core import output_layout as layout
+    d = layout.slice_window(df, w, column=column)
+    if d.empty:
+        return d, [], []
+    skip = set(skip)
+    votanti = d[~d["metodo"].isin(skip)] if skip else d
+    if votanti.empty:
+        return d, sorted(str(q) for q in d["target_quarter"].unique()), []
+    tenuti = core_coverage_quarters(votanti)
+    tutti = sorted(str(q) for q in d["target_quarter"].unique())
+    scartati = [q for q in tutti if q not in set(tenuti)]
+    return d[d["target_quarter"].isin(tenuti)], tenuti, scartati
 
 
 def table_by_method_phase_balanced(df: pd.DataFrame
