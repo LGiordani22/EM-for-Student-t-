@@ -141,8 +141,16 @@ def test_default() -> bool:
     # deve diventare parametrico: li' le prime p righe sono dati osservati.
     # Si guarda la CHIAMATA, non la riga: cosi' una riformattazione non fa
     # fallire il test, ma un `p0=` che comparisse li' si'.
-    chiamate = re.findall(r"build_state_space\(([^)]*)\)",
-                          inspect.getsource(lbvar.fit))
+    #
+    # SI GUARDA IN `_finite_smoother`, NON IN `fit`.  La chiamata e' li' da
+    # quando la stima ha una rete numerica intorno allo smoother, e questo
+    # test cercava ancora in `fit`: trovava zero chiamate e falliva senza che
+    # niente fosse rotto — un test che guarda il posto sbagliato non e' un
+    # test.  Si cerca in ENTRAMBE le funzioni, cosi' regge anche se la
+    # chiamata torna a spostarsi.
+    sorgente = inspect.getsource(lbvar.fit) + inspect.getsource(
+        lbvar._finite_smoother)
+    chiamate = re.findall(r"build_state_space\(([^)]*)\)", sorgente)
     ok &= _check("L: lo smoother della stima resta a P_0 = 0",
                  len(chiamate) == 1 and "p0" not in chiamate[0],
                  f"{len(chiamate)} chiamata/e")

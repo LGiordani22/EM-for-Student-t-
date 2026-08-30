@@ -79,6 +79,34 @@ def _run(root: str, *, stop_after: int | None = None, fresh: bool = False,
         evaluate.run_model = vero
 
 
+def _stima_fallita_alla_prima_settimana(root: str) -> tuple[pd.DataFrame, list]:
+    """Una passata in cui la stima piena della PRIMA settimana non regge.
+
+    E' il caso del blocco Covid: `parallel_blocks` taglia sulle settimane
+    piene, quindi quando fallisce la prima settimana di un blocco la cache e'
+    vuota per costruzione e non c'e' niente da ereditare.  Il rimedio e' la
+    stima di RISCALDAMENTO: il blocco si ricalcola da solo l'ultima stima
+    piena precedente, che sta fuori dal blocco.
+    """
+    vero = evaluate._full_estimate
+    chiamate: list = []
+    prima = pd.Timestamp(evaluate.weekly_grid(START, END)[0])
+
+    def _spia(model, as_of, **kw):
+        chiamate.append(pd.Timestamp(as_of))
+        if pd.Timestamp(as_of) == prima:
+            raise FloatingPointError("stima non convergente (simulata)")
+        return vero(model, as_of, **kw)
+
+    evaluate._full_estimate = _spia
+    try:
+        evaluate.run_realtime(START, END, MODELS, output_root=root,
+                              verbose=False, fresh=True, n_draws=DRAWS)
+    finally:
+        evaluate._full_estimate = vero
+    return _csv(root), chiamate
+
+
 def _csv(root: str) -> pd.DataFrame:
     p = evaluate._paths(root, START, END)["csv"]
     return pd.read_csv(p).sort_values(list(evaluate._KEY)).reset_index(drop=True)
@@ -183,6 +211,42 @@ def main() -> None:
         else:
             ok4, det4 = False, "la passata e' proseguita con S diverso"
         esiti.append(("4   S diverso -> la ripresa si ferma", ok4, det4))
+
+        # ── §5 una stima che fallisce non porta giu' il blocco ───────────────
+        # E' il caso Covid, esercitato sulla meccanica invece che sulle sei ore
+        # e mezza del blocco vero: la stima piena della PRIMA settimana non
+        # regge, la cache e' vuota, e il blocco deve procurarsi i parametri da
+        # solo con la stima di riscaldamento.
+        print("  stima fallita alla prima settimana ...")
+        caduto = os.path.join(tmp, "caduto")
+        try:
+            df5, chiamate = _stima_fallita_alla_prima_settimana(caduto)
+            ok5, det5 = True, ""
+        except Exception as exc:                                   # noqa: BLE001
+            df5, chiamate = None, []
+            ok5, det5 = False, f"{type(exc).__name__}: {exc}"
+        esiti.append(("5   una stima fallita non uccide il blocco", ok5,
+                      det5 or f"{len(df5)} righe scritte, blocco completo"))
+
+        if df5 is not None:
+            # tutte le settimane ci sono, come nella passata sana
+            esiti.append(("5b  nessuna settimana persa",
+                          set(df5["as_of"]) == set(rif["as_of"]),
+                          f"{df5['as_of'].nunique()} settimane "
+                          f"(attese {rif['as_of'].nunique()})"))
+            # e la riga DICHIARA di non essere stata ristimata
+            esiti.append(("5c  le righe dichiarano il riuso",
+                          not df5["reestimated"].any(),
+                          "reestimated=False su tutte, come dev'essere quando "
+                          "l'unica stima piena della finestra e' fallita"))
+            # il riscaldamento e' andato a prendere una data PRECEDENTE
+            prima = pd.Timestamp(evaluate.weekly_grid(START, END)[0])
+            riscaldamento = [d for d in chiamate if d < prima]
+            esiti.append(("5d  la stima di riscaldamento e' fuori dal blocco",
+                          len(riscaldamento) == 1
+                          and riscaldamento[0] == evaluate.previous_full_week(prima),
+                          f"{[str(d.date()) for d in riscaldamento]} "
+                          f"(prima settimana del blocco: {prima.date()})"))
 
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

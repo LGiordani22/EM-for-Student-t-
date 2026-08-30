@@ -270,6 +270,7 @@ import pickle
 import shutil
 import subprocess
 import time
+import warnings
 import zipfile
 from dataclasses import dataclass, field
 
@@ -386,6 +387,38 @@ def gdp_released_between(a, b, metadata: pd.DataFrame | None = None) -> bool:
         return False
     col = "series_id" if "series_id" in rel.columns else rel.columns[0]
     return bool((rel[col] == TARGET).any())
+
+
+def previous_full_week(start, metadata: pd.DataFrame | None = None,
+                       lookback_weeks: int = 60) -> pd.Timestamp | None:
+    """L'ultima settimana di stima piena STRETTAMENTE prima di `start`.
+
+    Serve al ripiego di `run_realtime` quando a fallire e' la PRIMA settimana
+    di un blocco: li' la cache e' vuota per costruzione, perche'
+    `parallel_blocks` taglia proprio sulle settimane di stima piena, e quindi
+    non c'e' niente da riusare dentro il processo.
+
+    PERCHE' NON SI CHIEDE AL BLOCCO PRECEDENTE.  Sarebbe piu' economico, ma
+    imporrebbe di aspettarlo: i blocchi girano su processi separati e sono
+    indipendenti, ed e' quell'indipendenza a far stare la passata in ~12 ore
+    invece di 77 volte tanto.  Il blocco che fallisce si ricalcola la stima da
+    solo — costa una stima in piu' A LUI, e non fa aspettare nessuno.
+
+    Non si usa `estimation_weeks`, che marca sempre come piena la PRIMA
+    settimana della griglia: qui quella sarebbe un falso positivo a 60
+    settimane di distanza.  Si cerca il trigger vero, cioe' un rilascio del
+    PIL fra un venerdi' e il successivo.
+
+    `lookback_weeks = 60` e' abbondante: le stime piene seguono i rilasci BEA,
+    quindi cadono ogni ~13 settimane.
+    """
+    start = pd.Timestamp(start)
+    back = weekly_grid(str((start - pd.Timedelta(weeks=lookback_weeks)).date()),
+                       str(start.date()))
+    for prev, cur in zip(reversed(back[:-1]), reversed(back[1:])):
+        if cur < start and gdp_released_between(prev, cur, metadata=metadata):
+            return cur
+    return None
 
 
 def estimation_weeks(grid: list[pd.Timestamp],
@@ -574,12 +607,84 @@ def qbvar_growth(fit, quarters: list[str], as_of, *,
     return {q: _growth_rows(g, q) for q in quarters}
 
 
+class EstimationFailed(RuntimeError):
+    """Una stima piena e' fallita e NON c'era niente da riusare.
+
+    E' l'unico caso in cui `run_model` non sa cavarsela da solo: con una cache
+    disponibile ripiega sul riuso e va avanti, senza cache non ha parametri da
+    ereditare.  Il chiamante puo' procurargliene una (vedi
+    `run_realtime`, il ripiego di riscaldamento) oppure lasciar passare
+    l'errore.
+    """
+
+    def __init__(self, model: str, as_of, cause: BaseException) -> None:
+        self.model, self.as_of, self.cause = model, pd.Timestamp(as_of), cause
+        super().__init__(f"{model} @ {pd.Timestamp(as_of).date()}: "
+                         f"{type(cause).__name__}: {cause}")
+
+
+def _full_estimate(model: str, as_of, *, S: int, spec: BVARSpec,
+                   raw: pd.DataFrame, rng: np.random.Generator, horizon: int,
+                   kw: dict) -> tuple[object | None, ModelCache]:
+    """La stima piena di un modello, e la cache che ne esce.
+
+    Restituisce `(res, cache)`; per il Q `res` e' None, perche' li' il nowcast
+    si ricava SEMPRE dalla cache (il bordo si ricostruisce ogni settimana).
+    """
+    if model == "qbvar":
+        panel = qbvar.estimation_panel(spec, as_of=as_of, raw=raw)
+        fit = qbvar.fit(spec, panel, n_draws=S, burn=S // 2, rng=rng)
+        return None, ModelCache(B=fit.draws.B, Sigma=fit.draws.Sigma,
+                                lam=fit.draws.lam, mu=fit.draws.mu,
+                                psi=fit.draws.psi, draws_obj=fit.draws,
+                                estimated_at=pd.Timestamp(as_of),
+                                extra={"fit": fit, "panel": panel})
+    if model == "cbvar":
+        res = cbvar.fit(spec, n_draws=S, burn=S // 2, horizon=horizon, **kw)
+        return res, ModelCache(draws_obj=res, estimated_at=pd.Timestamp(as_of),
+                               extra={"systems": res.systems})
+    if model == "bbvar":
+        res = bbvar.fit(spec, n_draws=S, burn=S // 2, horizon=horizon, **kw)
+        return res, ModelCache(B=res.draws.B, Sigma=res.draws.Sigma,
+                               lam=res.draws.lam, mu=res.draws.mu,
+                               psi=res.draws.psi, draws_obj=res.draws,
+                               estimated_at=pd.Timestamp(as_of))
+    if model == "lbvar":
+        res = lbvar.fit(spec, n_draws=S, burn=S // 5, horizon=horizon, **kw)
+        # LO SPEC RIDOTTO, non quello di configurazione: l'L-BVAR scarta le
+        # serie che a `as_of` non esistono ancora, e (B, Sigma) sono
+        # indicizzati su quelle rimaste.  Il ramo di riuso deve vedere lo
+        # STESSO insieme, altrimenti a meta' trimestre una serie che entra
+        # allarga il pannello sotto parametri che non la contemplano.
+        return res, ModelCache(B=res.B, Sigma=res.Sigma, lam=res.lam,
+                               mu=res.mu, psi=res.psi,
+                               estimated_at=pd.Timestamp(as_of),
+                               extra={"spec": res.spec})
+    raise ValueError(f"modello ignoto {model!r}")
+
+
+def _reuse_estimate(model: str, cache: ModelCache, *, spec: BVARSpec,
+                    horizon: int, kw: dict) -> object:
+    """Il ramo di riuso: parametri ereditati, bordo rifiltrato al vintage."""
+    if model == "cbvar":
+        return cbvar.fit_reuse(cache.extra["systems"], spec, horizon=horizon,
+                               **kw)
+    if model == "bbvar":
+        return bbvar.fit_reuse(cache.B, cache.Sigma, spec, horizon=horizon,
+                               draws_obj=cache.draws_obj, **kw)
+    if model == "lbvar":
+        return lbvar.fit_reuse(cache.B, cache.Sigma,
+                               cache.extra.get("spec", spec), horizon=horizon,
+                               lam=cache.lam, mu=cache.mu, psi=cache.psi, **kw)
+    raise ValueError(f"modello ignoto {model!r}")
+
+
 def run_model(model: str, as_of, quarters: list[str], cache: ModelCache, *,
               full: bool, spec: BVARSpec, raw: pd.DataFrame,
               rng: np.random.Generator, horizon: int = HORIZON_MONTHS,
               verbose: bool = False,
               n_draws: int | None = None
-              ) -> tuple[dict[str, np.ndarray | None], ModelCache]:
+              ) -> tuple[dict[str, np.ndarray | None], ModelCache, bool]:
     """
     Una settimana, un modello, TUTTI i trimestri in volo.  `full=True` = stima
     completa, `False` = riuso.
@@ -593,70 +698,67 @@ def run_model(model: str, as_of, quarters: list[str], cache: ModelCache, *,
     costo ridotto e non il numero definitivo.  Chi non lo passa ha i valori
     tarati al Gate 5.
 
+    SE LA STIMA PIENA FALLISCE, LA SETTIMANA NON SI PERDE
+    ------------------------------------------------------
+    Prima l'eccezione risaliva e uccideva il blocco intero: tredici settimane
+    non scritte perche' una stima non ha retto.  Ora si ripiega sul RIUSO —
+    parametri della stima piena precedente, bordo rifiltrato al vintage — che
+    e' esattamente quello che fanno gli autori nell'esercizio Covid
+    (`STEP3a_LBVAR_covid.m` r.88 commenta il trigger di ri-stima e manda tutte
+    le settimane dell'anno a `lbvar_NE`).
+
+    NON E' "saltare la settimana": il pannello viene ricostruito a `as_of` e
+    lo smoother rifa' il bordo, quindi **il flusso dati nuovo entra tutto nel
+    nowcast**.  Cio' che si eredita sono i soli parametri.  La riga esce
+    normalmente, con `reestimated=False`, che e' la colonna che gia' distingue
+    le settimane piene da quelle di riuso: nessun cambio di schema, nessuna
+    riga mancante.
+
+    Vale per TUTTI E QUATTRO i modelli, non solo per l'L: il ripiego sta qui,
+    sopra la scelta del modello, perche' un blocco perso e' un blocco perso
+    qualunque sia il modello che non ha retto.
+
     Returns
     -------
-    ({trimestre: estrazioni della crescita annualizzata, o None}, cache)
+    ({trimestre: estrazioni, o None}, cache, estimated)
+        `estimated` dice se la stima piena e' stata fatta DAVVERO: e' quello
+        che finisce in `reestimated`, non l'intenzione `full`.
     """
     S = DRAWS[model] if n_draws is None else int(n_draws)
     kw = dict(as_of=as_of, raw=raw, rng=rng, verbose=verbose)
+    want_full = full or not cache.ready
+    estimated = False
+    res = None
+
+    if want_full:
+        try:
+            res, cache = _full_estimate(model, as_of, S=S, spec=spec, raw=raw,
+                                        rng=rng, horizon=horizon, kw=kw)
+            estimated = True
+        except Exception as exc:                                # noqa: BLE001
+            if not cache.ready:
+                raise EstimationFailed(model, as_of, exc) from exc
+            warnings.warn(
+                f"{model} @ {pd.Timestamp(as_of).date()}: stima piena fallita "
+                f"({type(exc).__name__}: {exc}); si riusano i parametri del "
+                f"{pd.Timestamp(cache.estimated_at).date()}",
+                RuntimeWarning, stacklevel=2)
 
     if model == "qbvar":
         # La baseline.  I parametri si ristimano solo alle settimane piene; il
         # BORDO invece si ricostruisce ogni settimana, perche' e' li' che il
         # flusso dati entra — e' la stessa divisione di C, B e L.
-        if full or not cache.ready:
-            panel = qbvar.estimation_panel(spec, as_of=as_of, raw=raw)
-            fit = qbvar.fit(spec, panel, n_draws=S, burn=S // 2, rng=rng)
-            cache = ModelCache(B=fit.draws.B, Sigma=fit.draws.Sigma,
-                               lam=fit.draws.lam, mu=fit.draws.mu,
-                               psi=fit.draws.psi, draws_obj=fit.draws,
-                               estimated_at=pd.Timestamp(as_of),
-                               extra={"fit": fit, "panel": panel})
+        #
         # nel riuso il campione di stima resta quello dell'ultima stima piena:
         # e' la stessa approssimazione degli autori, applicata al Q.
         return (qbvar_growth(cache.extra["fit"], quarters, as_of, rng=rng,
-                             raw=raw, horizon_q=horizon // 3), cache)
+                             raw=raw, horizon_q=horizon // 3), cache, estimated)
 
-    if model == "cbvar":
-        if full or not cache.ready:
-            res = cbvar.fit(spec, n_draws=S, burn=S // 2, horizon=horizon, **kw)
-            cache = ModelCache(draws_obj=res, estimated_at=pd.Timestamp(as_of),
-                               extra={"systems": res.systems})
-        else:
-            res = cbvar.fit_reuse(cache.extra["systems"], spec, horizon=horizon, **kw)
-
-    elif model == "bbvar":
-        if full or not cache.ready:
-            res = bbvar.fit(spec, n_draws=S, burn=S // 2, horizon=horizon, **kw)
-            cache = ModelCache(B=res.draws.B, Sigma=res.draws.Sigma,
-                               lam=res.draws.lam, mu=res.draws.mu,
-                               psi=res.draws.psi, draws_obj=res.draws,
-                               estimated_at=pd.Timestamp(as_of))
-        else:
-            res = bbvar.fit_reuse(cache.B, cache.Sigma, spec, horizon=horizon,
-                                  draws_obj=cache.draws_obj, **kw)
-
-    elif model == "lbvar":
-        if full or not cache.ready:
-            res = lbvar.fit(spec, n_draws=S, burn=S // 5, horizon=horizon, **kw)
-            # LO SPEC RIDOTTO, non quello di configurazione: l'L-BVAR scarta le
-            # serie che a `as_of` non esistono ancora, e (B, Sigma) sono
-            # indicizzati su quelle rimaste.  Il ramo di riuso deve vedere lo
-            # STESSO insieme, altrimenti a meta' trimestre una serie che entra
-            # allarga il pannello sotto parametri che non la contemplano.
-            cache = ModelCache(B=res.B, Sigma=res.Sigma, lam=res.lam,
-                               mu=res.mu, psi=res.psi,
-                               estimated_at=pd.Timestamp(as_of),
-                               extra={"spec": res.spec})
-        else:
-            res = lbvar.fit_reuse(cache.B, cache.Sigma,
-                                  cache.extra.get("spec", spec), horizon=horizon,
-                                  lam=cache.lam, mu=cache.mu, psi=cache.psi, **kw)
-    else:
-        raise ValueError(f"modello ignoto {model!r}")
+    if res is None:
+        res = _reuse_estimate(model, cache, spec=spec, horizon=horizon, kw=kw)
 
     g = res.growth(TARGET)                      # una volta, non una per obiettivo
-    return {q: _growth_rows(g, q) for q in quarters}, cache
+    return {q: _growth_rows(g, q) for q in quarters}, cache, estimated
 
 
 # ─── 4. Le metriche di densita' ───────────────────────────────────────────────
@@ -1328,10 +1430,45 @@ def run_realtime(
 
         for m in models:
             rng = _rng_for_week(seed, D)
-            per_q, caches[m] = run_model(
-                m, D, qs, caches[m], full=full, spec=specs[m], raw=raw,
-                rng=rng, horizon=horizon, verbose=False, n_draws=S_of[m])
-            if full:
+            try:
+                per_q, caches[m], estimated = run_model(
+                    m, D, qs, caches[m], full=full, spec=specs[m], raw=raw,
+                    rng=rng, horizon=horizon, verbose=False, n_draws=S_of[m])
+            except EstimationFailed as fail:
+                # LA STIMA DI RISCALDAMENTO, e perche' e' qui e non altrove.
+                # Siamo alla PRIMA settimana del blocco — `parallel_blocks`
+                # taglia sulle settimane piene — quindi la cache e' vuota e
+                # `run_model` non ha parametri da ereditare.  Se li vada a
+                # prendere: rifa' da solo l'ultima stima piena precedente, che
+                # sta fuori dal blocco.  Costa UNA stima in piu' a questo
+                # blocco e NON fa aspettare nessun altro processo: e' la
+                # ragione per cui non si chiede al blocco precedente.
+                #
+                # Le righe di quella settimana non si scrivono: appartengono al
+                # blocco precedente, che le ha gia' prodotte.
+                prev = previous_full_week(D, metadata=meta)
+                if prev is None:
+                    raise
+                print(f"    [{m}] {fail}\n"
+                      f"    -> stima di riscaldamento al {prev.date()}, "
+                      f"poi riuso", flush=True)
+                _, caches[m], _ = run_model(
+                    m, prev, [], ModelCache(), full=True, spec=specs[m],
+                    raw=raw, rng=_rng_for_week(seed, prev), horizon=horizon,
+                    verbose=False, n_draws=S_of[m])
+                # `full=False`, NON `full`: la stima a questo vintage l'abbiamo
+                # gia' provata e non ha retto.  Ritentarla costerebbe una
+                # seconda passata intera — per l'L-BVAR un'ora — per finire
+                # nello stesso posto.  Si va diritti al riuso.
+                #
+                # `rng` e' quello parzialmente consumato dal tentativo fallito,
+                # ed e' giusto cosi': il punto in cui la stima si ferma e'
+                # deterministico a parita' di seme e di dati, quindi la ripresa
+                # e' riproducibile.
+                per_q, caches[m], estimated = run_model(
+                    m, D, qs, caches[m], full=False, spec=specs[m], raw=raw,
+                    rng=rng, horizon=horizon, verbose=False, n_draws=S_of[m])
+            if estimated:
                 # SOLO qui: nelle settimane di riuso la cache non cambia, quindi
                 # riscriverla sarebbe un pickle da centinaia di MB per niente.
                 _save_cache(paths, m, caches[m], max_mb=max_cache_mb, git=git)
@@ -1344,7 +1481,11 @@ def run_realtime(
                     **_common(q, s["median"]), "spec": m,
                     "variant": "authors" if m == "cbvar" else "-",
                     "sd_z": s["sd"], "n_iter": S_of[m],
-                    "converged": True, "reestimated": full,
+                    # `estimated`, non `full`: se la stima piena non ha retto e
+                    # si e' ripiegati sul riuso, la riga deve DIRLO.  Scrivere
+                    # qui l'intenzione invece del fatto renderebbe invisibile a
+                    # valle l'unica cosa che distingue quella settimana.
+                    "converged": True, "reestimated": estimated,
                 }, rows, seen)
                 quants[(D.date().isoformat(), m, q)] = np.array(
                     [s["q"][x] for x in QUANTILES])
@@ -1355,7 +1496,7 @@ def run_realtime(
                     "variant": "authors" if m == "cbvar" else "-",
                     "log_score": log_score(draws, rel_bea),
                     "realizzato_bea": rel_bea, "n_draws": int(np.size(draws)),
-                    "reestimated": full,
+                    "reestimated": estimated,
                 }, ls_rows, seen_ls)
 
         # I metri, una volta per settimana e per obiettivo: non dipendono dal

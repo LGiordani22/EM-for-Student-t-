@@ -441,6 +441,67 @@ def drop_empty_series(panel: pd.DataFrame, spec: BVARSpec
     return panel.loc[:, keep], spec.restrict(keep)
 
 
+def vintage_end(as_of) -> pd.Timestamp:
+    """L'ultimo mese del trimestre IN CORSO a `as_of` — il `nowcastM` degli autori.
+
+    `STEP3_LBVAR.m` righe 91-93:
+
+        whichQ  = ceil(4*ww/52);      % il trimestre della settimana ww
+        refM    = 3*whichQ;           % il suo ultimo mese
+        nowcastM = find(TimeVec(:,1)==yy+baseYear & TimeVec(:,2)==refM);
+
+    cioe' esattamente il quarter-end del trimestre che contiene `as_of`.
+    """
+    return pd.Timestamp(as_of).to_period("Q").end_time.normalize()
+
+
+def truncate_at_vintage(monthly: pd.DataFrame, as_of) -> pd.DataFrame:
+    """Il pannello si ferma al vintage — `X = X(1:nowcastM+horizon,:)`.
+
+    PERCHE' ESISTE, e non e' un dettaglio di efficienza.  `build_panel` non ha
+    un estremo superiore: maschera con `known_at(as_of)` e poi restituisce
+    TUTTO l'indice del file grezzo.  Le righe oltre `as_of` sono quindi
+    tutte-NaN per costruzione — non si osserva il futuro — ma ci sono, e il
+    numero cresce ogni anno che passa fra il vintage e l'ultimo dato in
+    archivio.  Misurato al vintage 2020-07-31 con l'archivio al 2026-07: il
+    pannello dell'L arrivava al **2028-07** invece che al 2022-09, cioe' 96
+    righe cieche invece di 26.
+
+    Quelle 70 righe in piu' non entrano nella stima (`xx(1:lastFull,:)`) e non
+    entrano nella valutazione (i trimestri in volo stanno entro otto
+    trimestri).  Fanno due cose sole, ed entrambe cattive:
+
+      1. lo smoother ci gira sopra a ogni iterazione di ogni settimana;
+      2. **la coda di previsione le ITERA**.  Su un'estrazione esplosiva —
+         che l'L-BVAR ammette di proposito — la transizione iterata 96 volte
+         invece di 26 cambia la scala di CENTO ordini di grandezza.  Misurato
+         sul pannello vero, stesse estrazioni:
+
+             rho = 26.8    coda 96 -> 5.7e+138     coda 26 -> 6.8e+38
+             rho = 42.8    coda 96 -> 9.9e+158     coda 26 -> 5.9e+44
+
+         Il primo non e' rappresentabile a valle, il secondo si'.  E' la
+         seconda meta' del guasto del blocco Covid: la prima era la
+         cancellazione del DK (vedi `precision_smoother.py`).
+
+    NON SI PERDE NIENTE DI OSSERVATO.  Il taglio cade al quarter-end del
+    trimestre in corso, che e' nel FUTURO rispetto a `as_of`: le righe tolte
+    sono gia' tutte NaN.
+
+    ⚠️  Il B-BVAR ha lo stesso difetto (`bbvar.fit` costruisce il pannello con
+    la stessa coppia `build_panel` + `append_forecast_rows`, e al 2020-07-31
+    arriva anche lui al 2028-07 con 96 righe cieche) ma NON lo subisce: gira
+    su tutta la passata, Covid incluso.  Non e' stato toccato di proposito —
+    cambiare il pannello cambia il flusso casuale e imporrebbe di rifare
+    stime che oggi sono sane.  Resta una divergenza da dichiarare.  Q e C
+    invece non c'entrano: passano da `qbvar.estimation_panel`, che si ferma
+    gia' all'ultimo trimestre completo (misurato: 0 righe cieche).
+    """
+    if as_of is None:
+        return monthly
+    return monthly.loc[monthly.index <= vintage_end(as_of)]
+
+
 def append_forecast_rows(monthly: pd.DataFrame, horizon: int, *,
                          align_quarters: bool = False) -> pd.DataFrame:
     """

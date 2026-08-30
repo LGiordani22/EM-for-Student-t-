@@ -155,6 +155,26 @@ trattare.  La soglia e' netta: zero osservazioni si scarta, una o piu' si tiene.
 
 Monotono e senza salti: ogni serie entra quando ha accumulato abbastanza storia.
 Non e' un compromesso, e' la ricostruzione onesta dell'insieme informativo.
+
+--- 10. IL DK NON REGGE SUL BLOCCO COVID, E C'E' UN RIPIEGO -------------
+
+Il blocco `2020-07-31 .. 2020-10-23` e' stato l'unico a fallire, in tutte le
+passate e solo qui.  La causa non e' l'esplosivita' — quella e' voluta, il
+punto 8 lo dice — ma la CANCELLAZIONE: DK forma `alpha+ + E[alpha | y - y+]`,
+il primo addendo cresce come rho^T e il risultato resta alla scala del dato,
+quindi l'errore relativo e' ~ ns * eps * rho^T / scala.  Su T ~ 500 mesi e una
+companion sopra il cerchio unitario le cifre finiscono.
+
+Il rimedio sta in `_finite_smoother` (che lo spiega per esteso) e in
+`precision_smoother.py` (che spiega l'algoritmo).  Due corollari che chiudono
+il caso e che vale la pena avere qui:
+
+  * il ramo di RIUSO non falliva perche' la sua finestra e' di ~45 mesi e non
+    ~500 — stesso DK, altro esponente;
+  * gli autori questo caso lo hanno EVITATO: `STEP3a_LBVAR_covid.m` r.88
+    commenta il trigger di ri-stima al rilascio del PIL, quindi nell'anno del
+    Covid l'L-BVAR si stima UNA volta sola (prima settimana) e tutto il resto
+    va al riuso.  E il loro driver ha `X_draws(X_draws==inf) = 1e16;`.
 """
 
 from __future__ import annotations
@@ -166,14 +186,16 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from src.bvar.core import CoreState, draw_parameters, step
+from src.bvar.core import CoreState, step
 from src.bvar.data import (
     append_forecast_rows,
     build_panel,
     drop_empty_series,
     load_raw_levels,
+    truncate_at_vintage,
 )
 from src.bvar.hyper import HyperPrior, build_target, init_metropolis
+from src.bvar.precision_smoother import precision_draw
 from src.bvar.simsmoother import LinearGaussianSS, simulation_smoother
 from src.bvar.spec import BVARSpec
 
@@ -186,59 +208,131 @@ DROP_HEAD = 3
 #: `MCMCconst` di `lbvar.m`: il fattore di scala della proposta Metropolis.
 MCMC_CONST = 1.6
 
-# A finite-precision rejection should be fantastically rare.  A cap turns a
-# genuinely broken state-space system into a useful error instead of a loop.
-MAX_NUMERICAL_REDRAWS = 100
-
-# Within a Gibbs sweep, a few conditional parameter redraws are cheap insurance.
-# If they all fail, the whole candidate sweep is rejected and the last valid
-# chain state is retained.  Retrying 100 smoothers at one fixed hyperparameter
-# value is both slow and unable to escape the numerical trap seen in 2020.
-MAX_REDRAWS_PER_SWEEP = 2
 MAX_CONSECUTIVE_NUMERICAL_REJECTIONS = 25
+
+#: Di quanto il cammino estratto puo' superare la scala del dato OSSERVATO
+#: prima di essere dichiarato fuori dal supporto computazionale.
+#:
+#: NON E' UN VINCOLO ECONOMICO.  Non dice "questa crescita e' implausibile":
+#: dice che un cammino cosi' grande non e' rappresentabile in cio' che viene
+#: dopo.  Il passo successivo stima (B, Sigma) su quel pannello e poi ne
+#: inverte la Sigma; un cammino 1e24 volte il dato da' `diag(Sigma)` a 1e37 e
+#: `Sigma^-1` a 1e-37, e a quel punto la matrice di precisione non e' piu'
+#: definita positiva.  E' lo stesso criterio della guardia di cancellazione.
+#:
+#: IL CORRIDOIO E' LARGO DI PROPOSITO, perche' deve lasciar passare le
+#: estrazioni legittime e fermare solo la fuga.  Misurato sul pannello
+#: 2020-07-31, dove il dato osservato sta a 91:
+#:
+#:     rho = 1.015-1.047, tratti ciechi da 278 mesi   max|x| = 91.5   (x1.0)
+#:     l'estrazione che ha avvelenato la catena       max|x| = 1.3e26 (x1.4e24)
+#:
+#: fra i due ci sono ventiquattro ordini di grandezza: qualunque soglia in
+#: mezzo separa gli stessi due casi, e 1e6 lascia comodo perfino a un cammino
+#: che cresca di mille volte sopra il dato senza motivo apparente.
+MAX_PATH_OVER_DATA = 1e6
+
+
+def _path_within_support(alpha: np.ndarray, Y: np.ndarray, n: int) -> bool:
+    """Il cammino estratto e' rappresentabile a valle?
+
+    Vale per ENTRAMBE le strade — DK e precisione — e non e' un dettaglio: la
+    prima versione del ripiego controllava solo `isfinite`, cosi' un cammino a
+    1e26 (finito!) veniva accettato, entrava nella stima e da li' in poi ogni
+    estrazione di (B, Sigma) era degenere.  La catena non si e' fermata dove
+    si e' rotta: si e' rotta molto prima, in silenzio.
+
+    Il ramo DK aveva si' un controllo, ma con soglia `sqrt(float_max / T)`
+    ~1.9e152: non rifiutava niente di cio' che conta.
+    """
+    if not np.isfinite(alpha).all():
+        return False
+    Y = np.asarray(Y, dtype=float)
+    finite_y = np.abs(Y[np.isfinite(Y)])
+    scale = float(finite_y.max(initial=1.0))
+    peak = float(np.max(np.abs(alpha[:, :n]), initial=0.0))
+    return peak <= MAX_PATH_OVER_DATA * max(scale, 1.0)
+
+
+def head_from_a0(a0: np.ndarray, n: int, p: int) -> np.ndarray:
+    """Le p righe di testa, in ordine CRONOLOGICO, da `a0`.
+
+    `fit` costruisce `a0 = concat([head[p-1-j] for j in range(p)])`, cioe' il
+    piu' recente per primo (e' l'ordine della companion).  Il campionatore a
+    precisione ragiona in tempo, non in companion, e vuole l'ordine opposto.
+    """
+    return np.stack([a0[(p - 1 - i) * n:(p - i) * n] for i in range(p)])
 
 
 def _finite_smoother(state: CoreState, Y: np.ndarray, rng: np.random.Generator,
-                     *, n: int, p: int, a0: np.ndarray,
-                     max_redraws: int = MAX_NUMERICAL_REDRAWS
-                     ) -> tuple[np.ndarray, int]:
-    """Draw a finite latent path, redrawing only unusable parameter draws.
+                     *, n: int, p: int, a0: np.ndarray
+                     ) -> tuple[np.ndarray, bool]:
+    """Il cammino latente: Durbin-Koopman, e il ripiego quando il DK non regge.
 
-    The L-BVAR deliberately permits explosive VAR draws.  Durbin--Koopman's
-    unconditional auxiliary path can nevertheless overflow for an extreme
-    draw over a long sample; subtracting two infinite paths then produces the
-    NaN panel seen by the Covid blocks.  Such a draw is not made stationary or
-    imputed.  We reject only the numerically unrepresentable ``(B, Sigma)`` and
-    redraw it from the same conditional posterior.
+    IL PROBLEMA, misurato sul blocco 2020-07-31.  L'L-BVAR ammette
+    deliberatamente estrazioni esplosive del VAR — `lbvar.m` non ha nessun
+    controllo di stabilita', verificato — e a quel vintage la posterior sta
+    SOPRA il cerchio unitario in TUTTE le estrazioni (raggio 1.006-1.028).  Il
+    cammino ausiliario di DK, che e' simulato dalla PRIOR, cresce allora come
+    rho^T su T ~ 500 mesi, mentre il risultato resta alla scala del dato:
+    l'estrazione condizionale e' la differenza di due numeri enormi e le cifre
+    finiscono.  Non e' un overflow — e' cancellazione, e un risultato FINITO
+    puo' essere gia' privo di senso.  Trattazione completa nell'header di
+    `precision_smoother.py`.
+
+    IL RAMO NORMALE NON CAMBIA.  Dove il DK regge — cioe' ovunque tranne il
+    Covid — si usa il DK, con le stesse chiamate all'RNG di prima: i risultati
+    delle passate esistenti restano identici bit per bit.
+
+    IL RIPIEGO.  Quando la guardia di cancellazione scatta, la stessa
+    condizionale si estrae dalla matrice di PRECISIONE, che non forma mai il
+    cammino ausiliario e quindi non ha niente da cancellare.  Non e' un'altra
+    posterior e non e' un'approssimazione: `test_precision_smoother` verifica
+    contro un oracolo denso che media e covarianza siano quelle esatte, e §6
+    che i due algoritmi coincidano dove il DK e' sano.
+
+    COSA SI E' TOLTO, e perche'.  Prima di qui c'era un ciclo che ri-estraeva
+    `(B, Sigma)` fino a 100 volte sperando in un'estrazione rappresentabile.
+    Non poteva funzionare: a quel vintage il 100% della posterior e' esplosivo,
+    quindi ogni ri-estrazione ricade nella stessa trappola — e infatti la
+    catena si fermava dopo 11 mosse.  Rifiutare le estrazioni esplosive
+    sarebbe stato peggio: devia dagli autori e rifiuterebbe il 100% delle
+    proposte.  Il difetto non e' nell'estrazione, e' nell'algoritmo con cui la
+    si trasforma in un cammino.
+
+    Returns
+    -------
+    (alpha, fallback) con `fallback` True se ha risposto il campionatore a
+    precisione.
     """
-    for retry in range(max_redraws + 1):
-        ss = build_state_space(state.B, state.Sigma, n, p, a0)
-        try:
-            with np.errstate(over="ignore", invalid="ignore"):
-                alpha = simulation_smoother(
-                    ss, Y, rng, numerical_guard=True)
-        except (FloatingPointError, np.linalg.LinAlgError):
-            alpha = None
-        usable = alpha is not None and np.isfinite(alpha).all()
-        if usable:
-            # The next core step forms X'X.  A technically finite path whose
-            # square already overflows is no more usable than a NaN path.
-            safe = np.sqrt(np.finfo(float).max / max(1, Y.shape[0]))
-            usable = bool(np.max(np.abs(alpha[:, :n]), initial=0.0) <= safe)
-        if usable:
-            return alpha, retry
-        if retry == max_redraws:
-            break
-        draw_parameters(state, rng)
-    raise FloatingPointError(
-        "L-BVAR: simulation smoother non finito dopo "
-        f"{max_redraws} nuove estrazioni condizionali")
+    ss = build_state_space(state.B, state.Sigma, n, p, a0)
+    try:
+        with np.errstate(over="ignore", invalid="ignore"):
+            alpha = simulation_smoother(ss, Y, rng, numerical_guard=True)
+    except (FloatingPointError, np.linalg.LinAlgError):
+        alpha = None
+    if alpha is not None and _path_within_support(alpha, Y, n):
+        return alpha, False
+
+    alpha = precision_draw(state.B, state.Sigma, Y,
+                           head_from_a0(a0, n, p), rng, n=n, p=p)
+    # LA STESSA GUARDIA, e non "anche": il ripiego non e' meno soggetto alla
+    # fuga del DK.  Il campionatore a precisione la produce anzi con piu'
+    # facilita', perche' e' l'unico dei due che sopravvive abbastanza a lungo
+    # da estrarre davvero su un tratto cieco di 278 mesi con rho > 1.
+    if not _path_within_support(alpha, Y, n):
+        raise FloatingPointError(
+            "L-BVAR: il cammino estratto e' fuori dal supporto "
+            f"computazionale (max {np.max(np.abs(alpha[:, :n])):.3e} contro "
+            f"una scala del dato di "
+            f"{np.abs(Y[np.isfinite(Y)]).max(initial=1.0):.3e})")
+    return alpha, True
 
 
 def _candidate_transition(state: CoreState, panel: np.ndarray, Y: np.ndarray,
                           rng: np.random.Generator, *, n: int, p: int,
                           a0: np.ndarray, n_metro: int
-                          ) -> tuple[CoreState, np.ndarray | None, int, bool]:
+                          ) -> tuple[CoreState, np.ndarray | None, bool, bool]:
     """Propose one complete Gibbs sweep without corrupting the valid state.
 
     A numerically unrepresentable smoother draw rejects the *whole* candidate
@@ -247,16 +341,21 @@ def _candidate_transition(state: CoreState, panel: np.ndarray, Y: np.ndarray,
     This is the finite-precision analogue of rejecting a proposal outside the
     computational support; no stationarity restriction or replacement data are
     introduced.
+
+    Da quando `_finite_smoother` ha il ripiego a precisione questa rete quasi
+    non serve piu': ci si arriva solo se ANCHE il campionatore a precisione
+    fallisce (Cholesky non definita positiva), cioe' se il sistema e' rotto
+    davvero e non solo mal condizionato.  Si tiene apposta: e' il confine fra
+    "il DK non regge qui" — che ora si attraversa — e "questo stato non e' un
+    modello", che deve restare un errore.
     """
     candidate = copy.deepcopy(state)
     try:
         candidate = step(candidate, rng, panel=panel, n_metro=n_metro)
-        alpha, n_retry = _finite_smoother(
-            candidate, Y, rng, n=n, p=p, a0=a0,
-            max_redraws=MAX_REDRAWS_PER_SWEEP)
+        alpha, fallback = _finite_smoother(candidate, Y, rng, n=n, p=p, a0=a0)
     except (FloatingPointError, np.linalg.LinAlgError):
-        return state, None, MAX_REDRAWS_PER_SWEEP, False
-    return candidate, alpha, n_retry, True
+        return state, None, False, False
+    return candidate, alpha, fallback, True
 
 
 # ─── 1. L'inizializzazione con le spline ──────────────────────────────────────
@@ -423,6 +522,11 @@ class LBVARDraws:
     reused: bool = False
     numerical_rejections: int = 0
 
+    #: Quanti cammini sono stati estratti dalla matrice di precisione invece
+    #: che dal DK.  Zero ovunque tranne dove la companion e' esplosiva su
+    #: campione lungo — nella passata 2007-2025 significa: solo il Covid.
+    precision_fallbacks: int = 0
+
     @property
     def S(self) -> int:
         return int(self.B.shape[0])
@@ -581,7 +685,14 @@ Il target si muove sotto la catena: ogni iterazione ricostruisce la
     p = spec.p
 
     # ── il pannello: mensile, GREZZO (niente medie mobili), in unita' del modello
-    panel = append_forecast_rows(build_panel(spec, as_of, raw=raw), horizon)
+    # `X(1:nowcastM+horizon,:)` degli autori: il pannello si ferma al
+    # vintage, poi si aggiungono le righe di previsione.  Senza il taglio
+    # la coda cieca e' di 96 righe invece di 26, e su un'estrazione
+    # esplosiva questo cambia la scala del cammino di cento ordini di
+    # grandezza.  Vedi `data.truncate_at_vintage`.
+    panel = append_forecast_rows(
+        truncate_at_vintage(build_panel(spec, as_of, raw=raw), as_of),
+        horizon)
     # REAL-TIME: le serie che a questa data non hanno NEMMENO
     # un'osservazione escono dal modello, e con loro dallo spec.  Non e' un
     # ripiego per far funzionare `last_full_row`: e' la ricostruzione
@@ -640,9 +751,10 @@ Il target si muove sotto la catena: ogni iterazione ricostruisce la
     # in pipeline.  Dove non serve un retry, l'ordine delle chiamate RNG e tutti
     # i risultati restano identici al ciclo precedente.  Il look-ahead finale
     # garantisce inoltre che nessun (B, Sigma) non verificato entri nella cache.
-    alpha, n_retry = _finite_smoother(state, Y_in, rng, n=n, p=p, a0=a0)
-    if n_retry and verbose:
-        print(f"    scartate {n_retry} estrazioni numericamente non finite")
+    alpha, fallback = _finite_smoother(state, Y_in, rng, n=n, p=p, a0=a0)
+    n_fallback = int(fallback)
+    if fallback and verbose:
+        print("    DK non affidabile: estrazione dalla matrice di precisione")
 
     numerical_rejections = 0
     consecutive_rejections = 0
@@ -656,12 +768,13 @@ Il target si muove sotto la catena: ogni iterazione ricostruisce la
         # precisione, la transizione e' un self-loop e lo stato valido resta
         # intatto.  Questo evita che un pannello numericamente corrotto avveleni
         # tutte le condizionali successive.
-        candidate, next_alpha, n_retry, accepted = _candidate_transition(
+        candidate, next_alpha, fallback, accepted = _candidate_transition(
             state, drawn[: lf + 1], Y_in, rng,
             n=n, p=p, a0=a0, n_metro=n_metro)
         if accepted:
             state = candidate
             alpha = next_alpha
+            n_fallback += int(fallback)
             consecutive_rejections = 0
         else:
             numerical_rejections += 1
@@ -674,9 +787,9 @@ Il target si muove sotto la catena: ogni iterazione ricostruisce la
 
         hyp = state.hyper
         B_cur, S_cur = state.B, state.Sigma
-        if accepted and n_retry and verbose:
-            print(f"    iterazione {it + 1}: scartate {n_retry} estrazioni "
-                  "numericamente non finite")
+        if accepted and fallback and verbose:
+            print(f"    iterazione {it + 1}: DK non affidabile, "
+                  "estrazione dalla matrice di precisione")
 
         if it == burn - 1:
             state.metro.n_accept = state.metro.n_prop = 0   # statistiche pulite
@@ -695,11 +808,18 @@ Il target si muove sotto la catena: ogni iterazione ricostruisce la
             f"L-BVAR: {numerical_rejections}/{n_draws} transizioni numeriche "
             "rifiutate e sostituite da self-loop espliciti",
             RuntimeWarning, stacklevel=2)
+    if n_fallback:
+        warnings.warn(
+            f"L-BVAR: {n_fallback}/{n_draws + 1} cammini estratti dalla "
+            "matrice di precisione perche' il DK non era affidabile "
+            "(companion esplosiva su campione lungo)",
+            RuntimeWarning, stacklevel=2)
 
     return LBVARDraws(panels=panels, B=Bs, Sigma=Ss, lam=lams, mu=mus, psi=psis,
                       index=index[: p + T_in], spec=spec,
                       acceptance=state.metro.acceptance,
-                      numerical_rejections=numerical_rejections)
+                      numerical_rejections=numerical_rejections,
+                      precision_fallbacks=n_fallback)
 
 
 # ─── 5. Il ramo di RIUSO — `lbvar_NE.m` ───────────────────────────────────────
@@ -769,7 +889,14 @@ def fit_reuse(
     p = spec.p
     S = int(B_draws.shape[0])
 
-    panel = append_forecast_rows(build_panel(spec, as_of, raw=raw), horizon)
+    # `X(1:nowcastM+horizon,:)` degli autori: il pannello si ferma al
+    # vintage, poi si aggiungono le righe di previsione.  Senza il taglio
+    # la coda cieca e' di 96 righe invece di 26, e su un'estrazione
+    # esplosiva questo cambia la scala del cammino di cento ordini di
+    # grandezza.  Vedi `data.truncate_at_vintage`.
+    panel = append_forecast_rows(
+        truncate_at_vintage(build_panel(spec, as_of, raw=raw), as_of),
+        horizon)
     # REAL-TIME: le serie che a questa data non hanno NEMMENO
     # un'osservazione escono dal modello, e con loro dallo spec.  Non e' un
     # ripiego per far funzionare `last_full_row`: e' la ricostruzione
@@ -812,10 +939,29 @@ def fit_reuse(
 
     W = p + Y_in.shape[0]
     panels = np.empty((S, W, n))
+    n_fallback = 0
     for s in range(S):
+        # Stessa guardia del ramo pieno, e per la stessa ragione.  Qui il DK
+        # regge quasi sempre — la finestra e' di ~45 mesi contro ~500, e
+        # rho^45 non e' rho^500: e' PROPRIO per questo che il Covid falliva
+        # solo nelle settimane di stima piena.  Ma le estrazioni esplosive
+        # ereditate sono le stesse, quindi la rete va tesa anche qui.
         ss = build_state_space(B_draws[s], Sigma_draws[s], n, p, a0, p0=p0)
-        alpha = simulation_smoother(ss, Y_in, rng)
+        try:
+            with np.errstate(over="ignore", invalid="ignore"):
+                alpha = simulation_smoother(ss, Y_in, rng, numerical_guard=True)
+            if not np.isfinite(alpha).all():
+                raise FloatingPointError("cammino non finito")
+        except (FloatingPointError, np.linalg.LinAlgError):
+            alpha = precision_draw(B_draws[s], Sigma_draws[s], Y_in,
+                                   head, rng, n=n, p=p)
+            n_fallback += 1
         panels[s] = np.vstack([head, alpha[:, :n]])
+    if n_fallback:
+        warnings.warn(
+            f"L-BVAR (riuso): {n_fallback}/{S} cammini estratti dalla matrice "
+            "di precisione perche' il DK non era affidabile",
+            RuntimeWarning, stacklevel=2)
 
     # la storia PRIMA della finestra: dato osservato, replicato (riga 111)
     hist = X_full[:start + DROP_HEAD]
@@ -829,9 +975,9 @@ def fit_reuse(
                       Sigma=np.asarray(Sigma_draws),
                       lam=z(lam, S), mu=z(mu, S), psi=z(psi, (S, n)),
                       index=index, spec=spec, acceptance=float("nan"),
-                      reused=True)
+                      reused=True, precision_fallbacks=n_fallback)
 
 
 __all__ = ["spline_fill", "last_full_row", "build_state_space",
-           "LBVARDraws", "fit", "fit_reuse",
+           "head_from_a0", "LBVARDraws", "fit", "fit_reuse",
            "MCMC_CONST", "SPLINE_K", "DROP_HEAD"]

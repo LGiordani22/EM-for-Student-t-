@@ -248,7 +248,8 @@ import numpy as np
 import pandas as pd
 
 from src.bvar.core import BVARDraws, sample
-from src.bvar.data import append_forecast_rows, build_panel, load_raw_levels
+from src.bvar.data import (append_forecast_rows, build_panel,
+                           load_raw_levels, truncate_at_vintage)
 from src.bvar.hyper import HyperPrior
 from src.bvar.lbvar import build_state_space
 from src.bvar.simsmoother import simulation_smoother
@@ -466,7 +467,13 @@ def fit(
     edge_lags = EDGE_LAGS if edge_lags is None else int(edge_lags)
 
     # ── 1. blocking
-    monthly = build_panel(spec, as_of, raw=raw)
+    # `X = X(1:nowcastM+horizon,:)`: il pannello si ferma al vintage, poi si
+    # aggiungono le righe di previsione.  Senza il taglio `build_panel`
+    # restituisce tutto l'indice del file grezzo, e la coda cieca cresce di un
+    # anno per ogni anno che passa fra il vintage e l'ultimo dato in archivio —
+    # al 2020-07-31 erano 96 righe invece di 26.  Vedi
+    # `data.truncate_at_vintage`.
+    monthly = truncate_at_vintage(build_panel(spec, as_of, raw=raw), as_of)
     monthly = append_forecast_rows(monthly, horizon, align_quarters=True)
     blocked = block_panel(monthly, spec)
     Xb = blocked.to_numpy(dtype=float)
@@ -572,7 +579,13 @@ def fit_reuse(
     edge_lags = EDGE_LAGS if edge_lags is None else int(edge_lags)
     S = int(B_draws.shape[0])
 
-    monthly = build_panel(spec, as_of, raw=raw)
+    # `X = X(1:nowcastM+horizon,:)`: il pannello si ferma al vintage, poi si
+    # aggiungono le righe di previsione.  Senza il taglio `build_panel`
+    # restituisce tutto l'indice del file grezzo, e la coda cieca cresce di un
+    # anno per ogni anno che passa fra il vintage e l'ultimo dato in archivio —
+    # al 2020-07-31 erano 96 righe invece di 26.  Vedi
+    # `data.truncate_at_vintage`.
+    monthly = truncate_at_vintage(build_panel(spec, as_of, raw=raw), as_of)
     monthly = append_forecast_rows(monthly, horizon, align_quarters=True)
     blocked = block_panel(monthly, spec)
     Xb = blocked.to_numpy(dtype=float)
