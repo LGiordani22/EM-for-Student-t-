@@ -11,6 +11,7 @@ If one job fails, the other independent jobs continue. Every job has a log in
 from __future__ import annotations
 
 import concurrent.futures
+import csv
 from dataclasses import dataclass
 import os
 from pathlib import Path
@@ -22,6 +23,13 @@ import time
 
 ROOT = Path(__file__).resolve().parent
 LOG_DIR = ROOT / "output" / "_logs" / "run_all"
+# One row per job: what it cost and whether it held. It sits with the results
+# and not with the logs because it is their provenance -- `output/_logs*/` is
+# gitignored, `output/forecast_weekly/` is not. The per-job timings are
+# otherwise printed only on this process's stdout, so a closed terminal loses
+# them while the per-job logs survive.
+TIMES_CSV = ROOT / "output" / "forecast_weekly" / "run_times.csv"
+TIMES_HEADER = ("job", "ok", "returncode", "minutes", "detail", "log")
 START = "2007-01-01"
 END = "2025-12-31"
 MAX_PROCESSES = 224
@@ -56,6 +64,23 @@ class Result:
 
 results: list[Result] = []
 print_lock = threading.Lock()
+
+
+def record(result: Result) -> None:
+    """Appende una riga a `TIMES_CSV`.  Va chiamata sotto `print_lock`.
+
+    Si appende job per job invece di scrivere tutto in fondo: una passata dura
+    ore, e se muore a meta' i tempi dei job finiti sono comunque su disco.
+    """
+    try:
+        with TIMES_CSV.open("a", encoding="utf-8", newline="") as stream:
+            csv.writer(stream).writerow(
+                (result.name, result.ok, result.returncode,
+                 round(result.seconds / 60.0, 2), result.detail,
+                 (LOG_DIR / f"{result.name}.log").relative_to(ROOT)))
+    except OSError as error:
+        # Il registro dei tempi non deve poter fermare una passata da ore.
+        print(f"  [attenzione] run_times.csv non scritto: {error}", flush=True)
 
 
 def environment() -> dict[str, str]:
@@ -99,6 +124,7 @@ def run(job: Job) -> Result:
     with print_lock:
         state = "OK" if ok else "FAILED"
         print(f"  {state:7s} {job.name} ({elapsed / 60:.1f} min)", flush=True)
+        record(result)
     return result
 
 
@@ -124,11 +150,17 @@ def discover(job: Job) -> list[tuple[str, str]]:
                     f"{len(rows)} jobs" if rows else "no jobs discovered")
     results.append(result)
     print(f"  {job.name}: {result.detail}")
+    record(result)
     return rows if result.ok else []
 
 
 def main() -> int:
     workers = min(MAX_PROCESSES, available_cpus())
+    # Si riparte da un file vuoto: senza, una seconda passata si appenderebbe
+    # alla prima e le due sarebbero indistinguibili riga per riga.
+    TIMES_CSV.parent.mkdir(parents=True, exist_ok=True)
+    with TIMES_CSV.open("w", encoding="utf-8", newline="") as stream:
+        csv.writer(stream).writerow(TIMES_HEADER)
     print("=" * 78)
     print("WEEKLY DFM + BVAR: ALL RESULTS")
     print(f"period={START}..{END}, process slots={workers}, threads/process=1")
@@ -211,6 +243,7 @@ def main() -> int:
             print(f"  - {result.name}: {result.detail}; "
                   f"log: {LOG_DIR / (result.name + '.log')}")
     print(f"\nAll logs: {LOG_DIR}")
+    print(f"Times:    {TIMES_CSV}")
     print("=" * 78)
     return 1 if failed else 0
 
