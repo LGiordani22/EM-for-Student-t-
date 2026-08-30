@@ -296,9 +296,31 @@ figures.py         involucro su src/forecast/figures.py
 metrics.py         involucro su compute_metrics + compare_nyfed
 ```
 
-Le passate si lanciano da `scripts/`: `run_bvar.py`, `run_dfm.py`, e
-`run_outputs.py` per tutto ciò che viene dopo le stime (figure, metriche,
-tabelle). I percorsi **non li decide questo pacchetto**: li decide
+L'orchestratore è **`run_all.py`** nella radice del repo (`python run_all.py`,
+nessuna opzione). Lancia in parallelo le 15 celle DFM più i benchmark e ogni
+coppia modello × blocco del BVAR, poi i merge per blocco, poi le uscite. I
+singoli pezzi restano lanciabili a mano da `scripts/`: `run_bvar.py`,
+`run_dfm.py`, `run_outputs.py`.
+
+Quattro cose di `run_all.py` che vale la pena sapere prima di leggere una
+passata:
+
+- **ogni job ha il suo log**, `output/_logs/run_all/<job>.log`, con
+  `stderr` dentro lo stesso file: se un blocco cade, il traceback è lì.
+  La cartella è gitignorata;
+- **un job che fallisce non ferma gli altri** (`check=False`), e i falliti
+  sono elencati in fondo con il percorso del loro log. Il merge gira con
+  `--allow-missing` per la stessa ragione: un modello morto non deve portarsi
+  via i tre che hanno finito;
+- **un thread numerico per processo** (`OMP_NUM_THREADS=1` e compagnia in
+  `CHILD_ENV`): è politica misurata, più thread BLAS rendono più lenti i job
+  dominati dall'ottimizzazione;
+- **i blocchi BVAR scrivono in shard separate** (`output/_bvar_shards/<blocco>/<modello>`)
+  e vengono ricomposti dai merge. È il motivo per cui `merge_bvar_models.py`
+  esiste e per cui `test_parallel_models` verifica che shard + merge diano
+  byte per byte gli stessi artefatti della passata seriale.
+
+I percorsi **non li decide questo pacchetto**: li decide
 `src/output_layout.py`, e tutto sta sotto `forecast_weekly/` insieme al DFM.
 
 ```
