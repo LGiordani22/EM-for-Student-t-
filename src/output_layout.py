@@ -120,6 +120,11 @@ def dfm_rmse_dir(spec: str) -> str:
     return os.path.join(OUTPUT_ROOT, "dfm", spec, "rmse")
 
 
+def dfm_mda_dir(spec: str) -> str:
+    """`dfm/<spec>/mda/` — directional accuracy, one figure per spec."""
+    return os.path.join(OUTPUT_ROOT, "dfm", spec, "mda")
+
+
 def bvar_forecast_dir(model: str) -> str:
     """`bvar/<model>/` — the four forecast figures of one BVAR."""
     return os.path.join(OUTPUT_ROOT, "bvar", model)
@@ -127,6 +132,11 @@ def bvar_forecast_dir(model: str) -> str:
 
 def bvar_rmse_dir() -> str:
     return os.path.join(OUTPUT_ROOT, "bvar", "rmse")
+
+
+def bvar_mda_dir() -> str:
+    """`bvar/mda/` — directional accuracy, the four models together."""
+    return os.path.join(OUTPUT_ROOT, "bvar", "mda")
 
 
 def bvar_logscore_dir() -> str:
@@ -295,8 +305,8 @@ __all__ = [
     "OUTPUT_ROOT", "FORECAST_WINDOWS", "RMSE_PASSES", "RMSE_ZOOM_WINDOWS",
     "NYFED_COMPARISON_PASSES", "FULL_SPAN", "SPECS", "VARIANTS", "BVAR_MODELS",
     "BENCHMARKS", "BENCHMARK_JOB",
-    "dfm_forecast_dir", "dfm_rmse_dir", "bvar_forecast_dir",
-    "bvar_rmse_dir", "bvar_logscore_dir", "comparison_dir",
+    "dfm_forecast_dir", "dfm_rmse_dir", "dfm_mda_dir", "bvar_forecast_dir",
+    "bvar_rmse_dir", "bvar_mda_dir", "bvar_logscore_dir", "comparison_dir",
     "dfm_csv_dir", "bvar_csv_dir", "benchmark_csv_dir",
     "dfm_cells_root", "dfm_cell_dir", "benchmark_cell_dir",
     "logs_dir",

@@ -301,7 +301,18 @@ def horizon_figures(mine: pd.DataFrame, out_dir: str,
     png = cn.figure_rmse_by_horizon(
         ph, sample, "/".join(presenti),
         os.path.join(out_dir, f"RMSE{tag or '_completo'}.png"))
-    return [csv, png]
+    out = [csv, png]
+
+    # LA MDA SOLO SULLA FINESTRA LUNGA — stessa ragione del DFM: e' una
+    # proporzione, e su una finestra da sei trimestri l'errore standard di un
+    # punto e' ~0.20.  Vedi `cn.figure_mda_by_horizon`.
+    if tag == "_2007-2025":
+        mda = cn.figure_mda_by_horizon(
+            _as_family(mine, models), quarters, _FAMILY,
+            os.path.join(layout.bvar_mda_dir(), f"MDA{tag}.png"))
+        if mda:
+            out.append(mda)
+    return out
 
 
 def nyfed_tables(mine: pd.DataFrame, models: tuple[str, ...] = MODELS,

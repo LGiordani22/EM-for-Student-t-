@@ -113,6 +113,18 @@ def run_spec(mine_all: pd.DataFrame, spec: str,
             ph, sample_fig, spec,
             # La spec non entra nel nome: `out_dir` e' gia' `dfm/<spec>/rmse/`.
             os.path.join(out_dir, f"RMSE_{w}.png")))
+        # LA MDA SOLO SULLA FINESTRA LUNGA, e di proposito.  E' una
+        # proporzione su ~66 trimestri: l'errore standard di un punto e' gia'
+        # ~0.06 li', e sugli zoom da sei trimestri sarebbe ~0.20 — una figura
+        # che mostrerebbe solo rumore.  La RMSE regge le finestre corte perche'
+        # e' continua e ogni osservazione porta informazione; la MDA e' binaria
+        # e ne porta pochissima.
+        if w == "2007-2025":
+            mda = cn.figure_mda_by_horizon(
+                mine, qs, spec,
+                os.path.join(layout.dfm_mda_dir(spec), f"MDA_{w}.png"))
+            if mda:
+                written.append(mda)
 
     # ── scrittura, UNA VOLTA ────────────────────────────────────────────────
     for name, parts in tabs.items():

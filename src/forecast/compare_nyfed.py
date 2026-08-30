@@ -639,6 +639,114 @@ def horizon_panel(df_mine: pd.DataFrame, sample: list[str],
             .sort_values(["metodo", "horizon_week"]).reset_index(drop=True)), sample
 
 
+def figure_mda_by_horizon(df_mine: pd.DataFrame, sample: list[str] | None,
+                          spec: str, out_path: str) -> str:
+    """Accuratezza direzionale per orizzonte — la gemella della RMSE.
+
+    CHE COSA MISURA.  Per ogni riga si guarda l'ANCORA: l'ultimo PIL gia'
+    PUBBLICATO a quella `as_of` (non il trimestre precedente di calendario,
+    che sarebbe un anacronismo — vedi `compute_metrics._anchor_value`).  Poi
+    si chiede se la previsione cade dalla stessa parte dell'ancora del
+    realizzato.  E' binaria: non conta di quanto si sbaglia, solo da che parte.
+
+    CAMPIONE E ASSE SONO QUELLI DELLA RMSE, di proposito: stessa
+    `core_coverage_quarters`, stesso filtro `pieno` (un punto si disegna solo
+    se ha tutti i trimestri del campione), stesse bande di fase.  Le due
+    figure si leggono in fila e devono parlare degli stessi trimestri.
+
+    NIENTE BARRA DI ERRORE, ed e' una scelta.  Ce n'era una a +/-1 errore
+    standard di una proporzione su ~63 trimestri (~0.063), ma diceva quanto e'
+    preciso UN punto, non se una curva e' sopra un'altra: due curve sono
+    calcolate sugli STESSI trimestri, quindi i loro errori sono correlati e la
+    differenza e' piu' precisa di quanto la barra suggerisse.  Usata per
+    confrontare era troppo pessimista, e in figura veniva letta cosi'.
+
+    ⚠️  COME SI LEGGE, che e' la parte che si sbaglia.  In fase forecast i
+    benchmark stanno SOPRA i modelli (media espandente 0.79, AR(2) 0.75 contro
+    0.60-0.69 dei quattro BVAR).  Non e' un difetto dei modelli e non e' un
+    capriccio della metrica: li' il trimestre obiettivo non e' ancora
+    cominciato e cio' che fa oscillare la previsione non e' segnale.
+    Misurato sul B-BVAR in forecast, schiacciando la sua previsione verso la
+    propria media:
+
+        ampiezza x1.00   MDA 0.694   RMSE 2.850
+        ampiezza x0.25   MDA 0.792   RMSE 2.734
+
+    migliorano ENTRAMBE.  La MDA e' solo molto piu' sensibile della RMSE al
+    rumore, perche' un attraversamento dell'ancora costa un errore pieno
+    mentre in quadratura pesa poco.  Il risultato da riportare non e' sulla
+    metrica: e' che in forecast i modelli si muovono piu' di quanto
+    l'informazione giustifichi.
+    """
+    keep = df_mine["metodo"].str.split("/").str[0] == spec
+    keep |= df_mine["metodo"].isin(_BENCH)
+    mine = df_mine[keep].copy()
+    sample = core_coverage_quarters(mine, sample)
+    if not sample:
+        return ""
+    mine = mine[mine["target_quarter"].isin(sample)]
+
+    g = (mine.groupby(["metodo", "horizon_week"])
+             .agg(MDA=("dir_hit", "mean"),
+                  n_trimestri=("target_quarter", "nunique")).reset_index())
+    plotted = g[g["n_trimestri"] == len(sample)]
+    if plotted.empty:
+        return ""
+    models = sorted(m for m in plotted["metodo"].unique() if m not in _REF_STYLE)
+    weeks = np.sort(plotted["horizon_week"].unique())
+
+    with plt.rc_context(_serif()):
+        fig, ax = plt.subplots(figsize=_FIG_SIZE)
+        _apply_axes_style(ax)
+        y0, ymax = 0.30, 1.06
+        for lo, hi, name, colour in _PHASE_BANDS:
+            ax.axvspan(lo - 0.5, hi + 0.5, color=colour, zorder=0, linewidth=0)
+            ax.text((lo + hi) / 2.0, ymax - 0.055 * (ymax - y0), name,
+                    ha="center", va="top", fontsize=8.5, color="#4A4A4A",
+                    linespacing=1.25, zorder=1)
+        for _, hi, _, _ in _PHASE_BANDS[:-1]:
+            ax.axvline(hi + 0.5, color="white", linewidth=1.2, zorder=1)
+        ax.axhline(0.5, color="#9A9A9A", linewidth=1.0, linestyle=(0, (4, 3)),
+                   zorder=2)
+        ax.text(weeks.min(), 0.512, "Coin toss (0.5)", fontsize=8,
+                color="#7A7A7A", va="bottom")
+
+        for i, m in enumerate(models):
+            s = plotted[plotted["metodo"] == m].sort_values("horizon_week")
+            ax.plot(s["horizon_week"], s["MDA"],
+                    color=_MODEL_COLORS[i % len(_MODEL_COLORS)],
+                    linewidth=1.9, marker="o", markersize=3.2,
+                    label=fg.pretty_series(m), zorder=3)
+        for m, st in _REF_STYLE.items():
+            s = plotted[plotted["metodo"] == m].sort_values("horizon_week")
+            if not s.empty:
+                ax.plot(s["horizon_week"], s["MDA"], zorder=4, **st)
+
+        ax.set_xlim(weeks.min() - 0.5, weeks.max() + 0.5)
+        ax.set_ylim(y0, ymax)
+        ticks = [w for w in weeks if (weeks.max() - w) % _TICK_EVERY == 0]
+        ax.set_xticks(ticks)
+        ax.set_xticklabels([f"{w:+d}" for w in ticks])
+        ax.set_xlabel("Week relative to the target quarter", fontsize=10)
+        ax.set_ylabel("MDA  (share of correct direction calls)", fontsize=10)
+        ax.set_title(f"Directional Accuracy by Horizon — {fg.pretty_spec(spec)}"
+                     f" — {sample[0]}–{sample[-1]} ({len(sample)} quarters)",
+                     fontsize=12, pad=12)
+
+        handles = ax.get_legend_handles_labels()[0]
+        righe = max(1, math.ceil(len(handles) / 5))
+        leg = ax.legend(handles=handles, loc="upper center", frameon=True,
+                        fontsize=8.5, ncol=math.ceil(len(handles) / righe),
+                        bbox_to_anchor=(0.5, -0.16))
+        leg.get_frame().set_facecolor("white")
+        leg.get_frame().set_edgecolor("#B0B0B0")
+        fig.subplots_adjust(bottom=0.28, top=0.92, left=0.075, right=0.98)
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        fig.savefig(out_path, dpi=200, facecolor="white")
+        plt.close(fig)
+    return out_path
+
+
 #: La nota a pie' di figura si spegne con `FIGURE_SENZA_NOTA=1`.
 #: Variabile d'ambiente e non argomento perche' deve attraversare i
 #: sottoprocessi di `scripts/run_outputs.py` senza che ogni passo se la debba
@@ -973,6 +1081,7 @@ __all__ = [
     "my_final", "nyfed_final", "build_panel", "aligned_sample",
     "table_accuracy", "table_vs_fed", "table_fed_by_quarter", "table_alignment",
     "build_report", "horizon_panel", "figure_rmse_by_horizon",
+    "figure_mda_by_horizon",
 ]
 
 

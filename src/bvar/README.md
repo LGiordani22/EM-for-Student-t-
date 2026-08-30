@@ -329,6 +329,7 @@ output/forecast_weekly/
   csv/bvar/logscore/      i log score grezzi, uno per blocco
   bvar/<modello>/         Trajectories_<finestra>.png
   bvar/rmse/              RMSE_<finestra>.png + tabelle vs AR(2), media, NY Fed
+  bvar/mda/               MDA_2007-2025.png — accuratezza direzionale
   bvar/logscore/          LOGSCORE_<finestra>.png + riepiloghi
   comparison/             BVAR-vs-DFM, per fase, backcast compreso
 ```
