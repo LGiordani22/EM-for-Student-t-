@@ -14,7 +14,7 @@ cinquanta righe.
 
 L'ALBERO DI USCITA LO DECIDE `output_layout`
 --------------------------------------------
-`forecast.figures.make_cg8a` accetta un `dir_for_cell(cella) -> cartella`, e
+`forecast.figures.make_trajectories` accetta un `dir_for_cell(cella) -> cartella`, e
 qui si passa `_bvar_dir_for_cell`, che manda 'cbvar/authors' in
 
     output/forecast_weekly/bvar/cbvar/
@@ -29,7 +29,7 @@ LE DUE FIGURE, E PERCHE' SERVONO ENTRAMBE
 ------------------------------------------
 Sono due tagli della stessa passata, e la differenza e' l'ASSE X.
 
-  cg8a   x = CALENDARIO (`as_of`).  La traiettoria di ogni trimestre target che
+  trajectories  x = CALENDARIO (`as_of`).  La traiettoria di ogni trimestre che
          si aggiorna settimana per settimana, i pallini sui rilasci.  E' la
          figura del lavoro DFM, identica: si legge l'EPISODIO — quando il
          modello ha girato, quanto e' rimasto indietro nel 2008Q4.
@@ -81,7 +81,7 @@ def _bvar_dir_for_cell(cell: str, root: str | None = None) -> str:
 
     `root` VA ONORATO.  Senza, questa funzione cablava `bvar_forecast_dir` e
     scavalcava l'`output_root` che `make_all` le passava — perche' in
-    `make_cg8a` il router ha la precedenza sulla cartella (`figures.py`, r.404).
+    `make_trajectories` il router ha la precedenza sulla cartella.
     Risultato: una sonda lanciata con `--output-root` creava la cartella
     richiesta e scriveva le figure fra gli artefatti veri lo stesso.  E' il
     gemello del difetto chiuso in `evaluate._paths`.
@@ -138,7 +138,8 @@ def make_all(df: pd.DataFrame, output_root: str | None = None,
              compare_quarters: list[str] | None = None,
              window_label: str | None = None) -> list[str]:
     """
-    Una cg8a per modello in `output/bvar/<modello>/`, piu' — se richiesto — la
+    Una figura di traiettorie per modello in `output/bvar/<modello>/`,
+    piu' — se richiesto — la
     figura di confronto su un trimestre.
 
     I benchmark (`ar2`, `mean`) restano fuori dalle figure per scelta: sono
@@ -159,9 +160,10 @@ def make_all(df: pd.DataFrame, output_root: str | None = None,
     # e la scala e' automatica per finestra su entrambi i lati.  Prima qui
     # serviva `legend_loc="best"` perche' il default DFM era cablato in basso
     # a destra e col 2008Q4 (realizzato -8.47) copriva il pallino.
-    written = dfm.make_cg8a(df, root, ylim=ylim, cells=cells,
-                            dir_for_cell=lambda c: _bvar_dir_for_cell(c, root),
-                            window_label=window_label)
+    written = dfm.make_trajectories(
+        df, root, ylim=ylim, cells=cells,
+        dir_for_cell=lambda c: _bvar_dir_for_cell(c, root),
+        window_label=window_label, family="bvar")
     for q in compare_quarters or []:
         written += dfm.make_compare(df[df["target_quarter"] == q],
                                     _comparison_dir(root), q, ylim=ylim,

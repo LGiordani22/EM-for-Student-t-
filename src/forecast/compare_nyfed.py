@@ -137,6 +137,7 @@ Uso
 from __future__ import annotations
 
 import argparse
+import math
 import os
 
 import matplotlib
@@ -518,9 +519,9 @@ _REF_STYLE = {
 #: Gli estremi sono INCLUSIVI; il disegno li allarga di mezza settimana per
 #: lato, cosi' le bande si toccano fra i punti interi e non sopra di essi.
 _PHASE_BANDS = [
-    (-12, 0, "forecast\n(quarter not started)", "#EAF0F6"),
-    (1, 13, "nowcast\n(current quarter)", "#F5EFE4"),
-    (14, 17, "backcast\n(quarter closed,\nGDP not released)", "#EDE6F0"),
+    (-12, 0, "FORECAST\n(quarter not started)", "#EAF0F6"),
+    (1, 13, "NOWCAST\n(current quarter)", "#F5EFE4"),
+    (14, 17, "BACKCAST\n(quarter closed,\nGDP not released)", "#EDE6F0"),
 ]
 
 _FIG_SIZE = (11.0, 6.4)
@@ -638,11 +639,46 @@ def horizon_panel(df_mine: pd.DataFrame, sample: list[str],
             .sort_values(["metodo", "horizon_week"]).reset_index(drop=True)), sample
 
 
+#: La nota a pie' di figura si spegne con `FIGURE_SENZA_NOTA=1`.
+#: Variabile d'ambiente e non argomento perche' deve attraversare i
+#: sottoprocessi di `scripts/run_outputs.py` senza che ogni passo se la debba
+#: passare a mano.
+_ENV_SENZA_NOTA = "FIGURE_SENZA_NOTA"
+
+
+def note_enabled(note: bool | None = None) -> bool:
+    """La nota va disegnata?  `None` = decide l'ambiente (default: si')."""
+    if note is not None:
+        return bool(note)
+    return os.environ.get(_ENV_SENZA_NOTA, "").strip().lower() not in (
+        "1", "true", "yes", "si")
+
+
 def figure_rmse_by_horizon(panel_h: pd.DataFrame, sample: list[str],
-                           spec: str, out_path: str) -> str:
+                           spec: str, out_path: str, *,
+                           note: bool | None = None) -> str:
     """
     Il grafico: RMSE medio sui trimestri del campione, settimana per settimana,
     con le tre fasi come bande di sfondo.
+
+    LA NOTA A PIE' DI FIGURA, E PERCHE' SI PUO' SPEGNERE
+    ---------------------------------------------------
+    `note=False` (o `FIGURE_SENZA_NOTA=1` nell'ambiente) toglie il blocco di
+    testo in fondo.  Serve alla TESI, e la ragione e' tipografica prima che
+    editoriale: la figura e' larga 11 pollici e entra a `\\textwidth`, che con
+    `12pt letterpaper, margin=1in` vale 6.5 pollici — scala 0.59.  Una nota a
+    8.5 pt diventa 5 pt contro un corpo del testo di 12: illeggibile, e un
+    blocco di testo illeggibile e' peggio di nessun testo.  In tesi quel
+    contenuto va nella `\\caption`, che si compone col testo, entra
+    nell'elenco delle figure e non puo' divergere dalla figura.
+
+    Acceso resta il default, perche' fuori dalla tesi la figura viaggia da
+    sola — al relatore, nelle slide, nel repo — e li' l'autosufficienza vale.
+
+    Due righe che c'erano sono state TOLTE, non spente: «RMSE over N quarters»
+    ripeteva il titolo, e «Horizon axis grouped on horizon_week (lower row),
+    labelled in weeks to release (upper row)» ripeteva le due etichette degli
+    assi da quando ciascuna scala si presenta da se'.
 
     QUANTI TRIMESTRI CI SONO SOTTO SI LEGGE NEL TITOLO, e cambia la lettura.
     Con dieci ogni punto e' un RMSE su dieci errori: l'ordinamento fra curve
@@ -654,6 +690,7 @@ def figure_rmse_by_horizon(panel_h: pd.DataFrame, sample: list[str],
     piatti (non hanno pannello da ascoltare) e che le curve del pannello
     scendano verso destra.
     """
+    note_on = note_enabled(note)
     plotted = panel_h[panel_h["pieno"]]
     models = sorted(m for m in plotted["metodo"].unique()
                     if m not in _REF_STYLE)
@@ -679,7 +716,9 @@ def figure_rmse_by_horizon(panel_h: pd.DataFrame, sample: list[str],
 
         for lo, hi, name, colour in _PHASE_BANDS:
             ax.axvspan(lo - 0.5, hi + 0.5, color=colour, zorder=0, linewidth=0)
-            ax.text((lo + hi) / 2.0, ymax - 0.015 * (ymax - y0), name,
+            # Staccate dal bordo superiore: a 0.015 la prima riga sfiorava la
+            # cornice e i tick interni del lato alto le passavano sopra.
+            ax.text((lo + hi) / 2.0, ymax - 0.055 * (ymax - y0), name,
                     ha="center", va="top", fontsize=8.5, color="#4A4A4A",
                     linespacing=1.25, zorder=1)
         for _, hi, _, _ in _PHASE_BANDS[:-1]:
@@ -690,7 +729,7 @@ def figure_rmse_by_horizon(panel_h: pd.DataFrame, sample: list[str],
             ax.plot(g["horizon_week"], g["RMSE"],
                     color=_MODEL_COLORS[i % len(_MODEL_COLORS)],
                     linewidth=1.9, marker="o", markersize=3.2,
-                    label=m.split("/", 1)[-1], zorder=3)
+                    label=fg.pretty_series(m), zorder=3)
         for m, st in _REF_STYLE.items():
             g = plotted[plotted["metodo"] == m].sort_values("horizon_week")
             if g.empty:
@@ -702,9 +741,18 @@ def figure_rmse_by_horizon(panel_h: pd.DataFrame, sample: list[str],
         ticks = [w for w in weeks if (weeks.max() - w) % _TICK_EVERY == 0]
         ax.set_xticks(ticks)
         ax.set_xticklabels([str(lab[w]) for w in ticks])
-        ax.set_xlabel("Weeks to the GDP release  "
-                      "(release on the right; below, the week of the quarter)",
-                      fontsize=10)
+        # OGNI RIGA HA LA SUA ETICHETTA, e non e' pignoleria.
+        # Prima ce n'era una sola, che spiegava anche l'altra:
+        #     "Weeks to the GDP release (release on the right; below, the week
+        #      of the quarter)"
+        # Due difetti in una riga.  "below" rimanda a una riga di numeri che il
+        # lettore non sa ancora essere un secondo asse; e "the week of the
+        # quarter" non e' quello che quei numeri dicono — vanno da -12 a +17,
+        # cioe' sono settimane RELATIVE all'inizio del trimestre, non settimane
+        # "del" trimestre (che sarebbero 1..13).  Ora ciascuna scala si
+        # presenta da se', con lo stesso nome che porta nella figura gemella
+        # del log score.
+        ax.set_xlabel("Weeks to the GDP release", fontsize=10)
         ax.set_ylabel("RMSE  (BEA percentage points)", fontsize=10)
 
         # Seconda scala, sotto: la variabile su cui si e' RAGGRUPPATO davvero.
@@ -712,47 +760,65 @@ def figure_rmse_by_horizon(panel_h: pd.DataFrame, sample: list[str],
         ax2.set_xticks(ticks)
         ax2.set_xticklabels([f"{w:+d}" for w in ticks])
         ax2.tick_params(labelsize=8, direction="in", colors="#4A4A4A", width=0.8)
+        ax2.set_xlabel("Week relative to the target quarter", fontsize=9,
+                       color="#4A4A4A", labelpad=9)
         for side in ax2.spines:
             ax2.spines[side].set_visible(False)
 
-        ax.set_title(f"RMSE by horizon — spec {spec} — "
+        ax.set_title(f"RMSE by Horizon — {fg.pretty_spec(spec)} — "
                      f"{sample[0]}–{sample[-1]} ({len(sample)} quarters)",
                      fontsize=12, pad=12)
-        # Tolto lo zero dall'asse, l'angolo in basso a sinistra non e' piu'
-        # vuoto per costruzione: la posizione si verifica invece di assumerla.
-        # Il riquadro opaco resta — qui sotto la legenda ci sono le bande
-        # colorate, e senza riquadro il testo si legge male.
-        leg = fg._place_legend(fig, ax, ax.get_legend_handles_labels()[0],
-                               ncol=2, fallback_anchor=(0.5, -0.22),
-                               fallback_ncol=5)
+
+        # LA LEGENDA STA SEMPRE SOTTO, E NON SI CONTRATTA.
+        # Prima si cercava un angolo libero dentro il riquadro.  Ma qui dentro
+        # il riquadro non c'e' mai spazio DAVVERO libero: ci sono le tre bande
+        # colorate con le loro etichette, e una legenda "che non copre le
+        # linee" copre comunque qualcos'altro — nella figura dei quattro BVAR
+        # finiva sopra l'etichetta di *forecast*.  E soprattutto: queste figure
+        # si leggono in fila, una finestra dopo l'altra, e una legenda che
+        # cambia posto da una all'altra costringe a ricercarla ogni volta.
+        # Sotto il riquadro c'e' posto per costruzione, ed e' lo stesso posto
+        # in tutte.
+        handles = ax.get_legend_handles_labels()[0]
+        righe = max(1, math.ceil(len(handles) / 5))
+        leg = ax.legend(handles=handles, loc="upper center", frameon=False,
+                        fontsize=8.5, ncol=math.ceil(len(handles) / righe),
+                        bbox_to_anchor=(0.5, -0.28))
         leg.set_frame_on(True)
         leg.get_frame().set_facecolor("white")
         leg.get_frame().set_alpha(0.95)
         leg.get_frame().set_edgecolor("#B0B0B0")
         leg.set_zorder(5)
 
-        fed = plotted.loc[plotted["metodo"] == _NYFED, "horizon_week"]
-        note = (
-            f"RMSE over {len(sample)} quarters"
-            + ("  —  SMALL SAMPLE: differences between neighbouring weeks are "
-               "largely sampling noise." if len(sample) < 20 else ".")
-            + "\nHorizon axis grouped on horizon_week (lower row), labelled in "
-              "weeks to release (upper row): at a given week the release can be "
-              "up to ~1 week nearer or further,\nbecause quarters have 90/91/92 "
-              "days.  Each point uses all "
-            f"{len(sample)} quarters, otherwise it is not drawn."
-        )
-        if len(fed):
-            note += (f"  The NY Fed curve starts at week {int(fed.min()):+d}: "
-                     "before that they publish no forecast.\nNY Fed backcasts "
-                     "released after the GDP release are excluded.")
-        fig.text(0.5, 0.012, note, ha="center", va="bottom", fontsize=7.4,
-                 color="#3A3A3A", linespacing=1.6)
+        if note_on:
+            fed = plotted.loc[plotted["metodo"] == _NYFED, "horizon_week"]
+            righe_nota = []
+            if len(sample) < 20:
+                righe_nota.append(
+                    "SMALL SAMPLE: differences between neighbouring weeks are "
+                    "largely sampling noise.")
+            righe_nota.append(
+                "At a given week the release can be up to ~1 week nearer or "
+                "further, because quarters have 90/91/92 days.")
+            righe_nota.append(
+                f"Each point uses all {len(sample)} quarters, otherwise it is "
+                "not drawn.")
+            if len(fed):
+                righe_nota.append(
+                    f"The NY Fed curve starts at week {int(fed.min()):+d}: "
+                    "before that they publish no forecast; their backcasts "
+                    "released after the GDP release are excluded.")
+            fig.text(0.5, 0.012, "\n".join(righe_nota), ha="center",
+                     va="bottom", fontsize=8.5, color="#1A1A1A",
+                     linespacing=1.5)
 
-        # bottom=0.34 e non 0.30: sotto il riquadro stanno TRE cose in fila —
-        # asse secondario (-0.13), legenda di ripiego (-0.22) e nota a pie' di
-        # figura — e con 0.30 la legenda finiva sulla prima riga della nota.
-        fig.subplots_adjust(bottom=0.34, top=0.92, left=0.075, right=0.98)
+        # Sotto il riquadro stanno QUATTRO cose in fila: asse secondario
+        # (-0.13) con la sua etichetta, legenda (-0.28) e nota a pie' di
+        # figura.  Con 0.34 — che bastava quando l'asse secondario non aveva
+        # etichetta — la legenda finiva sulla prima riga della nota.  Senza
+        # nota quello spazio non serve e va restituito al riquadro.
+        fig.subplots_adjust(bottom=0.38 if note_on else 0.26,
+                            top=0.92, left=0.075, right=0.98)
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         fig.savefig(out_path, dpi=200, facecolor="white")
         plt.close(fig)
@@ -891,9 +957,9 @@ def main() -> None:
             ph, sample_fig, a.spec_figura,
             # Nome stabile, non il campione: vedi la nota in `bvar.metrics`.
             # Un nome che porta dentro il campione lascia un file orfano ogni
-            # volta che il campione cambia.
-            os.path.join(out_dir, f"rmse_by_horizon_{a.spec_figura}"
-                                  f"{tag or '_completo'}.png"))
+            # volta che il campione cambia.  E niente spec nel nome: la
+            # cartella e' gia' `dfm/<spec>/rmse/`.
+            os.path.join(out_dir, f"RMSE{tag or '_completo'}.png"))
         scartati = ph[~ph["pieno"]]
         print(f"\nscritto: {csv}")
         print(f"scritto: {png}")

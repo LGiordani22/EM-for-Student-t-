@@ -1,10 +1,18 @@
 """
 src/forecast/figures.py
 
-LA FIGURA in stile Cascaldi-Garcia 8a.
+LA FIGURA DELLE TRAIETTORIE (impianto Cascaldi-Garcia 8a).
 
 Lettore puro: legge il CSV lungo di `weekly_nowcast.py` e disegna.  Non stima
 niente.
+
+IL COLORE E' IL NUMERO DEL TRIMESTRE
+------------------------------------
+Q1 ha sempre lo stesso colore, in ogni figura e in ogni finestra; idem Q2, Q3,
+Q4.  Quattro colori per riquadro invece di uno per trimestre disegnato, e la
+legenda li dichiara.  Le due famiglie (`family='dfm'` / `'bvar'`) hanno
+tavolozze diverse, cosi' i due alberi di output non si confondono a vista.
+Vedi `_QUARTER_COLORS`.
 
 COSA MOSTRA (e cosa non mostra)
 -------------------------------
@@ -60,8 +68,8 @@ c'era, ed era tarato sulla Grande Recessione: sul 2024-2025 avrebbe schiacciato
 la serie in una striscia.  Chi vuole due celle sulla stessa scala passa
 `--ylim MIN MAX`.
 
-  --style cg8a     un pannello per cella (default)
-  --style compare  un trimestre, tutti i metodi sovrapposti
+  --style trajectories  un pannello per cella (default)
+  --style compare       un trimestre, tutti i metodi sovrapposti
 """
 
 from __future__ import annotations
@@ -86,7 +94,29 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 # ─── Stile accademico ─────────────────────────────────────────────────────────
 # I colori sono l'ordine MATLAB, che e' quello dell'originale.
-_COLORS = ["#0072BD", "#D95319", "#EDB120", "#7E2F8E", "#77AC30", "#4DBEEE"]
+_COLORS = ["#0072BD", "#D95319", "#EDB120", "#7E2F8E", "#77AC30", "#4DBEEE",
+           "#A2142F"]
+
+# UN COLORE PER NUMERO DI TRIMESTRE, NON PER ORDINE DI APPARIZIONE
+# ----------------------------------------------------------------
+# Prima i colori si assegnavano scorrendo i trimestri disegnati: sul 2014-2016
+# sono quattordici, il ciclo di sei si ripeteva due volte e mezzo, e la stessa
+# tinta finiva su trimestri diversi nello stesso riquadro.  Con quattordici
+# linee sovrapposte quello non e' un codice colore, e' rumore.
+#
+# Qui il colore dipende SOLO dal numero del trimestre: Q1 e' sempre lo stesso
+# colore in ogni figura, in ogni finestra, in ogni cella.  I colori per riquadro
+# scendono da sei a quattro e la legenda puo' dichiararli, quindi il lettore
+# legge "questa e' una linea di Q3" senza inseguire l'etichetta del pallino.
+#
+# Due famiglie, una per albero di output, cosi' una figura DFM e una BVAR non si
+# scambiano per la stessa cosa a colpo d'occhio.  Le tinte disponibili sono
+# sette e ne servono quattro per famiglia: il viola e' l'unica ripetizione, ed
+# e' su Q4 in entrambe.
+_QUARTER_COLORS: dict[str, dict[int, str]] = {
+    "dfm":  {1: "#0072BD", 2: "#D95319", 3: "#77AC30", 4: "#7E2F8E"},
+    "bvar": {1: "#4DBEEE", 2: "#EDB120", 3: "#A2142F", 4: "#7E2F8E"},
+}
 
 _FIGSIZE = (10.0, 6.0)          # ~1.67:1, il formato orizzontale dell'originale
 _YLIM = None                    # scala AUTOMATICA sulla finestra: vedi _autoscale
@@ -156,11 +186,23 @@ def _autoscale(ax: plt.Axes, xs: list, ys: list) -> None:
 
 
 def _data_boxes(ax: plt.Axes) -> list:
-    """I riquadri (in coordinate display) di tutto cio' che e' stato disegnato."""
+    """I riquadri (in coordinate display) di tutto cio' che e' stato disegnato.
+
+    LE SCRITTE CONTANO QUANTO LE LINEE.  Per un po' qui c'erano solo
+    `ax.get_lines()`, e il risultato era una legenda che si dichiarava «libera»
+    stando sopra a del testo: nella RMSE dei BVAR copriva l'etichetta della
+    fase *forecast*, nelle traiettorie poteva coprire le targhette dei
+    trimestri.  Il controllo diceva il vero su cio' che guardava — guardava
+    troppo poco.  Le annotazioni sono `Text` come le altre e stanno in
+    `ax.texts`, quindi entrano da qui.
+    """
     boxes = []
     for ln in ax.get_lines():
+        # `make_compare` disegna ancora una linea dello zero tratteggiata: non
+        # e' un dato, e non deve spingere via la legenda.  Nelle traiettorie
+        # quella linea non c'e' piu' e il filtro semplicemente non trova nulla.
         if ln.get_linestyle() == "--" and ln.get_color() == "black":
-            continue                      # la linea dello zero non e' un dato
+            continue
         xy = ln.get_xydata()
         if len(xy) == 0:
             continue
@@ -169,6 +211,15 @@ def _data_boxes(ax: plt.Axes) -> list:
         if len(pts):
             boxes.append((pts[:, 0].min(), pts[:, 1].min(),
                           pts[:, 0].max(), pts[:, 1].max()))
+    for txt in ax.texts:
+        if not txt.get_visible() or not str(txt.get_text()).strip():
+            continue
+        try:                       # serve il renderer: c'e', il chiamante
+            bb = txt.get_window_extent()   # ha gia' fatto `fig.canvas.draw()`
+        except (RuntimeError, ValueError, AttributeError):
+            continue
+        if np.isfinite([bb.x0, bb.y0, bb.x1, bb.y1]).all():
+            boxes.append((bb.x0, bb.y0, bb.x1, bb.y1))
     return boxes
 
 
@@ -199,13 +250,24 @@ def _place_legend(fig, ax: plt.Axes, handles: list, ncol: int = 1,
     sotto l'asse passa il proprio `fallback_anchor`.  `fallback_ncol` limita
     le colonne: con nove voci su una riga sola la legenda sfora a destra e
     l'ultima si taglia.
+
+    PRIMA DI USCIRE, SI PROVA A STRINGERLA.  Una legenda a `ncol` colonne e'
+    larga: nelle finestre fitte (le traiettorie 2024-2025) nessuno dei cinque
+    angoli la ospita, e finiva sotto il riquadro mentre in tutte le altre
+    figure sta dentro.  Ma lo spazio libero spesso c'e' — e' solo piu' stretto
+    di quanto la legenda sia larga.  Quindi si riprova con meno colonne, dalla
+    piu' larga alla piu' stretta: la disposizione richiesta ha la precedenza, e
+    si esce sotto il riquadro solo se davvero non entra da nessuna parte.
     """
-    for loc in ("best", "upper left", "upper right", "lower left", "lower right"):
-        leg = ax.legend(handles=handles, loc=loc, frameon=False,
-                        fontsize=8.5, ncol=ncol)
-        if not _legend_overlaps(fig, ax, leg):
-            return leg
-        leg.remove()
+    layouts = list(dict.fromkeys([ncol, 2, 1]))
+    for nc in layouts:
+        for loc in ("best", "upper left", "upper right",
+                    "lower left", "lower right"):
+            leg = ax.legend(handles=handles, loc=loc, frameon=False,
+                            fontsize=8.5, ncol=nc)
+            if not _legend_overlaps(fig, ax, leg):
+                return leg
+            leg.remove()
     return ax.legend(handles=handles, loc="upper center", frameon=False,
                      fontsize=8.5,
                      ncol=fallback_ncol or max(ncol, len(handles)),
@@ -271,6 +333,105 @@ def _short(q: str) -> str:
     return y[2:] + "Q" + n
 
 
+def _quarter_number(q: str) -> int:
+    """'2008Q4' -> 4.  E' questo, non l'ordine, a decidere il colore."""
+    return int(q.upper().split("Q")[1])
+
+
+# COME SI SCRIVE IL NOME DELLA CELLA NEL TITOLO
+# ---------------------------------------------
+# Nel CSV la cella e' un IDENTIFICATIVO — 'bbvar/-', 'fed_overlap/student_t_ar1'
+# — fatto per essere ordinato e confrontato, non letto.  In cima a una figura ci
+# va il nome, non la chiave: niente underscore, niente barra, niente trattino
+# vuoto al posto della variante.  La traduzione sta qui e solo qui.
+_CELL_TITLES = {
+    "bbvar/-": "B-BVAR", "cbvar/authors": "C-BVAR",
+    "lbvar/-": "L-BVAR", "qbvar/-": "Q-BVAR",
+    "ar2": "AR(2)", "mean": "Mean",
+}
+
+#: Le celle DFM si compongono: <spec>-<variante>.  `fed_overlap` diventa
+#: `FedOverlap` senza trattino interno di proposito — con `Fed-Overlap` un
+#: titolo come "Fed-Overlap-Student-t AR(1)" avrebbe tre trattini e nessuno
+#: capirebbe piu' quale separa che cosa.
+_SPEC_TITLES = {"diag3": "Diag3", "diag4": "Diag4",
+                "fed_overlap": "FedOverlap"}
+_VARIANT_TITLES = {
+    "gaussian":             "Gaussian",
+    "gaussian_ar1":         "Gaussian AR(1)",
+    "student_t":            "Student-t",
+    "student_t_ar1":        "Student-t AR(1)",
+    # `_shared` = un peso solo condiviso da tutte le serie, contro i pesi
+    # per-serie di `student_t_ar1`.  Si tiene la parola dell'identificativo
+    # cosi' chi legge la figura e la tabella non deve tradurre.
+    "student_t_ar1_shared": "Student-t AR(1) Shared",
+}
+
+
+#: Gli stessi nomi, ma indicizzati sul MODELLO NUDO.  Nelle figure per
+#: orizzonte il metodo arriva come `bbvar` e non come `bbvar/-`, perche' li' i
+#: quattro BVAR sono aggregati per famiglia.  Si deriva dalla tabella qui sopra
+#: invece di riscriverla: due elenchi degli stessi quattro nomi divergono.
+_MODEL_TITLES = {k.split("/")[0]: v for k, v in _CELL_TITLES.items() if "/" in k}
+
+
+def _pretty_cell(cell: str) -> str:
+    """'fed_overlap/student_t_ar1' -> 'FedOverlap-Student-t AR(1)'."""
+    if cell in _CELL_TITLES:
+        return _CELL_TITLES[cell]
+    if "/" in cell:
+        spec, variant = cell.split("/", 1)
+        if spec in _SPEC_TITLES and variant in _VARIANT_TITLES:
+            return f"{_SPEC_TITLES[spec]}-{_VARIANT_TITLES[variant]}"
+    # Cella non prevista (una spec nuova, un modello aggiunto): meglio
+    # l'identificativo grezzo in figura che un KeyError a fine passata.
+    return cell
+
+
+def pretty_spec(spec: str) -> str:
+    """Il nome della SPEC per il titolo di una figura per orizzonte.
+
+        'diag4'                      -> 'Diag4'
+        'qbvar/cbvar/bbvar/lbvar'    -> 'Q-BVAR/C-BVAR/B-BVAR/L-BVAR'
+
+    La barra separa i modelli disegnati insieme e resta: e' come si legge in
+    fretta quali quattro curve ci sono.
+    """
+    parts = [p for p in str(spec).split("/") if p]
+    if not parts:
+        return str(spec)
+    if all(p in _MODEL_TITLES for p in parts):
+        return "/".join(_MODEL_TITLES[p] for p in parts)
+    return "/".join(_SPEC_TITLES.get(p, p) for p in parts)
+
+
+def pretty_series(metodo: str) -> str:
+    """Il nome di UNA curva in legenda.
+
+        'bbvar'  o  'bbvar/-'  o  'bvar/bbvar'   -> 'B-BVAR'
+        'diag4/student_t'                        -> 'Student-t'
+
+    Nel caso DFM si tiene la sola VARIANTE, non `Diag4-Student-t`: la spec sta
+    gia' nel titolo, e ripeterla su ogni voce allunga la legenda senza
+    distinguere niente.
+
+    ⚠️  `bvar/bbvar` non e' una svista: nel pannello per orizzonte i quattro
+    BVAR sono aggregati per FAMIGLIA, quindi il metodo porta `bvar/` davanti
+    invece della variante.  La coda va cercata in tutte e due le tabelle — con
+    la sola `_VARIANT_TITLES` tornava `bbvar` minuscolo, ed e' esattamente
+    l'errore che era finito in figura.
+    """
+    m = str(metodo)
+    if m in _CELL_TITLES:
+        return _CELL_TITLES[m]
+    if m in _MODEL_TITLES:
+        return _MODEL_TITLES[m]
+    variant = m.split("/", 1)[-1]
+    if variant in _MODEL_TITLES:
+        return _MODEL_TITLES[variant]
+    return _VARIANT_TITLES.get(variant, variant)
+
+
 def _period(df: pd.DataFrame) -> str:
     m = df["as_of_dt"].dt.strftime("%Y-%m")
     return f"{m.min()}_{m.max()}"
@@ -295,11 +456,12 @@ def _line_rows(rows: pd.DataFrame, q: str, nascondi_backcast: bool) -> pd.DataFr
     return rows[rows["as_of_dt"] < release] if pd.notna(release) else rows
 
 
-# ─── La figura 8a ─────────────────────────────────────────────────────────────
+# ─── La figura delle traiettorie (stile Cascaldi-Garcia 8a) ───────────────────
 
-def _draw_cg8a(ax: plt.Axes, df_cell: pd.DataFrame, colors: dict[str, str],
-               ylim: tuple[float, float] | None,
-               nascondi_backcast: bool = False) -> None:
+def _draw_trajectories(ax: plt.Axes, df_cell: pd.DataFrame,
+                       colors: dict[str, str],
+                       ylim: tuple[float, float] | None,
+                       nascondi_backcast: bool = False) -> None:
     """Un pannello: le traiettorie settimanali e i pallini dei rilasci."""
     quarters = sorted(df_cell["target_quarter"].unique(), key=_quarter_key)
     xs: list = []
@@ -345,20 +507,26 @@ def _draw_cg8a(ax: plt.Axes, df_cell: pd.DataFrame, colors: dict[str, str],
     else:
         _autoscale(ax, xs, ys)
 
-    # La linea dello zero solo se lo zero e' inquadrato: forzarlo dentro
-    # aggiungerebbe bordo vuoto in una finestra che non attraversa lo zero.
-    lo, hi = ax.get_ylim()
-    if lo <= 0.0 <= hi:
-        ax.axhline(0.0, color="black", linewidth=1.0, linestyle="--", zorder=2)
+    # NIENTE LINEA DELLO ZERO.  C'era, tratteggiata, quando lo zero cadeva nel
+    # riquadro.  Non aggiunge niente che l'asse y non dica gia' — il tick dello
+    # zero c'e' comunque — e attraversa le traiettorie proprio nelle finestre
+    # dove sono piu' fitte.
 
     _apply_axes_style(ax)
     ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=4, maxticks=9))
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%b-%Y"))
 
 
-def _legend(fig, ax: plt.Axes) -> None:
+def _legend(fig, ax: plt.Axes, palette: dict[int, str],
+            quarter_numbers: list[int]) -> None:
     """
-    Senza riquadro, due voci, e mai sopra ai dati.
+    Senza riquadro, mai sopra ai dati, e con il codice colore dichiarato.
+
+    Le voci di trimestre non sono decorazione: da quando il colore dipende dal
+    NUMERO del trimestre e non dall'ordine, la legenda e' l'unico posto dove
+    quella regola e' scritta.  Si elencano solo i numeri effettivamente
+    presenti nella finestra, cosi' una finestra corta non dichiara colori che
+    non ha disegnato.
 
     La posizione non e' piu' un default fisso.  Con `lower right` cablato, sui
     trimestri di crisi la legenda copriva proprio il pallino del PIL
@@ -369,19 +537,23 @@ def _legend(fig, ax: plt.Axes) -> None:
     """
     handles = [
         Line2D([0], [0], color="black", linewidth=_LINEWIDTH,
-               label="Nowcast trajectory"),
+               label="Weekly forecast path"),
         Line2D([0], [0], color="black", marker="o", linestyle="none",
-               markersize=np.sqrt(_DOT_SIZE), label="Published GDP"),
+               markersize=np.sqrt(_DOT_SIZE), label="First-release GDP"),
+        *[Line2D([0], [0], color=palette[n], linewidth=_LINEWIDTH,
+                 label=f"Q{n} target")
+          for n in quarter_numbers],
     ]
-    _place_legend(fig, ax, handles, ncol=2)
+    _place_legend(fig, ax, handles, ncol=3)
 
 
-def make_cg8a(df: pd.DataFrame, output_dir: str,
-              ylim: tuple[float, float] | None = _YLIM,
-              cells: list[str] | None = None,
-              nascondi_backcast: bool = False,
-              dir_for_cell=None,
-              window_label: str | None = None) -> list[str]:
+def make_trajectories(df: pd.DataFrame, output_dir: str,
+                      ylim: tuple[float, float] | None = _YLIM,
+                      cells: list[str] | None = None,
+                      nascondi_backcast: bool = False,
+                      dir_for_cell=None,
+                      window_label: str | None = None,
+                      family: str = "dfm") -> list[str]:
     """
     Una figura per cella.  Restituisce i percorsi scritti.
 
@@ -394,12 +566,18 @@ def make_cg8a(df: pd.DataFrame, output_dir: str,
     `window_label` (es. "2014-2016") entra nel nome del file al posto del
     periodo dedotto dai dati: e' il nome della finestra, non quello che il
     CSV si e' trovato dentro.
+
+    `family` sceglie la tavolozza per numero di trimestre (`_QUARTER_COLORS`):
+    'dfm' o 'bvar'.  Il nome del file NON contiene la cella — ogni figura sta
+    gia' nella cartella della propria cella, e ripetere il nome li' dentro non
+    distingue niente.
     """
+    if family not in _QUARTER_COLORS:
+        raise ValueError(f"family {family!r}: attesa una di "
+                         f"{tuple(_QUARTER_COLORS)}.")
     os.makedirs(output_dir, exist_ok=True)
     period = window_label or _period(df)
-
-    quarters = sorted(df["target_quarter"].unique(), key=_quarter_key)
-    colors = {q: _COLORS[i % len(_COLORS)] for i, q in enumerate(quarters)}
+    palette = _QUARTER_COLORS[family]
 
     todo = cells if cells else sorted(df["cella"].unique())
     written: list[str] = []
@@ -411,15 +589,22 @@ def make_cg8a(df: pd.DataFrame, output_dir: str,
                 print(f"  [salto] {cell}: nessuna riga")
                 continue
 
+            # I trimestri sono quelli DI QUESTA cella: una cella che si ferma
+            # prima non deve dichiarare in legenda un colore che non disegna,
+            # ne' annunciare nel titolo un intervallo che non copre.
+            quarters = sorted(sub["target_quarter"].unique(), key=_quarter_key)
+            colors = {q: palette[_quarter_number(q)] for q in quarters}
+            numeri = sorted({_quarter_number(q) for q in quarters})
+
             fig, ax = plt.subplots(figsize=_FIGSIZE)
             fig.patch.set_facecolor("white")
-            _draw_cg8a(ax, sub, colors, ylim, nascondi_backcast)
-            _legend(fig, ax)
+            _draw_trajectories(ax, sub, colors, ylim, nascondi_backcast)
+            _legend(fig, ax, palette, numeri)
 
             ax.set_ylabel("Annualised growth rate (%)", fontsize=10)
-            ax.set_xlabel("Vintage date (as_of)", fontsize=10)
-            ax.set_title(f"GDP nowcast evolution — {cell}"
-                         + (f" — {period}" if window_label else ""),
+            ax.set_xlabel("Vintage date", fontsize=10)
+            ax.set_title(f"GDP Forecast Evolution — {_pretty_cell(cell)}\n"
+                         f"Target Quarters {quarters[0]}–{quarters[-1]}",
                          fontsize=11.5, pad=10)
             fig.tight_layout()
 
@@ -431,7 +616,7 @@ def make_cg8a(df: pd.DataFrame, output_dir: str,
                 sub_dir = cell.split("/")[0] if "/" in cell else _BENCHMARK_SPEC
                 cell_dir = os.path.join(output_dir, sub_dir)
             os.makedirs(cell_dir, exist_ok=True)
-            fname = f"cg8a_{cell.replace('/', '_')}_{period}.png"
+            fname = f"Trajectories_{period}.png"
             path = os.path.join(cell_dir, fname)
             fig.savefig(path, dpi=200, bbox_inches="tight", facecolor="white")
             plt.close(fig)
@@ -548,11 +733,12 @@ def main() -> None:
     p.add_argument("--csv", nargs="*", default=None,
                    help="default: TUTTI i CSV di csv/dfm/ (una cella per file)")
     p.add_argument("--output-dir", default=None)
-    p.add_argument("--style", choices=["cg8a", "compare"], default="cg8a")
+    p.add_argument("--style", choices=["trajectories", "compare"],
+                   default="trajectories")
     p.add_argument("--target", default=None,
                    help="stile compare: il trimestre, es. 2008Q4")
     p.add_argument("--cell", nargs="*", default=None,
-                   help="stile cg8a: solo queste celle, es. diag3/student_t")
+                   help="stile trajectories: solo queste celle, es. diag3/student_t")
     p.add_argument("--ylim", nargs=2, type=float, default=None,
                    metavar=("MIN", "MAX"),
                    help="scala y fissa; default: automatica sulla finestra")
@@ -585,10 +771,11 @@ def main() -> None:
     print(f"  {len(df)} righe, {df['target_quarter'].nunique()} trimestri, "
           f"celle: {sorted(df['cella'].unique())}")
 
-    if a.style == "cg8a":
-        written = make_cg8a(df, out_dir, ylim=ylim, cells=a.cell,
-                            nascondi_backcast=a.nascondi_backcast,
-                            dir_for_cell=dir_for_cell, window_label=a.window)
+    if a.style == "trajectories":
+        written = make_trajectories(df, out_dir, ylim=ylim, cells=a.cell,
+                                    nascondi_backcast=a.nascondi_backcast,
+                                    dir_for_cell=dir_for_cell,
+                                    window_label=a.window, family="dfm")
     else:
         if not a.target:
             raise SystemExit("lo stile compare richiede --target YYYYQn.")

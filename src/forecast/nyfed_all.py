@@ -111,7 +111,8 @@ def run_spec(mine_all: pd.DataFrame, spec: str,
         horiz.append(h)
         written.append(cn.figure_rmse_by_horizon(
             ph, sample_fig, spec,
-            os.path.join(out_dir, f"rmse_by_horizon_{spec}_{w}.png")))
+            # La spec non entra nel nome: `out_dir` e' gia' `dfm/<spec>/rmse/`.
+            os.path.join(out_dir, f"RMSE_{w}.png")))
 
     # ── scrittura, UNA VOLTA ────────────────────────────────────────────────
     for name, parts in tabs.items():

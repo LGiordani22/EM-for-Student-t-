@@ -14,18 +14,34 @@ I percorsi li decide `src/output_layout.py`, non questo modulo:
                                      in cui un BVAR bayesiano puo' battere un
                                      point forecast
 
-LA FIGURA DEL LOG SCORE E' UNA SOLA, SUL PERIODO COMPLETO
----------------------------------------------------------
-Deciso: un solo `logscore_by_horizon.png` sul 2007-2025, non uno per finestra
-come per l'RMSE.  `--window` esiste e taglia davvero, ma non va usato nello
-script: la figura confronta i QUATTRO MODELLI FRA LORO — niente AR(2), niente
-media espandente, perche' un point forecast non ha densita' predittiva — e con
-un solo pannello quel confronto si legge in un colpo.
+LA FIGURA DEL LOG SCORE ESCE PER FINESTRA, COME L'RMSE
+-------------------------------------------------------
+Una per finestra (`LOGSCORE_2007-2019.png`, `LOGSCORE_2024-2025.png`, …),
+accanto alle `RMSE_*.png` e con lo stesso campione.  Niente "completo": il
+nome `2007-2025` copre gia' `FULL_SPAN` alla lettera, e due file identici con
+due nomi diversi non sono ridondanza innocua.
 
-Il campione non e' pero' "tutti i trimestri": `figure_logscore_by_horizon`
-scarta quelli MONCHI ai bordi del blocco (il primo si vede solo in backcast,
-l'ultimo solo in forecast) perche' deformerebbero le due estremita' della
-curva.  Su una passata continua sono uno o due su ~76, e il titolo li dichiara.
+⚠️  Qui c'era scritto il contrario — «una sola, sul periodo completo», con la
+motivazione che le finestre le vuole l'RMSE perche' va confrontato col
+benchmark dello stesso periodo, mentre il log score confronta i quattro
+modelli fra loro.  L'argomento non regge, e per una ragione misurata: il log
+score e' una MEDIA, quindi un solo trimestre catastrofico la determina da
+solo.  Sul campione 2007-2025 **2020Q2 ha log score medio -720.7** contro una
+mediana di -2.22 su tutti i trimestri; togliendolo, il B-BVAR in forecast
+passa da -35.6 a -3.0, e il ranking per media e quello per mediana si
+RIBALTANO (per media vince il C-BVAR, per mediana il B-BVAR).  Senza le
+finestre non c'e' modo di guardare il confronto separato dalla catastrofe.
+
+Il campione non e' "tutti i trimestri": si tengono quelli che coprono l'ASSE
+STANDARD (`compute_metrics.core_coverage_quarters`), scartando i monchi ai
+bordi del blocco — il primo si vede solo in backcast, l'ultimo solo in
+forecast — che deformerebbero le due estremita' della curva.  Il titolo li
+dichiara.
+
+⚠️  Anche questa regola era sbagliata, e in modo grave: usava l'UNIONE delle
+settimane, che squalificava 75 trimestri su 78 per una settimana -13 che solo
+5 potevano avere.  La figura di diciotto anni era un log score su TRE
+trimestri.  Vedi la nota dentro `figure_logscore_by_horizon`.
 
 CHE COSA E' RIUSATO, ALLA LETTERA
 ----------------------------------
@@ -100,6 +116,7 @@ from src.bvar.evaluate import OUTPUT_ROOT
 from src.bvar.figures import MODELS, discover_csvs
 from src.forecast import compare_nyfed as cn
 from src.forecast import compute_metrics as cm
+from src.forecast import figures as fg
 from src.forecast.nyfed_nowcast import load_long as load_nyfed
 
 #: Le fasi, con la stessa soglia di `compute_metrics._phase`.
@@ -277,9 +294,13 @@ def horizon_figures(mine: pd.DataFrame, out_dir: str,
     # `..._2007Q2_2025Q1.png` (58, nuovo), senza niente che dicesse quale dei
     # due fosse quello buono.  Un nome stabile si sovrascrive.  Il campione sta
     # nel titolo della figura e nel CSV accanto, che e' dove va cercato.
+    # Il PNG si chiama come la traiettoria accanto — `RMSE_2024-2025.png`,
+    # `Trajectories_2024-2025.png` — perche' la cartella dice gia' di quale
+    # modello e' e il nome lungo ripeteva quell'informazione due volte.  Il CSV
+    # tiene il nome esteso: quello si apre da solo, fuori dalla cartella.
     png = cn.figure_rmse_by_horizon(
         ph, sample, "/".join(presenti),
-        os.path.join(out_dir, f"rmse_per_orizzonte_bvar{tag or '_completo'}.png"))
+        os.path.join(out_dir, f"RMSE{tag or '_completo'}.png"))
     return [csv, png]
 
 
@@ -522,7 +543,8 @@ def logscore_tables(df: pd.DataFrame, out_dir: str) -> pd.DataFrame:
     return by_phase
 
 
-def figure_logscore_by_horizon(df: pd.DataFrame, out_path: str) -> str:
+def figure_logscore_by_horizon(df: pd.DataFrame, out_path: str, *,
+                               window: str | None = None) -> str:
     """
     Log score medio per settimana, con le tre fasi come bande di sfondo.
 
@@ -535,23 +557,44 @@ def figure_logscore_by_horizon(df: pd.DataFrame, out_path: str) -> str:
     non per merito del modello, e su un asse che va da -12 a +17 quello e'
     l'errore di lettura piu' facile da commettere.
 
-      1. si tengono i trimestri con copertura settimanale COMPLETA.  Ai bordi
-         del blocco ce ne sono sempre di monchi — il primo si vede solo in
+      1. si tengono i trimestri che coprono l'ASSE STANDARD per ogni metodo
+         disegnato (`compute_metrics.core_coverage_quarters`).  Ai bordi del
+         blocco ce ne sono sempre di monchi — il primo si vede solo in
          backcast, l'ultimo solo in forecast — e sono quelli che
          deformerebbero le due estremita' della curva;
       2. si disegnano le settimane coperte da TUTTI i trimestri rimasti.
+
+    IL PASSO 1 ERA SBAGLIATO, ED E' LO STESSO ERRORE GIA' CORRETTO ALTROVE
+    ---------------------------------------------------------------------
+    Qui c'era una copia locale della regola, e usava l'UNIONE delle settimane:
+    «si tiene un trimestre se ha tutte le settimane che ha qualcun altro».
+    Ma `horizon_week` si conta dall'inizio del trimestre target, e un trimestre
+    entra in volo all'inizio di quello PRECEDENTE: se quel trimestre aveva
+    quattordici venerdi' invece di tredici, si parte da -13 invece che da -12.
+    Misurato su questi dati: 5 trimestri su 78 hanno la settimana -13, quindi
+    l'unione diventava -13..+17 e squalificava tutti gli altri 73 — che sono
+    perfettamente regolari — per una settimana che non potevano avere.
+
+    Ne restavano **3**, e la figura di diciotto anni era un log score su tre
+    trimestri.  Con `core_coverage_quarters` (asse standard preso per voto:
+    -12..+17, 63 trimestri su 78) il campione e' lo stesso della figura RMSE
+    accanto, che e' anche il punto: le due si leggono insieme.
+
+    La guardia anti-composizione NON si allenta: resta il filtro `n ==
+    n_target` piu' sotto, quindi la settimana -13 continua a non essere
+    disegnata.  Cambia quali trimestri formano il campione, non su che cosa si
+    media un punto disegnato.
     """
-    coverage = df.groupby("target_quarter")["horizon_week"].apply(set)
-    full = set().union(*coverage) if len(coverage) else set()
-    keep = [q for q in coverage.index if coverage[q] == full]
+    n_quarters_in = df["target_quarter"].nunique()
+    keep = cm.core_coverage_quarters(df)
     if not keep:
-        print(f"  [log score] nessun trimestre con copertura settimanale "
-              f"completa su {len(coverage)}: niente figura.  "
-              f"(blocco troppo corto: i trimestri ai bordi sono monchi.)")
+        print(f"  [log score{' ' + window if window else ''}] nessun trimestre "
+              f"copre l'asse standard su {n_quarters_in}: niente figura.  "
+              f"(finestra troppo corta: i trimestri ai bordi sono monchi.)")
         return ""
     df = df[df["target_quarter"].isin(keep)]
 
-    keep_sorted = sorted(keep, key=lambda q: (int(q[:4]), int(q[-1])))
+    keep_sorted = list(keep)                  # gia' in ordine di calendario
     n_target = len(keep)
     g = (df.groupby(["metodo", "horizon_week"])
          .agg(LS=("log_score", "mean"), n=("target_quarter", "nunique"))
@@ -570,8 +613,10 @@ def figure_logscore_by_horizon(df: pd.DataFrame, out_path: str) -> str:
         cn._apply_axes_style(ax)
         for lo, hi, name, colour in cn._PHASE_BANDS:
             ax.axvspan(lo - 0.5, hi + 0.5, color=colour, zorder=0, linewidth=0)
-            ax.text((lo + hi) / 2.0, hi_y + pad * 0.92, name, ha="center",
-                    va="top", fontsize=8.5, color="#4A4A4A", zorder=1)
+            # Come nella gemella RMSE: staccate dalla cornice, non appiccicate.
+            ax.text((lo + hi) / 2.0, hi_y + pad * 0.78, name, ha="center",
+                    va="top", fontsize=8.5, color="#4A4A4A",
+                    linespacing=1.25, zorder=1)
         for _, hi, _, _ in cn._PHASE_BANDS[:-1]:
             ax.axvline(hi + 0.5, color="white", linewidth=1.2, zorder=1)
 
@@ -580,12 +625,13 @@ def figure_logscore_by_horizon(df: pd.DataFrame, out_path: str) -> str:
             ax.plot(s["horizon_week"], s["LS"],
                     color=cn._MODEL_COLORS[i % len(cn._MODEL_COLORS)],
                     linewidth=1.9, marker="o", markersize=3.2,
-                    label=m.split("/")[0], zorder=3)
+                    label=fg.pretty_series(m.split("/")[0]), zorder=3)
 
         ax.set_xlim(weeks.min() - 0.5, weeks.max() + 0.5)
         ax.set_ylim(lo_y - pad, hi_y + pad)
-        ax.set_xlabel("Week relative to the target quarter  "
-                      "(<1 forecast, 1-13 nowcast, >13 backcast)", fontsize=10)
+        # Solo il nome della scala: le tre fasi le dicono gia' le bande, con le
+        # stesse parole e nel posto dove si guardano.
+        ax.set_xlabel("Week relative to the target quarter", fontsize=10)
         ax.set_ylabel("Log predictive score  (higher is better)", fontsize=10)
         # Il titolo dichiara il campione EFFETTIVO, non il periodo richiesto:
         # la regola in due passi qui sopra scarta i trimestri monchi ai bordi
@@ -593,9 +639,9 @@ def figure_logscore_by_horizon(df: pd.DataFrame, out_path: str) -> str:
         # presenti nei dati, e su una passata lunga la differenza e' di due
         # trimestri su ottanta — invisibile se non la si scrive.
         span = f"{keep_sorted[0]}–{keep_sorted[-1]}" if keep_sorted else "?"
-        dropped = len(coverage) - n_target
+        dropped = n_quarters_in - n_target
         ax.set_title(
-            f"Log score by horizon — {span}  ({n_target} quarters"
+            f"Log Score by Horizon — {span}  ({n_target} quarters"
             + (f", {dropped} truncated at the block edge dropped)" if dropped
                else ")"),
             fontsize=12, pad=12)
@@ -654,7 +700,6 @@ def main() -> None:
         print(cm._section("NY FED — l'ultima stima prima del rilascio"))
         t, txt = nyfed_tables(mine, models, "completo")
         _merge_tables(fed_tabs, t); fed_txt += txt
-    horizon_figures(mine, rmse_dir, models)
 
     # ── Le finestre, come per il DFM ──────────────────────────────────────
     # Tre passate cumulate piu' tre zoom.  Ogni finestra e' un TAGLIO VERO dei
@@ -663,6 +708,16 @@ def main() -> None:
     finestre = ([] if a.solo_completo
                 else (a.window if a.window is not None
                       else list(layout.RMSE_PASSES) + list(layout.RMSE_ZOOM_WINDOWS)))
+
+    # NIENTE FIGURA "completo" QUANDO C'E' GIA' LA FINESTRA CHE LA CONTIENE.
+    # `RMSE_PASSES['2007-2025']` E' `FULL_SPAN`, alla lettera: la figura senza
+    # tag usciva quindi identica — stesso MD5 del PNG, CSV uguale riga per riga
+    # — solo con un altro nome.  Due file uguali con due nomi diversi non sono
+    # ridondanza innocua: chi apre la cartella non sa quale dei due guardare, e
+    # il DFM infatti non ne produce nessuno.  Resta per `--solo-completo`, dove
+    # le finestre non si fanno e senza questa non uscirebbe alcuna figura.
+    if not finestre:
+        horizon_figures(mine, rmse_dir, models)
     for w in finestre:
         d = layout.slice_window(df_all, w, column="as_of")
         if d.empty:
@@ -713,14 +768,33 @@ def main() -> None:
     # usa la sua casa vera (`csv/bvar/logscore/`).  Passare `OUTPUT_ROOT`
     # la mandava a cercare in `forecast_weekly/logscore/`, che non esiste.
     ls = load_logscores(root=a.output_root)
-    # IL LOG SCORE RESTA UNO SOLO, SUL CAMPIONE COMPLETO — scelta dichiarata
-    # nell'intestazione del modulo e non cambiata qui: la figura confronta i
-    # quattro modelli fra loro e con un pannello solo quel confronto si legge
-    # in un colpo.  Le finestre le vuole l'RMSE, che va confrontato col
-    # benchmark dello stesso periodo; il log score no.
     logscore_tables(ls, ls_dir)
-    figure_logscore_by_horizon(
-        ls, os.path.join(ls_dir, "logscore_by_horizon.png"))
+
+    # UNA FIGURA PER FINESTRA, come l'RMSE.  Prima ce n'era una sola sul
+    # campione completo, con la motivazione che le finestre le vuole l'RMSE
+    # perche' va confrontato col benchmark dello stesso periodo.  Ma il log
+    # score ha lo stesso problema di lettura, e in forma piu' acuta: e' una
+    # MEDIA, quindi un singolo trimestre catastrofico la determina da solo
+    # (misurato: 2020Q2 ha log score medio -720.7 contro una mediana di -2.22
+    # su tutti i trimestri, e toglierlo sposta il B-BVAR in forecast da -35.6
+    # a -3.0).  Senza le finestre non c'e' modo di vedere quel confronto
+    # separato dalla catastrofe, e le due letture del ranking si ribaltano.
+    #
+    # NIENTE "completo", per la stessa ragione dell'RMSE: `RMSE_PASSES` contiene
+    # `2007-2025`, che E' `FULL_SPAN` alla lettera, quindi la figura senza
+    # finestra uscirebbe identica con un altro nome.
+    finestre = list(layout.RMSE_PASSES) + list(layout.RMSE_ZOOM_WINDOWS)
+    if not finestre:
+        figure_logscore_by_horizon(
+            ls, os.path.join(ls_dir, "LOGSCORE_completo.png"))
+    for w in finestre:
+        d = layout.slice_window(ls, w, column="as_of")
+        if d.empty:
+            print(f"  [log score {w}] nessuna riga in {layout.window(w)}: "
+                  f"finestra saltata.")
+            continue
+        figure_logscore_by_horizon(
+            d, os.path.join(ls_dir, f"LOGSCORE_{w}.png"), window=w)
 
 
 if __name__ == "__main__":

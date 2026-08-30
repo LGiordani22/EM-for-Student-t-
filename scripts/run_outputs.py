@@ -52,7 +52,7 @@ DA GUARDARE PER PRIMO, A FINE CORSA
 -----------------------------------
     output/forecast_weekly/comparison/summary.txt
         le matrici di confronto, la sezione PER FASE e il pannello BACKCAST
-    output/forecast_weekly/bvar/rmse/rmse_per_orizzonte_bvar_*.png
+    output/forecast_weekly/bvar/rmse/RMSE_*.png
         i quattro BVAR insieme, col NY Fed in nero
     output/forecast_weekly/dfm/fed_overlap/rmse/metrics_fed_overlap.txt
         le tabelle del DFM, con n/n_com affiancati
