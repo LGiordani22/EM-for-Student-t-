@@ -311,6 +311,46 @@ def robust_sqrt(S: np.ndarray, *, rtol: float = _EIG_RTOL) -> np.ndarray:
     return V * np.sqrt(d)                  # == V @ diag(sqrt(d))
 
 
+def _spd_solve(A: np.ndarray, B: np.ndarray) -> np.ndarray:
+    """`A^-1 B` per una `A` che DOVREBBE essere definita positiva, con ripiego LU.
+
+    PERCHE' NON BASTA `np.linalg.solve`, e non e' una micro-ottimizzazione.
+    Su questa macchina il percorso LU di OpenBLAS (`getrf`/`getrs`,
+    DYNAMIC_ARCH/SkylakeX) e' patologico — lo stesso percorso gia' segnalato
+    nell'header di `simsmoother`.  Misurato su `prec` alla taglia del profilo
+    `l` (k = 630, 37 colonne a destra):
+
+        np.linalg.solve      858 ms
+        scipy cho_solve      5.2 ms          ->  165x
+
+    e non e' la macchina a essere lenta: il gemm 630^3 gira in 13 ms.  E'
+    proprio la fattorizzazione LU.  Il conto si paga DUE VOLTE per ogni
+    valutazione della log-posterior degli iperparametri, quindi due volte per
+    ogni passo del Metropolis e ~8500 volte nella ricerca del modo: misurato,
+    una valutazione costava 3.3-4.6 s invece dei 220 ms documentati, e la
+    ricerca del modo del profilo `l` passava da mezz'ora a ore.
+
+    PERCHE' IL RIPIEGO RESTA.  La versione precedente usava LU di proposito, e
+    la ragione era buona: `prec = X'X + Omega^-1` e' definita positiva in
+    aritmetica esatta, ma se numericamente non lo e' la Cholesky si ferma — e
+    fermare la marginal likelihood vuol dire fermare il Metropolis, non solo
+    l'estrazione di (B, Sigma).  Quindi non si SOSTITUISCE la LU: la si tiene
+    come ripiego, e si prova prima la strada veloce.  La robustezza e' la
+    stessa di prima, il costo no.
+
+    ⚠️  I due percorsi danno lo stesso numero ma NON bit a bit: arrotondano in
+    ordine diverso.  Misurato sul profilo `l`, lo scarto sulla log-posterior e'
+    ~1e-9 relativo — lo stesso ordine gia' accettato e documentato per il
+    riuso di `X'X` (vedi `log_ml`).  Chi cercasse la riproducibilita' bit a bit
+    con una passata precedente non la trovera'.
+    """
+    try:
+        L = cholesky(A, lower=True)
+    except (LinAlgError, ValueError):
+        return np.linalg.solve(A, B)
+    return solve_triangular(L.T, solve_triangular(L, B, lower=True), lower=False)
+
+
 def _omega_bar_fallback(prec: np.ndarray, rhs: np.ndarray, k: int):
     """
     La vecchia via: LU sulla `prec` grezza, `omega_bar` esplicita, radice
@@ -533,12 +573,8 @@ def log_ml(Y: np.ndarray, X: np.ndarray, prior: NIWPrior, *, stable: bool = True
 
     xtx = X.T @ X if xtx is None else xtx
     prec = xtx + np.diag(om_inv)
-    # Solve LU e non Cholesky, per la stessa ragione di `niw_posterior`: qui
-    # `prec` e' la stessa matrice, e la stessa perdita di definita positivita'
-    # fermerebbe anche il calcolo della verosimiglianza marginale — cioe' il
-    # Metropolis sugli iperparametri, non solo l'estrazione di (B, Sigma).
-    b_hat = np.linalg.solve(prec, (X.T @ Y if xty is None else xty)
-                            + om_inv[:, None] * prior.b)
+    b_hat = _spd_solve(prec, (X.T @ Y if xty is None else xty)
+                       + om_inv[:, None] * prior.b)
     eps = Y - X @ b_hat
     dev = b_hat - prior.b
     S = eps.T @ eps + dev.T @ (om_inv[:, None] * dev)          # (n, n)
