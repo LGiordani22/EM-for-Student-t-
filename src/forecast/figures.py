@@ -355,7 +355,11 @@ _CELL_TITLES = {
 #: titolo come "Fed-Overlap-Student-t AR(1)" avrebbe tre trattini e nessuno
 #: capirebbe piu' quale separa che cosa.
 _SPEC_TITLES = {"diag3": "Diag3", "diag4": "Diag4",
-                "fed_overlap": "FedOverlap"}
+                "fed_overlap": "FedOverlap",
+                # La FAMIGLIA, non un modello: `_as_family` riscrive i metodi
+                # in `bvar/<modello>`, e senza questa riga un titolo costruito
+                # sulla chiave di famiglia usciva `bvar` minuscolo.
+                "bvar": "BVAR"}
 _VARIANT_TITLES = {
     "gaussian":             "Gaussian",
     "gaussian_ar1":         "Gaussian AR(1)",

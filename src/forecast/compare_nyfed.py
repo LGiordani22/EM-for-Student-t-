@@ -640,7 +640,8 @@ def horizon_panel(df_mine: pd.DataFrame, sample: list[str],
 
 
 def figure_mda_by_horizon(df_mine: pd.DataFrame, sample: list[str] | None,
-                          spec: str, out_path: str) -> str:
+                          spec: str, out_path: str, *,
+                          title_spec: str | None = None) -> str:
     """Accuratezza direzionale per orizzonte — la gemella della RMSE.
 
     CHE COSA MISURA.  Per ogni riga si guarda l'ANCORA: l'ultimo PIL gia'
@@ -678,6 +679,9 @@ def figure_mda_by_horizon(df_mine: pd.DataFrame, sample: list[str] | None,
     metrica: e' che in forecast i modelli si muovono piu' di quanto
     l'informazione giustifichi.
     """
+    # `spec` FILTRA, `title_spec` INTITOLA, e non sempre coincidono: i quattro
+    # BVAR si filtrano sulla famiglia (`bvar`, come li riscrive `_as_family`)
+    # ma in testa vanno i loro nomi, gli stessi della figura RMSE accanto.
     keep = df_mine["metodo"].str.split("/").str[0] == spec
     keep |= df_mine["metodo"].isin(_BENCH)
     mine = df_mine[keep].copy()
@@ -729,7 +733,8 @@ def figure_mda_by_horizon(df_mine: pd.DataFrame, sample: list[str] | None,
         ax.set_xticklabels([f"{w:+d}" for w in ticks])
         ax.set_xlabel("Week relative to the target quarter", fontsize=10)
         ax.set_ylabel("MDA  (share of correct direction calls)", fontsize=10)
-        ax.set_title(f"Directional Accuracy by Horizon — {fg.pretty_spec(spec)}"
+        ax.set_title("Directional Accuracy by Horizon — "
+                     f"{fg.pretty_spec(title_spec or spec)}"
                      f" — {sample[0]}–{sample[-1]} ({len(sample)} quarters)",
                      fontsize=12, pad=12)
 

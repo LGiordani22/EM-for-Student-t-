@@ -309,7 +309,8 @@ def horizon_figures(mine: pd.DataFrame, out_dir: str,
     if tag == "_2007-2025":
         mda = cn.figure_mda_by_horizon(
             _as_family(mine, models), quarters, _FAMILY,
-            os.path.join(layout.bvar_mda_dir(), f"MDA{tag}.png"))
+            os.path.join(layout.bvar_mda_dir(), f"MDA{tag}.png"),
+            title_spec="/".join(presenti))
         if mda:
             out.append(mda)
     return out
