@@ -19,9 +19,9 @@ finestra — quelle sono il prodotto, non il disordine.
 
     per cartella `dfm/<spec>/rmse/`:
         prima                          dopo
-         6  nyfed_report_<fin>.txt      1  confronto_nyfed.txt
+         6  nyfed_report_<fin>.txt      1  nyfed_comparison.txt
         30  nyfed_<tabella>_<fin>.csv   5  nyfed_<tabella>.csv
-         6  nyfed_panel_finale_<fin>    1  nyfed_panel_finale.csv
+         6  nyfed_panel_final_<fin>     1  nyfed_panel_final.csv
          6  rmse_by_horizon_<fin>.csv   1  rmse_by_horizon.csv
          6  PNG                         6  PNG
         ──                             ──
@@ -88,7 +88,7 @@ def run_spec(mine_all: pd.DataFrame, spec: str,
                 tabs.setdefault(name, []).append(df)
             p = panel.copy()
             p.insert(0, "window", w)
-            tabs.setdefault("panel_finale", []).append(p)
+            tabs.setdefault("panel_final", []).append(p)
             print(f"  [{spec}/{w}] {len(sample)} trimestri allineati col NY Fed")
 
         # ── la figura, che NON dipende dalla Fed ─────────────────────────────
@@ -136,7 +136,7 @@ def run_spec(mine_all: pd.DataFrame, spec: str,
         pd.concat(horiz, ignore_index=True).to_csv(p, index=False)
         written.append(p)
     if testi:
-        p = os.path.join(out_dir, "confronto_nyfed.txt")
+        p = os.path.join(out_dir, "nyfed_comparison.txt")
         with open(p, "w", encoding="utf-8") as fh:
             fh.write(f"CONFRONTO COL NY FED STAFF NOWCAST — spec {spec}\n"
                      f"Un blocco per finestra.  I CSV accanto sono in formato "

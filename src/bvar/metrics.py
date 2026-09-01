@@ -199,12 +199,12 @@ def rmse_report(paths: list[str] | None, out_dir: str, tag: str = "",
     report = "\n".join(blocks)
     print(report)
     os.makedirs(out_dir, exist_ok=True)
-    with open(os.path.join(out_dir, f"metriche{tag}.txt"), "w",
+    with open(os.path.join(out_dir, f"report_bvar{tag}.txt"), "w",
               encoding="utf-8") as fh:
         fh.write(report + "\n")
-    t_mp.to_csv(os.path.join(out_dir, f"metriche_metodo_fase{tag}.csv"),
+    t_mp.to_csv(os.path.join(out_dir, f"report_bvar_by_model_phase{tag}.csv"),
                 index=False)
-    t_m.to_csv(os.path.join(out_dir, f"metriche_metodo{tag}.csv"), index=False)
+    t_m.to_csv(os.path.join(out_dir, f"report_bvar_by_model{tag}.csv"), index=False)
     print(f"\nscritto: {out_dir}")
     return df
 
@@ -284,7 +284,7 @@ def horizon_figures(mine: pd.DataFrame, out_dir: str,
               f"niente figura per orizzonte.")
         return written
 
-    csv = os.path.join(out_dir, f"rmse_per_orizzonte_bvar{tag}.csv")
+    csv = os.path.join(out_dir, f"rmse_by_horizon_bvar{tag}.csv")
     ph.to_csv(csv, index=False)
     # IL NOME NON CONTIENE IL CAMPIONE.  Ci finiva, quando non c'e' un `tag`:
     # `_<primo>_<ultimo>` trimestre.  Cosi' pero' il file CAMBIA NOME appena
@@ -300,7 +300,7 @@ def horizon_figures(mine: pd.DataFrame, out_dir: str,
     # tiene il nome esteso: quello si apre da solo, fuori dalla cartella.
     png = cn.figure_rmse_by_horizon(
         ph, sample, "/".join(presenti),
-        os.path.join(out_dir, f"RMSE{tag or '_completo'}.png"))
+        os.path.join(out_dir, f"RMSE{tag or '_full'}.png"))
     out = [csv, png]
 
     # LA MDA SOLO SULLA FINESTRA LUNGA — stessa ragione del DFM: e' una
@@ -408,7 +408,7 @@ def write_nyfed(collected: dict[str, list[pd.DataFrame]], testi: list[str],
         pd.concat(parts, ignore_index=True).to_csv(p, index=False)
         written.append(p)
     if testi:
-        p = os.path.join(out_dir, "confronto_nyfed.txt")
+        p = os.path.join(out_dir, "nyfed_comparison.txt")
         with open(p, "w", encoding="utf-8") as fh:
             fh.write("CONFRONTO COL NY FED STAFF NOWCAST\n"
                      "Un blocco per (finestra, modelli).  Le tabelle in CSV "
@@ -427,7 +427,8 @@ def write_nyfed(collected: dict[str, list[pd.DataFrame]], testi: list[str],
 #: glob `logscore_*.csv` prendeva anche quelli, e il risultato era un
 #: `horizon_week` pieno di NaN — un errore che si presenta come crash oscuro
 #: nel casting a intero, non come "file sbagliato".  Da qui i riepiloghi si
-#: chiamano `riepilogo_*`, e comunque si controlla.
+#: chiamano `report_*`, e comunque si controlla: il nome e' una convenzione,
+#: questo e' il controllo.
 _LS_COLUMNS = {"as_of", "target_quarter", "horizon_week", "spec", "variant",
                "log_score"}
 
@@ -437,10 +438,19 @@ def load_logscores(paths: list[str] | None = None,
     """I CSV GREZZI di log score prodotti dalla passata, uniti."""
     if not paths:
         # I log score GREZZI stanno accanto ai CSV che li hanno generati
-        # (`csv/bvar/logscore/`), non nella cartella di consegna
+        # (`bvar/csv/logscore/`), non nella cartella di consegna
         # `bvar/logscore/`, che ospita le tabelle e la figura.
-        d = os.path.join(root, "logscore") if root else os.path.join(
-            layout.bvar_csv_dir(), "logscore")
+        # `<root>/csv/logscore`, non `<root>/logscore`: e' li' che
+        # `evaluate._paths` scrive (`<root>/csv/...`).  Erano due letture
+        # diverse della stessa opzione, e un pilota con `--output-root`
+        # trovava zero log score dove ne aveva appena scritti.
+        # Il confronto con OUTPUT_ROOT e' quello di `evaluate._paths`: li'
+        # `--output-root` puntato sulla radice vera vale "default", e senza la
+        # stessa condizione qui le due meta' della stessa opzione guarderebbero
+        # in due posti diversi proprio nel caso limite.
+        d = (os.path.join(root, "csv", "logscore")
+             if root and root != OUTPUT_ROOT
+             else layout.bvar_logscore_csv_dir())
         paths = sorted(glob.glob(os.path.join(d, "logscore_*.csv")))
         if not paths:
             raise SystemExit(
@@ -523,10 +533,15 @@ def logscore_tables(df: pd.DataFrame, out_dir: str) -> pd.DataFrame:
                  .sort_values("LS_medio_com", ascending=False)
                  .reset_index(drop=True))
 
-    # `riepilogo_`, non `logscore_`: quest'ultimo e' il prefisso dei file
-    # GREZZI della passata, e riusarlo li farebbe rileggere come tali.
-    by_phase.to_csv(os.path.join(out_dir, "riepilogo_metodo_fase.csv"), index=False)
-    by_method.to_csv(os.path.join(out_dir, "riepilogo_metodo.csv"), index=False)
+    # `report_`, non `logscore_`: quest'ultimo e' il prefisso dei file GREZZI
+    # della passata, e riusarlo li' farebbe rileggere come tali.  E' lo stesso
+    # stem del report dell'RMSE (`report_bvar*`), cosi' in tutte e due le
+    # cartelle vale una regola sola: `report_<cosa>` e' cio' che questo modulo
+    # ha CALCOLATO, il resto e' cio' che ha letto.
+    by_phase.to_csv(os.path.join(out_dir, "report_logscore_by_model_phase.csv"),
+                index=False)
+    by_method.to_csv(os.path.join(out_dir, "report_logscore_by_model.csv"),
+                     index=False)
 
     n_com_pts = (com_all.groupby(["target_quarter", "horizon_week"]).ngroups
                  if not com_all.empty else 0)
@@ -550,7 +565,8 @@ def logscore_tables(df: pd.DataFrame, out_dir: str) -> pd.DataFrame:
         by_method.to_string(index=False),
     ])
     print(txt)
-    with open(os.path.join(out_dir, "logscore.txt"), "w", encoding="utf-8") as fh:
+    with open(os.path.join(out_dir, "report_logscore.txt"), "w",
+              encoding="utf-8") as fh:
         fh.write(txt + "\n")
     return by_phase
 
@@ -741,7 +757,7 @@ def main() -> None:
                           f"trimestri"))
         tag = f"_{w}"
         # LE TABELLE PER FINESTRA NON SI SCRIVONO QUI.  `rmse_report` produce
-        # tre file per finestra (metriche.txt + due CSV), cioe' ventuno su
+        # tre file per finestra (report_bvar.txt + due CSV), cioe' ventuno su
         # sette finestre — e sarebbero DUPLICATI: `metrics_tables` scrive gia'
         # gli stessi numeri in `metrics_bvar.csv` e `metrics_bvar_by_phase.csv`,
         # in formato lungo con la colonna `window` E con le colonne n_com che
@@ -777,8 +793,10 @@ def main() -> None:
 
     print(cm._section("LOG PREDICTIVE SCORE"))
     # `root=None` quando l'utente non l'ha imposto: cosi' `load_logscores`
-    # usa la sua casa vera (`csv/bvar/logscore/`).  Passare `OUTPUT_ROOT`
-    # la mandava a cercare in `forecast_weekly/logscore/`, che non esiste.
+    # usa la sua casa vera (`bvar/csv/logscore/`).  Si passa l'opzione GREZZA,
+    # non `root` gia' risolto con `or OUTPUT_ROOT`: quella e' la radice delle
+    # tabelle, questa la radice dei CSV grezzi, e confonderle mandava a cercare
+    # in una cartella che non esiste.
     ls = load_logscores(root=a.output_root)
     logscore_tables(ls, ls_dir)
 
@@ -798,7 +816,7 @@ def main() -> None:
     finestre = list(layout.RMSE_PASSES) + list(layout.RMSE_ZOOM_WINDOWS)
     if not finestre:
         figure_logscore_by_horizon(
-            ls, os.path.join(ls_dir, "LOGSCORE_completo.png"))
+            ls, os.path.join(ls_dir, "LOGSCORE_full.png"))
     for w in finestre:
         d = layout.slice_window(ls, w, column="as_of")
         if d.empty:

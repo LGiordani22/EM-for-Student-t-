@@ -23,7 +23,10 @@ import time
 ROOT = Path(__file__).resolve().parent
 LOGS = ROOT / "output" / "_logs" / "run_all"
 SHARDS = ROOT / "output" / "_bvar_shards"
-CELLS_ROOT = ROOT / "output" / "forecast_weekly" / "csv" / "_cells"
+# Tenuto a mano invece che importato da `src.output_layout`: il cruscotto
+# gira anche da un albero copiato a mano, dove `src/` puo' non esserci.
+# Se l'albero cambia, cambia anche qui — e il test lo verifica.
+CELLS_ROOT = ROOT / "output" / "forecast_weekly" / "dfm" / "_cells"
 START, END = date(2007, 1, 1), date(2025, 12, 31)
 MODELS = ("lbvar", "bbvar", "cbvar", "qbvar")
 REFRESH_SECONDS = 10

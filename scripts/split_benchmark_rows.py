@@ -8,8 +8,8 @@ quella cella, sotto la pseudo-spec `benchmark`.  Quel file conteneva percio'
 TRE serie sotto il nome di UNA — 6831 righe dove ne dichiarava 2277 — e chi lo
 apriva a mano leggeva tre passate sovrapposte.
 
-Ora i benchmark sono un lavoro a se' (`csv/_cells/benchmark/` ->
-`csv/benchmark/`).  Questo script porta l'albero che sta gia' sul disco nella
+Ora i benchmark sono un lavoro a se' (`dfm/_cells/benchmark/` ->
+`dfm/csv/benchmark/`).  Questo script porta l'albero che sta gia' sul disco nella
 forma nuova SENZA ri-stimare niente: sposta le righe, non le ricalcola.
 
     python scripts/split_benchmark_rows.py            dice cosa farebbe

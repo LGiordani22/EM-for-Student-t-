@@ -17,13 +17,13 @@ verifica e si ferma se non e' vero: figure e tabelle su CSV senza numeri
 dentro sono passate senza lamentarsi per sette fasi, una volta.
 
 Non serve che le stime siano girate QUI: il passo 2 pubblica le celle che
-trova in `csv/_cells/`, quindi un albero copiato dal server basta e avanza.
+trova in `dfm/_cells/`, quindi un albero copiato dal server basta e avanza.
 
 I PASSI, NELL'ORDINE (che e' obbligato)
 ---------------------------------------
     1  guardie        le finestre tagliano il periodo che dichiarano, e il
                       vincolo di campione comune scatta davvero
-    2  raccolta       le celle di `csv/_cells/` diventano i CSV di `csv/dfm/`
+    2  raccolta       le celle di `dfm/_cells/` diventano i CSV di `dfm/csv/`
     3  celle          i quindici CSV del DFM contengono nowcast, non eccezioni
     4  figure         traiettorie DFM e BVAR, una per finestra forecast
     5  nyfed          confronto con la Fed + figure RMSE per orizzonte (DFM)

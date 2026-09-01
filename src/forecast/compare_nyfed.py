@@ -131,7 +131,7 @@ Uso
 ---
     python -m src.forecast.compare_nyfed
     python -m src.forecast.compare_nyfed --spec fed_overlap
-    python -m src.forecast.compare_nyfed --csv output/forecast_weekly/csv/xxx.csv
+    python -m src.forecast.compare_nyfed --csv output/forecast_weekly/dfm/csv/xxx.csv
 """
 
 from __future__ import annotations
@@ -969,7 +969,7 @@ def build_report(panel: pd.DataFrame, sample: list[str],
         "vs_fed": table_vs_fed(panel),
         "fed_by_quarter": table_fed_by_quarter(panel),
         "alignment": table_alignment(panel),
-        "campione": registro,
+        "sample": registro,
     }
     fuori = registro[~registro["tenuto"]]
     header = (
@@ -1051,7 +1051,7 @@ def main() -> None:
         path = os.path.join(out_dir, f"nyfed_{name}{tag}.csv")
         t.to_csv(path, index=False)
         print(f"scritto: {path}")
-    path = os.path.join(out_dir, f"nyfed_panel_finale{tag}.csv")
+    path = os.path.join(out_dir, f"nyfed_panel_final{tag}.csv")
     panel.to_csv(path, index=False)
     print(f"scritto: {path}")
 
@@ -1072,7 +1072,7 @@ def main() -> None:
             # Un nome che porta dentro il campione lascia un file orfano ogni
             # volta che il campione cambia.  E niente spec nel nome: la
             # cartella e' gia' `dfm/<spec>/rmse/`.
-            os.path.join(out_dir, f"RMSE{tag or '_completo'}.png"))
+            os.path.join(out_dir, f"RMSE{tag or '_full'}.png"))
         scartati = ph[~ph["pieno"]]
         print(f"\nscritto: {csv}")
         print(f"scritto: {png}")

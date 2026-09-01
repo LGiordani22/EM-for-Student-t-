@@ -1,5 +1,5 @@
 """
-src/forecast/collect.py — DA `csv/_cells/` A `csv/dfm/`: la pubblicazione.
+src/forecast/collect.py — DA `dfm/_cells/` A `dfm/csv/`: la pubblicazione.
 
 Un passo solo, e sta qui perche' lo fanno in due: `scripts/run_dfm.py` alla
 fine della sua cella (cosi' uno shard e' subito leggibile) e
@@ -11,18 +11,18 @@ PERCHE' DUE CARTELLE
 --------------------
 `weekly_nowcast` scrive un file che si chiama `weekly_nowcast_<inizio>_<fine>`
 e basta: per quindici celle sullo stesso periodo e' lo STESSO nome.  Ogni
-cella ha percio' la sua sottocartella in `csv/_cells/`, dove i quindici file
-convivono; la pubblicazione li ricopia in `csv/dfm/` mettendo la cella nel
+cella ha percio' la sua sottocartella in `dfm/_cells/`, dove i quindici file
+convivono; la pubblicazione li ricopia in `dfm/csv/` mettendo la cella nel
 nome, che e' la forma che figure, metriche e tabelle si aspettano.
 
 SI COPIA, NON SI SPOSTA
 -----------------------
-Il file in `csv/_cells/` e' lo stato di ripresa della cella: e' da li' che un
+Il file in `dfm/_cells/` e' lo stato di ripresa della cella: e' da li' che un
 rilancio riparte.  Spostandolo, ogni ripresa ricomincerebbe da zero.
 
 UN PERIODO SOLO PER VOLTA, E QUESTA E' UNA GUARDIA
 --------------------------------------------------
-`csv/dfm/` e' l'input di TUTTO il resto, e chi lo legge — `figures`,
+`dfm/csv/` e' l'input di TUTTO il resto, e chi lo legge — `figures`,
 `compute_metrics`, `metrics_tables` — prende ogni file che ci trova e li
 CONCATENA.  Due periodi diversi nella stessa cartella (una prova sul 2016
 rimasta accanto alla passata 2007-2025) non danno errore: danno righe
@@ -46,12 +46,12 @@ _SPAN = re.compile(r"weekly_nowcast_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})\.csv
 
 
 def published_name(spec: str, variant: str, start: str, end: str) -> str:
-    """Il nome con cui una cella compare in `csv/dfm/`."""
+    """Il nome con cui una cella compare in `dfm/csv/`."""
     return f"weekly_nowcast_{spec}_{variant}_{start}_{end}.csv"
 
 
 def benchmark_published_name(start: str, end: str) -> str:
-    """Il nome con cui i benchmark compaiono in `csv/benchmark/`."""
+    """Il nome con cui i benchmark compaiono in `dfm/csv/benchmark/`."""
     return f"weekly_nowcast_{layout.BENCHMARK_JOB}_{start}_{end}.csv"
 
 
@@ -74,7 +74,7 @@ def cell_parts(nome_cartella: str) -> tuple[str, str] | None:
 
 def publish_cell(spec: str, variant: str, start: str, end: str) -> str:
     """
-    Copia il CSV di UNA cella da `csv/_cells/<cella>/` a `csv/dfm/`.
+    Copia il CSV di UNA cella da `dfm/_cells/<cella>/` a `dfm/csv/`.
 
     Torna il percorso pubblicato.  Solleva `FileNotFoundError` se la cella non
     ha scritto: e' un guasto, non un caso al contorno.
@@ -94,10 +94,10 @@ def publish_cell(spec: str, variant: str, start: str, end: str) -> str:
 
 def publish_benchmark(start: str, end: str) -> str:
     """
-    Copia il CSV dei benchmark da `csv/_cells/benchmark/` a `csv/benchmark/`.
+    Copia il CSV dei benchmark da `dfm/_cells/benchmark/` a `dfm/csv/benchmark/`.
 
     Stesso gesto di `publish_cell`, altra destinazione: i benchmark non sono una
-    cella e non devono comparire in `csv/dfm/`, dove chi legge si aspetta un
+    cella e non devono comparire in `dfm/csv/`, dove chi legge si aspetta un
     file per cella e conta i file per sapere quante celle ci sono.
     """
     src = os.path.join(layout.benchmark_cell_dir(),
@@ -117,7 +117,7 @@ def _un_periodo_solo(paths: list[str]) -> None:
     """
     Solleva se fra i CSV pubblicati convivono periodi diversi.
 
-    Guarda le cartelle intere — `csv/dfm/` E `csv/benchmark/` — non solo quel
+    Guarda le cartelle intere — `dfm/csv/` E `dfm/csv/benchmark/` — non solo quel
     che si e' appena copiato: un file rimasto da prima e' pericoloso quanto uno
     appena scritto, e nessuno dei due si annuncia.  Le due cartelle si guardano
     insieme perche' insieme vengono lette: un benchmark sul 2016 accanto a celle
@@ -145,7 +145,7 @@ def _un_periodo_solo(paths: list[str]) -> None:
 
 def collect_cells(verbose: bool = True) -> list[str]:
     """
-    Pubblica TUTTE le celle che hanno scritto qualcosa in `csv/_cells/`.
+    Pubblica TUTTE le celle che hanno scritto qualcosa in `dfm/_cells/`.
 
     Idempotente: si puo' rilanciare, ricopia e basta.  Non pretende che le
     quindici ci siano — a dirlo se manca qualcosa e' la guardia
@@ -162,7 +162,7 @@ def collect_cells(verbose: bool = True) -> list[str]:
     pubblicati: list[str] = []
     for cella in sorted(os.listdir(root)):
         # I benchmark stanno fra le celle ma non SONO una cella: stesso gesto,
-        # altra destinazione (`csv/benchmark/`), e nessuna coppia spec/variante
+        # altra destinazione (`dfm/csv/benchmark/`), e nessuna coppia spec/variante
         # da riconoscere — il nome della cartella e' esatto.
         if cella == layout.BENCHMARK_JOB:
             for src in sorted(glob.glob(os.path.join(root, cella,
@@ -211,7 +211,7 @@ def collect_cells(verbose: bool = True) -> list[str]:
 
 def main() -> int:
     print("=" * 78)
-    print("  RACCOLTA — csv/_cells/ -> csv/dfm/")
+    print("  RACCOLTA — dfm/_cells/ -> dfm/csv/")
     print("=" * 78)
     collect_cells()
     return 0

@@ -28,7 +28,7 @@ processo, presi da `--list-blocks`.
 
 CHE COSA SCRIVE
 ---------------
-    output/forecast_weekly/csv/bvar/     i nowcast, i quantili .npz, i log score
+    output/forecast_weekly/bvar/csv/     i nowcast, i quantili .npz, i log score
                                          (un file per blocco, il periodo nel nome)
     output/_checkpoint/                  lo stato di ripresa, fuori dalla consegna
 

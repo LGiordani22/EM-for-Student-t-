@@ -325,12 +325,12 @@ I percorsi **non li decide questo pacchetto**: li decide
 
 ```
 output/forecast_weekly/
-  csv/bvar/               il CSV lungo + i quantili .npz   (l'ingresso di tutto)
-  csv/bvar/logscore/      i log score grezzi, uno per blocco
+  bvar/csv/               il CSV lungo + i quantili .npz   (l'ingresso di tutto)
+  bvar/csv/logscore/      i log score grezzi, uno per blocco
   bvar/<modello>/         Trajectories_<finestra>.png
   bvar/rmse/              RMSE_<finestra>.png + tabelle vs AR(2), media, NY Fed
   bvar/mda/               MDA_2007-2025.png — accuratezza direzionale
-  bvar/logscore/          LOGSCORE_<finestra>.png + riepiloghi
+  bvar/logscore/          LOGSCORE_<finestra>.png + report_logscore*.{txt,csv}
   comparison/             BVAR-vs-DFM, per fase, backcast compreso
 ```
 

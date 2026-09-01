@@ -284,7 +284,7 @@ def discover_csvs(paths: list[str] | None = None) -> list[str]:
     era corretto finche' una passata scriveva un CSV solo, con dentro tutte le
     celle (`--all-specs --all-variants` in un processo).  Da quando ogni cella
     e' un processo suo — perche' e' l'unita' che si parallelizza — in
-    `csv/dfm/` ci sono QUINDICI file, uno per cella, e prenderne uno solo
+    `dfm/csv/` ci sono QUINDICI file, uno per cella, e prenderne uno solo
     voleva dire disegnare una cella su quindici: in silenzio, senza errore,
     il file c'era e le figure uscivano — quattro invece di sessanta.
 
@@ -644,7 +644,7 @@ def _dfm_dir_for_cell(cell: str) -> str:
     if "/" in cell:
         spec, variant = cell.split("/", 1)
         return layout.dfm_forecast_dir(spec, variant)
-    return os.path.join(layout.OUTPUT_ROOT, "dfm", "benchmark", cell)
+    return layout.dfm_benchmark_figure_dir(cell)
 
 
 # ─── Confronto fra metodi su un trimestre ─────────────────────────────────────
@@ -735,7 +735,7 @@ def make_compare(df: pd.DataFrame, output_dir: str, target_quarter: str,
 def main() -> None:
     p = argparse.ArgumentParser(description="Figure del nowcast settimanale.")
     p.add_argument("--csv", nargs="*", default=None,
-                   help="default: TUTTI i CSV di csv/dfm/ (una cella per file)")
+                   help="default: TUTTI i CSV di dfm/csv/ (una cella per file)")
     p.add_argument("--output-dir", default=None)
     p.add_argument("--style", choices=["trajectories", "compare"],
                    default="trajectories")

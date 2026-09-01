@@ -24,12 +24,12 @@ Il tempo di parete di una passata parallela e' quello della cella piu' lenta.
 
 CHE COSA SCRIVE
 ---------------
-    output/forecast_weekly/csv/_cells/<spec>_<variante>/weekly_nowcast_*.csv
+    output/forecast_weekly/dfm/_cells/<spec>_<variante>/weekly_nowcast_*.csv
         il risultato intermedio, e insieme lo stato di ripresa della cella
-    output/forecast_weekly/csv/_cells/<spec>_<variante>/theta/theta_<as_of>.npz
+    output/forecast_weekly/dfm/_cells/<spec>_<variante>/theta/theta_<as_of>.npz
         i PARAMETRI di ogni stima EM: Lambda, A, Q, R, Sigma_0, i gradi di
         liberta' e i pesi, piu' n_iter, converged e `origine` (warm/cold/pca)
-    output/forecast_weekly/csv/dfm/weekly_nowcast_<spec>_<variante>_*.csv
+    output/forecast_weekly/dfm/csv/weekly_nowcast_<spec>_<variante>_*.csv
         la copia pubblicata, che figure e tabelle leggono
 
 Si copia e non si sposta: spostando il primo, un rilancio ripartirebbe da zero.
@@ -74,8 +74,8 @@ conteneva tre serie (ar2, mean, diag3/gaussian) sotto il nome di una sola, e
 
     python scripts/run_dfm.py --benchmark
 
-con la sua cartella (`csv/_cells/benchmark/`), il suo stato di ripresa e la sua
-destinazione (`csv/benchmark/`).  Gira in parallelo alle celle invece di essere
+con la sua cartella (`dfm/_cells/benchmark/`), il suo stato di ripresa e la sua
+destinazione (`dfm/csv/benchmark/`).  Gira in parallelo alle celle invece di essere
 saldata alla prima, e `--list` la elenca come sedicesima unita'.
 
 CODICE D'USCITA

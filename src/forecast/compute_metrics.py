@@ -58,7 +58,7 @@ il metro naturale e' 0.50, non l'AR(2).
 Uso
 ---
   python -m src.forecast.compute_metrics
-  python -m src.forecast.compute_metrics --csv output/forecast_weekly/csv/xxx.csv
+  python -m src.forecast.compute_metrics --csv output/forecast_weekly/dfm/csv/xxx.csv
 """
 
 from __future__ import annotations
@@ -105,10 +105,10 @@ def discover_csvs(paths: list[str] | None = None) -> list[str]:
     """
     I CSV da leggere: quelli dati, o tutti quelli presenti.
 
-    DUE CARTELLE, NON UNA.  Le celle stanno in `csv/dfm/`, i benchmark in
-    `csv/benchmark/`: sono lo stesso formato lungo e vanno concatenati, ma non
-    sono la stessa cosa e non devono stare nello stesso posto — chi conta i
-    file di `csv/dfm/` conta le celle.  L'assenza dei benchmark non e' un
+    DUE CARTELLE, NON UNA.  Le celle stanno in `dfm/csv/`, i benchmark in
+    `dfm/csv/benchmark/`: sono lo stesso formato lungo e vanno concatenati, ma
+    non sono la stessa cosa e non devono stare nello stesso posto — chi conta i
+    file di `dfm/csv/` conta le celle.  L'assenza dei benchmark non e' un
     errore (una passata con `--no-benchmarks` e' legittima): manca solo la
     riga di paragone nelle tabelle.
     """
@@ -655,8 +655,8 @@ def main() -> None:
 
     out_dir = a.out_dir or _csv_dir()
     os.makedirs(out_dir, exist_ok=True)
-    txt = os.path.join(out_dir, "metriche.txt")
-    csv = os.path.join(out_dir, "metriche_metodo_fase.csv")
+    txt = os.path.join(out_dir, "report.txt")
+    csv = os.path.join(out_dir, "report_by_model_phase.csv")
     with open(txt, "w", encoding="utf-8") as fh:
         fh.write(report + "\n")
     t_mp.to_csv(csv, index=False)

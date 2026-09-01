@@ -30,16 +30,48 @@ thirteen years they share.  `FULL_SPAN` is that envelope.
 THE TREE
 --------
     output/forecast_weekly/
-      dfm/<spec>/rmse/            RMSE figures (all passes + zooms) + tables
-      dfm/<spec>/<variant>/       forecast figures, one per window
-      bvar/<model>/               forecast figures, one per window
-      bvar/rmse/                  RMSE figures + tables
-      bvar/logscore/              log predictive score
-      comparison/                 BVAR-vs-DFM tables
+      dfm/_cells/<spec>_<variant>/  resume state of one cell (working, not output)
+      dfm/_cells/benchmark/         resume state of the benchmark job
+      dfm/csv/                      the fifteen published cell CSVs
+      dfm/csv/benchmark/            the benchmark CSV
+      dfm/<spec>/<variant>/         forecast figures, one per window
+      dfm/<spec>/rmse/              RMSE figures (all passes + zooms) + tables
+      dfm/<spec>/mda/               directional accuracy, one figure
+      bvar/csv/                     the per-block nowcasts and their .npz quantiles
+      bvar/csv/logscore/            the per-block log scores
+      bvar/<model>/                 forecast figures, one per window
+      bvar/rmse/                    RMSE figures + tables
+      bvar/logscore/                log predictive score
+      bvar/mda/                     directional accuracy, one figure
+      comparison/                   BVAR-vs-DFM tables
 
 `spec` is one of the three loading structures, `variant` one of the five model
 flags, `model` one of the four BVARs.  The accessors below are the only
 supported way to build these paths.
+
+THREE FOLDERS, AND THE RAW CSVs LIVE INSIDE THEM
+------------------------------------------------
+`forecast_weekly/` holds exactly `dfm/`, `bvar/` and `comparison/`.  The raw
+CSVs used to sit in a fourth, family-neutral `csv/` at the top — `csv/dfm/`,
+`csv/bvar/`, `csv/_cells/`, `csv/benchmark/` — which split every family in two
+places: to see everything the DFM produced you opened `csv/dfm/` AND `dfm/`.
+Now each family owns its whole chain, from the CSV it writes to the figure that
+reads it, and `comparison/` is the only thing outside because it is the only
+thing that belongs to neither.
+
+Inside a family the raw CSVs stay under a `csv/` of their own: they are the
+INPUT of everything else, and mixing them with the figures would lose the one
+distinction that matters when a number looks wrong — is the CSV bad, or is the
+figure reading it badly?
+
+FILE NAMES ARE ENGLISH
+----------------------
+Directories, file names and the stems inside them (`metrics_`, `report_`,
+`rmse_by_horizon_`, `nyfed_`, `logscore_`) are English throughout.  Prose,
+printed reports and column names are Italian — this project writes in Italian
+— but a file name is an address, and an address that switches language between
+two sibling folders (`rmse_per_orizzonte_bvar_2007-2025.csv` next to
+`rmse_by_horizon_fed_overlap.csv`) cannot be predicted, only looked up.
 """
 
 from __future__ import annotations
@@ -100,8 +132,8 @@ BVAR_MODELS: tuple[str, ...] = ("qbvar", "cbvar", "bbvar", "lbvar")
 #: to look at, so they get no forecast figure of their own.
 BENCHMARKS: tuple[str, ...] = ("ar2", "mean")
 
-#: Il nome del lavoro che li calcola: una cartella sotto `csv/_cells/` e una
-#: sotto `csv/`, esattamente come una cella, perche' e' un'unita' di lavoro
+#: Il nome del lavoro che li calcola: una cartella sotto `dfm/_cells/` e una
+#: sotto `dfm/csv/`, esattamente come una cella, perche' e' un'unita' di lavoro
 #: indipendente quanto una cella. Coincide con la pseudo-spec `BENCHMARK_SPEC`
 #: che i benchmark portano nella colonna `spec`, cosi' il nome della cartella e
 #: quello delle righe che ci stanno dentro sono la stessa parola.
@@ -152,32 +184,54 @@ def comparison_dir() -> str:
 
 def dfm_csv_dir() -> str:
     """
-    `csv/dfm/` — i nowcast settimanali del DFM, formato lungo.
+    `dfm/csv/` — i nowcast settimanali del DFM, formato lungo, uno per cella.
 
-    Simmetrico a `csv/bvar/`: con i file del DFM sfusi in `csv/` e quelli del
-    BVAR in una sottocartella, l'albero diceva che una famiglia e' il default
-    e l'altra un'aggiunta.  Sono due stimatori dello stesso esperimento.
+    DENTRO `dfm/`, non in un `csv/` in cima all'albero.  Stavano fuori, in
+    `csv/dfm/`, e la conseguenza era che il DFM viveva in due posti: chi voleva
+    vedere tutto quello che il DFM ha prodotto doveva aprire `csv/dfm/` E
+    `dfm/`, e chi rinominava una cella doveva ricordarsi di entrambi.  Una
+    famiglia, una cartella, dal CSV che scrive alla figura che lo legge.
 
     ATTENZIONE: qui stanno solo i CSV GREZZI, l'input.  Le metriche NON vanno
     qui: vivono accanto alle figure che commentano, in `dfm/<spec>/rmse/`.
+
+    Chi conta i file `weekly_nowcast_*.csv` di questa cartella conta le CELLE:
+    per questo i benchmark, che cella non sono, stanno un livello sotto in
+    `benchmark_csv_dir()` e non qui in mezzo.
     """
-    return os.path.join(OUTPUT_ROOT, "csv", "dfm")
+    return os.path.join(OUTPUT_ROOT, "dfm", "csv")
 
 
 def bvar_csv_dir() -> str:
     """
-    `csv/bvar/` — i nowcast dei BVAR, i quantili `.npz` e i log score per blocco.
+    `bvar/csv/` — i nowcast dei BVAR per blocco e i quantili `.npz`.
 
-    Sotto lo STESSO `csv/` del DFM e non in un `output/bvar/` parallelo: sono
-    l'input della stessa catena di tabelle e figure, e tenerli in due alberi
-    era il motivo per cui le uscite finivano sparse.
+    Simmetrico a `dfm_csv_dir()`: ogni famiglia tiene i propri CSV grezzi sotto
+    la propria cartella.  I log score per blocco, che sono l'altra uscita
+    grezza della passata BVAR, stanno in `bvar_logscore_csv_dir()`.
     """
-    return os.path.join(OUTPUT_ROOT, "csv", "bvar")
+    return os.path.join(OUTPUT_ROOT, "bvar", "csv")
+
+
+def bvar_logscore_csv_dir() -> str:
+    """
+    `bvar/csv/logscore/` — i log score GREZZI, un CSV per blocco.
+
+    Da non confondere con `bvar_logscore_dir()` (`bvar/logscore/`), che e' la
+    sua LETTURA: tabelle e figure aggregate.  La regola dell'albero li tiene
+    distinti senza doverci pensare — sotto `csv/` c'e' l'input, fuori c'e' cio'
+    che qualcuno ha calcolato leggendolo.
+
+    Esiste come accessor perche' prima era un `os.path.join(csv_dir,
+    "logscore")` ricostruito a mano in due moduli: due copie della stessa
+    decisione, che e' esattamente cio' che questo file esiste per evitare.
+    """
+    return os.path.join(bvar_csv_dir(), "logscore")
 
 
 def benchmark_csv_dir() -> str:
     """
-    `csv/benchmark/` — i nowcast dell'AR(2) e della media espandente.
+    `dfm/csv/benchmark/` — i nowcast dell'AR(2) e della media espandente.
 
     PERCHE' NON DENTRO UNA CELLA.  I benchmark non dipendono ne' dalla spec ne'
     dalla variante: si calcolano una volta per (settimana, target), non quindici.
@@ -187,33 +241,47 @@ def benchmark_csv_dir() -> str:
     ne dichiara 2277, e tre serie diverse mescolate in un file che porta il nome
     di una sola.  Chi lo apriva a mano leggeva tre passate sovrapposte.
 
-    Qui hanno la loro cartella e il loro stato di ripresa, come una cella —
-    perche' e' quello che sono: un lavoro indipendente, che ora puo' anche
-    girare in parallelo agli altri invece che saldato al primo.
+    PERCHE' UN LIVELLO SOTTO E NON ACCANTO.  Sono del DFM (li produce la stessa
+    passata, sono il suo metro di paragone), quindi stanno sotto `dfm/`; ma non
+    sono una cella, e `dfm/csv/*.csv` deve continuare a contenere quindici file
+    e basta — quel conteggio e' la verifica piu' rapida che la passata sia
+    completa.  Sottocartella: dentro la famiglia, fuori dal conteggio.
     """
-    return os.path.join(OUTPUT_ROOT, "csv", "benchmark")
+    return os.path.join(dfm_csv_dir(), BENCHMARK_JOB)
 
 
 def dfm_cells_root() -> str:
-    """`csv/_cells/` — la radice sotto cui sta una cartella per cella."""
-    return os.path.join(OUTPUT_ROOT, "csv", "_cells")
+    """
+    `dfm/_cells/` — la radice sotto cui sta una cartella per cella.
+
+    L'underscore dice che e' LAVORO, non consegna: e' lo stato da cui una cella
+    riprende, non un risultato da leggere.  Stessa convenzione di `_logs/` e
+    `_checkpoint/`, che pero' stanno del tutto fuori dall'albero perche'
+    pesano ordini di grandezza di piu'.
+    """
+    return os.path.join(OUTPUT_ROOT, "dfm", "_cells")
 
 
 def benchmark_cell_dir() -> str:
     """
-    `csv/_cells/benchmark/` — lo stato di ripresa del lavoro dei benchmark.
+    `dfm/_cells/benchmark/` — lo stato di ripresa del lavoro dei benchmark.
 
     Sta fra le celle e non accanto perche' il lavoro ha la stessa forma: scrive
     `weekly_nowcast_<inizio>_<fine>.csv`, riprende da quel file, e viene poi
     pubblicato in `benchmark_csv_dir()`.  `collect.cell_parts` lo riconosce per
     nome esatto, non provando a spezzarlo in spec e variante.
+
+    NON E' UN DOPPIONE di `benchmark_csv_dir()`, benche' i due file si
+    somiglino: questo e' lo stato di ripresa (si riscrive a ogni settimana
+    calcolata), quello e' la copia pubblicata (si riscrive a fine passata, col
+    nome del lavoro dentro).  Vale per ogni cella allo stesso modo.
     """
     return os.path.join(dfm_cells_root(), BENCHMARK_JOB)
 
 
 def dfm_cell_dir(spec: str, variant: str) -> str:
     """
-    `csv/_cells/<spec>_<variant>/` — il RISULTATO INTERMEDIO di una cella DFM,
+    `dfm/_cells/<spec>_<variant>/` — il RISULTATO INTERMEDIO di una cella DFM,
     e insieme il suo stato di ripresa.
 
     Una cartella per cella, e non e' cosmesi: il nome del file che
@@ -226,6 +294,25 @@ def dfm_cell_dir(spec: str, variant: str) -> str:
     Si COPIA, non si sposta: questo file e' cio' da cui la cella riprende.
     """
     return os.path.join(dfm_cells_root(), f"{spec}_{variant}")
+
+
+def dfm_benchmark_figure_dir(name: str) -> str:
+    """
+    `dfm/benchmark/<ar2|mean>/` — dove finirebbe la traiettoria di un benchmark.
+
+    Esiste per non lasciare quel percorso cablato dentro `figures.py`, ma
+    `BENCHMARKS` dice che i benchmark sono un metro nelle tabelle e non una
+    traiettoria da guardare: la scoperta automatica dei CSV non li passa alle
+    figure, e questa cartella si riempie solo se qualcuno chiama `figures.py`
+    con `--csv` puntato a mano sul file dei benchmark.
+
+    Percio' NON sta in `all_dirs()` e di norma non esiste.  Le otto figure che
+    ci si trovavano erano un residuo dell'epoca in cui le righe dei benchmark
+    stavano dentro il CSV di `diag3/gaussian`: nessuna passata le rigenerava
+    piu', quindi mostravano numeri di una parametrizzazione superata senza
+    niente che lo dicesse.  Cancellate.
+    """
+    return os.path.join(OUTPUT_ROOT, "dfm", "benchmark", name)
 
 
 def logs_dir() -> str:
@@ -254,14 +341,27 @@ def checkpoint_dir() -> str:
 
 
 def all_dirs() -> list[str]:
-    """Every directory of the tree, in creation order."""
-    out: list[str] = []
+    """
+    Every directory of the tree, in creation order.
+
+    TUTTE, comprese quelle dei CSV e delle MDA.  Prima ne mancavano cinque —
+    `csv/`, `mda/` — e non davano errore: il modulo che ci scriveva faceva
+    `makedirs` per conto suo.  Il risultato era che questa lista, che dovrebbe
+    essere l'inventario dell'albero, ne descriveva i tre quarti, e
+    `build_tree()` costruiva una cosa diversa da quella che la passata poi
+    riempiva.
+    """
+    out: list[str] = [dfm_csv_dir(), benchmark_csv_dir(), dfm_cells_root()]
     for spec in SPECS:
         out.append(dfm_rmse_dir(spec))
+        out.append(dfm_mda_dir(spec))
         out.extend(dfm_forecast_dir(spec, v) for v in VARIANTS)
+    out.append(bvar_csv_dir())
+    out.append(bvar_logscore_csv_dir())
     out.extend(bvar_forecast_dir(m) for m in BVAR_MODELS)
     out.append(bvar_rmse_dir())
     out.append(bvar_logscore_dir())
+    out.append(bvar_mda_dir())
     out.append(comparison_dir())
     return out
 
@@ -307,8 +407,9 @@ __all__ = [
     "BENCHMARKS", "BENCHMARK_JOB",
     "dfm_forecast_dir", "dfm_rmse_dir", "dfm_mda_dir", "bvar_forecast_dir",
     "bvar_rmse_dir", "bvar_mda_dir", "bvar_logscore_dir", "comparison_dir",
-    "dfm_csv_dir", "bvar_csv_dir", "benchmark_csv_dir",
+    "dfm_csv_dir", "bvar_csv_dir", "bvar_logscore_csv_dir", "benchmark_csv_dir",
     "dfm_cells_root", "dfm_cell_dir", "benchmark_cell_dir",
+    "dfm_benchmark_figure_dir",
     "logs_dir",
     "checkpoint_dir", "all_dirs",
     "build_tree", "window", "slice_window",

@@ -816,7 +816,7 @@ def _paths(root: str | None, start: str, end: str) -> dict[str, str]:
     I quattro posti in cui una passata scrive.
 
     Risultati (`csv`, `npz`, `ls`) sotto `<root>/csv/`, che di default e'
-    `forecast_weekly/csv/bvar/`. Nella passata vera il checkpoint resta in
+    `forecast_weekly/bvar/csv/`. Nella passata vera il checkpoint resta in
     `output/_checkpoint/`; con una root alternativa (test/pilota) vive invece
     in `<root>/_checkpoint/`. Senza questa simmetria due piloti sullo stesso
     periodo — o un test e la passata vera — condividerebbero marcatori e cache
@@ -1582,7 +1582,7 @@ def main() -> None:
                          "RMSE_rel_ar2 esce vuoto)")
     ap.add_argument("--output-root", default=None,
                     help="radice sotto cui finiscono csv/ e csv/logscore/ "
-                         "(default: output/forecast_weekly/csv/bvar). "
+                         "(default: output/forecast_weekly/bvar/csv). "
                          "UN PILOTA O UNA SONDA VA SEMPRE LANCIATA CON QUESTO: "
                          "i suoi CSV a estrazioni ridotte, lasciati fra gli "
                          "artefatti veri, verrebbero raccolti dalle tabelle "

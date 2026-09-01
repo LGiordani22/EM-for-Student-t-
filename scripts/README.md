@@ -72,7 +72,7 @@ espandente non dipendono da spec né da variante: si calcolano una volta sola.
 Prima quel «una volta» era realizzato attaccandoli alla prima cella dell'ordine
 canonico, e le loro righe finivano nel CSV di `diag3/gaussian` — tre serie in un
 file che porta il nome di una, 6831 righe dove ne dichiara 2277. Ora hanno la
-loro cartella (`csv/_cells/benchmark/` → `csv/benchmark/`), il loro stato di
+loro cartella (`dfm/_cells/benchmark/` → `dfm/csv/benchmark/`), il loro stato di
 ripresa, e girano in parallelo alle celle invece che dentro una.
 
 **L'asse è la cella e non il periodo, ed è voluto.** Percorrendo il 2007-2025
