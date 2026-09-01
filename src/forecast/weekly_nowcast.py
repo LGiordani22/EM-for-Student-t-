@@ -96,6 +96,7 @@ import argparse
 import os
 import time
 from collections import Counter
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -502,6 +503,218 @@ def theta_problema(theta: dict | None) -> str | None:
     return None
 
 
+@dataclass
+class EsitoSettimana:
+    """Quel che UN venerdi' produce, per UNA cella.
+
+    Le righe sono il risultato; il resto e' cio' che il chiamante deve sapere
+    per aggiornare lo stato della cella (theta, mese dell'ultima stima, conteggi)
+    e per stampare.  Il theta NON viene salvato qui: salvarlo e' una decisione
+    di chi orchestra, non di chi calcola.
+    """
+    rows: list[dict]
+    theta: dict | None
+    adottato: bool          # una ri-stima e' stata adottata in questa settimana
+    origine: str | None     # 'warm' | 'cold' | 'pca', se adottato
+    n_iter: int
+    converged: bool
+    errori: list[BaseException]
+    stati: list[tuple[str, str, float]]   # (target, status, secondi)
+
+
+def esegui_settimana(as_of, targets: list[str], spec: str, variant: str,
+                     theta: dict | None, reestimate: bool, n_rel,
+                     panel: pd.DataFrame, metadata: pd.DataFrame,
+                     target_series: str, max_iter: int = 250,
+                     verbose_em: bool = False,
+                     da_saltare: frozenset[str] = frozenset()) -> EsitoSettimana:
+    """
+    UN venerdi' di UNA cella: tutti i suoi target, con la cascata di ripieghi.
+
+    E' IL CORPO DEL CICLO, ESTRATTO — e l'estrazione ha uno scopo preciso.  Da
+    quando esiste anche `src/forecast/pipeline.py`, che esegue le stesse
+    settimane in un pool di processi, la logica per settimana viveva il rischio
+    di essere scritta due volte: una nel ciclo sequenziale e una nel worker.
+    Due copie della stessa cascata sono due copie che divergono, e la divergenza
+    si vedrebbe solo nei numeri, in silenzio.  Qui c'e' una copia sola, e le due
+    strade la chiamano.
+
+    PURA E SERIALIZZABILE.  Non scrive, non stampa, non tocca stato globale: il
+    chiamante riceve tutto in `EsitoSettimana` e decide lui.  E' la condizione
+    perche' possa girare in un altro processo.
+
+    `reestimate` dice se questa settimana deve ri-stimare.  La decisione (la
+    cadenza, il theta assente) sta nel chiamante, che e' l'unico a conoscere
+    `last_em_month`.
+
+    `da_saltare` sono i trimestri gia' presenti nel CSV: si saltano, esattamente
+    come faceva il `continue` su `done`.  Attenzione all'interazione con
+    `reestimate`: se il primo target e' gia' fatto, e' il secondo a ri-stimare —
+    ed e' il comportamento di sempre, non una scelta nuova.
+    """
+    as_of_iso = str(pd.Timestamp(as_of).date())
+    rows: list[dict] = []
+    errori: list[BaseException] = []
+    stati: list[tuple[str, str, float]] = []
+    adottato, origine, n_iter_ad, conv_ad = False, None, 0, False
+
+    for q in targets:
+        if q in da_saltare:
+            continue
+
+        t0 = time.perf_counter()
+        # Da dove parte questa stima, PRIMA che `theta` venga sovrascritto:
+        # serve solo a etichettare il theta come 'warm' o 'cold'.
+        theta_prima = theta
+        try:
+            r = nowcast(
+                as_of, q, spec, variant,
+                theta=(None if reestimate else theta),
+                theta_warm=(theta if reestimate else None),
+                max_iter=max_iter, verbose=verbose_em,
+                target_series=target_series,
+                panel=panel, metadata=metadata,
+            )
+            # Il theta di una ri-stima si adotta solo se REGGE: uno degenere
+            # avvelenerebbe tutte le settimane a venire, ripiego compreso.
+            if reestimate:
+                perche = theta_problema(r["theta"])
+                if perche is not None:
+                    raise ThetaDegenere(perche)
+            theta = r["theta"]
+            if reestimate:
+                adottato = True
+                origine = "warm" if theta_prima is not None else "cold"
+                n_iter_ad, conv_ad = int(r["n_iter"]), bool(r["converged"])
+                reestimate = False   # gli altri target della stessa settimana
+                #                      riusano questo theta: stesso pannello,
+                #                      stessa stima
+            liv, bea, z = r["nowcast_livello"], r["nowcast_bea"], r["nowcast_z"]
+            sd, n_it = r["sd_z"], r["n_iter"]
+            conv, reest = r["converged"], r["reestimated"]
+            status = "OK" if conv else "non converge"
+
+        except Exception as exc:
+            # ── LIVELLO 1: RIPARTENZA A FREDDO (PCA) ──────────────────────
+            # La ri-stima e' partita da `theta_warm`, cioe' dal theta del
+            # vintage precedente, in una catena che dura dal 2007.  Se e'
+            # fallita, il theta EREDITATO e' il primo sospetto: misurato sulla
+            # catena 2022-01 -> 2022-04 di fed_overlap/student_t_ar1, `min
+            # sigma2` scende da 1,49e-04 a 2,14e-05 — un cricchetto che stringe
+            # a ogni mese.
+            #
+            # Ripartire dall'inizializzazione PCA non eredita NIENTE: rompe la
+            # catena e ri-ancora i parametri.  Senza questo, il ripiego al
+            # livello 2 riuserebbe proprio il theta sospetto, e la cella non
+            # avrebbe modo di guarire da sola.
+            #
+            # COSTA: a freddo sono ~157 s contro i ~15 s di una stima calda.
+            #
+            # DA DICHIARARE IN TESI: dove scatta, la serie dei nowcast ha un
+            # gradino, perche' i parametri non discendono piu' dal mese prima.
+            # Misurato il 2026-09-01 su diag3/student_t_ar1: al vintage
+            # 2021-01-01 la ripartenza PCA ha prodotto un theta con obiettivo
+            # 203 punti PEGGIORE di quello che continuando si sarebbe avuto, e
+            # un nowcast di 2020Q4 a +12,1 invece di +1,0 (realizzato +4,6).
+            # La guardia qui sotto rifiuta un theta DEGENERE, non uno PEGGIORE:
+            # confrontare l'obiettivo col theta precedente e' un intervento
+            # deciso ma non ancora fatto.
+            risolto = False
+            if reestimate:
+                try:
+                    r_pca = nowcast(
+                        as_of, q, spec, variant,
+                        theta=None, theta_warm=None,
+                        max_iter=max_iter, verbose=verbose_em,
+                        target_series=target_series,
+                        panel=panel, metadata=metadata,
+                    )
+                    if theta_problema(r_pca["theta"]) is None:
+                        theta = r_pca["theta"]
+                        adottato, origine = True, "pca"
+                        n_iter_ad = int(r_pca["n_iter"])
+                        conv_ad = bool(r_pca["converged"])
+                        reestimate = False
+                        liv = r_pca["nowcast_livello"]
+                        bea, z = r_pca["nowcast_bea"], r_pca["nowcast_z"]
+                        sd, n_it = r_pca["sd_z"], r_pca["n_iter"]
+                        conv, reest = r_pca["converged"], True
+                        status = (f"warm fallito ({type(exc).__name__}), "
+                                  f"ripartito da PCA")
+                        risolto = True
+                except Exception:
+                    pass    # nemmeno a freddo: si scende al livello 2
+
+            # ── LIVELLO 2: il theta precedente, solo filtro ───────────────
+            # Se e' fallita la RI-STIMA EM ma abbiamo un theta da una stima
+            # precedente, filtriamo con quello invece di emettere NaN: la
+            # traiettoria resta continua.  La ri-stima NON viene segnata come
+            # fatta (`adottato` resta False), quindi si ritenta la settimana
+            # dopo.
+            if risolto:
+                pass
+            elif reestimate and theta is not None:
+                try:
+                    r = nowcast(
+                        as_of, q, spec, variant, theta=theta,
+                        max_iter=max_iter, verbose=verbose_em,
+                        target_series=target_series,
+                        panel=panel, metadata=metadata,
+                    )
+                    liv = r["nowcast_livello"]
+                    bea, z = r["nowcast_bea"], r["nowcast_z"]
+                    sd, n_it = r["sd_z"], r["n_iter"]
+                    conv, reest = r["converged"], False
+                    status = (f"EM fallito, filtro col theta "
+                              f"precedente ({type(exc).__name__})")
+                except Exception as exc2:
+                    liv = bea = z = sd = float("nan")
+                    n_it, conv, reest = -1, False, False
+                    status = f"ERRORE ({type(exc2).__name__}: {exc2})"
+                    errori.append(exc2)
+            else:
+                liv = bea = z = sd = float("nan")
+                n_it, conv, reest = -1, False, False
+                status = f"ERRORE ({type(exc).__name__}: {exc})"
+                errori.append(exc)
+
+        real_lvl, real_bea = _realised(panel, q, target_series)
+        rows.append({
+            "as_of": as_of_iso,
+            "target_quarter": q,
+            "horizon_week": horizon_week(as_of, q),
+            "spec": spec,
+            "variant": variant,
+            "nowcast_bea": bea,
+            "nowcast_livello": liv,
+            "nowcast_z": z,
+            "sd_z": sd,
+            "realizzato_bea": real_bea,
+            "realizzato_livello": real_lvl,
+            "errore_bea": bea - real_bea,
+            "gdp_release_date": str(gdp_release_date(
+                q, target_series, metadata).date()),
+            "n_releases": n_rel,
+            "n_iter": n_it,
+            "converged": conv,
+            "reestimated": reest,
+        })
+        stati.append((q, status, time.perf_counter() - t0))
+
+    return EsitoSettimana(rows, theta, adottato, origine, n_iter_ad, conv_ad,
+                          errori, stati)
+
+
+def riga_di_stato(as_of_iso: str, q: str, as_of, riga: dict, status: str,
+                  dt: float) -> str:
+    """La riga che si stampa per ogni nowcast.  Una sola, per le due strade."""
+    flag = "EM " if riga["reestimated"] else "   "
+    return (f"  {as_of_iso}  {q}  h{horizon_week(as_of, q):+3d}  "
+            f"{flag}{dt:6.1f}s  {status:<14} "
+            f"nowcast={riga['nowcast_bea']:+7.3f}%  "
+            f"realizzato={riga['realizzato_bea']:+7.3f}%")
+
+
 def run_weekly_nowcast(
     start: str,
     end: str,
@@ -710,164 +923,30 @@ def run_weekly_nowcast(
                     due = (em_frequency == "weekly") or (month != last_em_month)
                     reestimate = due or (theta is None)
 
-                    for q in targets:
-                        key = (as_of_iso, q, spec, variant)
-                        if key in done:
-                            continue
+                    esito = esegui_settimana(
+                        as_of, targets, spec, variant, theta, reestimate, n_rel,
+                        panel, meta, target_series, max_iter=max_iter,
+                        verbose_em=verbose_em,
+                        da_saltare=frozenset(
+                            q for q in targets
+                            if (as_of_iso, q, spec, variant) in done),
+                    )
+                    theta = esito.theta
+                    if esito.adottato:
+                        last_em_month = month
+                        n_em += 1
+                        if save and out_dir:
+                            _save_theta(out_dir, as_of_iso, spec, variant, theta,
+                                        esito.n_iter, esito.converged,
+                                        esito.origine)
+                    for exc in esito.errori:
+                        _note_err(spec, variant, exc)
 
-                        t0 = time.perf_counter()
-                        # Da dove parte questa stima, PRIMA che `theta` venga
-                        # sovrascritto: serve solo a etichettare il theta
-                        # salvato come 'warm' o 'cold'.
-                        theta_prima = theta
-                        try:
-                            r = nowcast(
-                                as_of, q, spec, variant,
-                                theta=(None if reestimate else theta),
-                                theta_warm=(theta if reestimate else None),
-                                max_iter=max_iter, verbose=verbose_em,
-                                target_series=target_series,
-                                panel=panel, metadata=meta,
-                            )
-                            # Il theta di una ri-stima si adotta solo se REGGE:
-                            # uno degenere avvelenerebbe tutte le settimane a
-                            # venire, ripiego compreso (vedi `theta_problema`).
-                            if reestimate:
-                                perche = theta_problema(r["theta"])
-                                if perche is not None:
-                                    raise ThetaDegenere(perche)
-                            theta = r["theta"]
-                            if reestimate:
-                                last_em_month = month
-                                n_em += 1
-                                if save and out_dir:
-                                    _save_theta(out_dir, as_of_iso, spec, variant,
-                                                theta, r["n_iter"], r["converged"],
-                                                "warm" if theta_prima is not None else "cold")
-                                reestimate = False   # gli altri target della stessa
-                                #                      settimana riusano questo theta:
-                                #                      stesso pannello, stessa stima
-                            liv, bea, z = r["nowcast_livello"], r["nowcast_bea"], r["nowcast_z"]
-                            sd, n_it = r["sd_z"], r["n_iter"]
-                            conv, reest = r["converged"], r["reestimated"]
-                            status = "OK" if conv else "non converge"
-                        except Exception as exc:
-                            # ── LIVELLO 1: RIPARTENZA A FREDDO (PCA) ──────────
-                            # La ri-stima e' partita da `theta_warm`, cioe' dal
-                            # theta del vintage precedente, in una catena che
-                            # dura dal 2007.  Se e' fallita, il theta EREDITATO
-                            # e' il primo sospetto: misurato sulla catena
-                            # 2022-01 -> 2022-04 di fed_overlap/student_t_ar1,
-                            # `min sigma2` scende da 1,49e-04 a 2,14e-05 — un
-                            # cricchetto che stringe a ogni mese.
-                            #
-                            # Ripartire dall'inizializzazione PCA non eredita
-                            # NIENTE: rompe la catena e ri-ancora i parametri.
-                            # Senza questo, il ripiego al livello 2 riuserebbe
-                            # proprio il theta sospetto, e la cella non avrebbe
-                            # modo di guarire da sola.
-                            #
-                            # COSTA: a freddo sono ~157 s contro i ~15 s di una
-                            # stima calda (misurato).  Si accetta solo perche'
-                            # scatta sui fallimenti, che dopo le guardie
-                            # dovrebbero essere rari.
-                            #
-                            # DA DICHIARARE IN TESI: dove scatta, la serie dei
-                            # nowcast ha un gradino: i parametri cambiano di
-                            # colpo perche' non discendono piu' dal mese prima.
-                            risolto = False
-                            if reestimate:
-                                try:
-                                    r_pca = nowcast(
-                                        as_of, q, spec, variant,
-                                        theta=None, theta_warm=None,
-                                        max_iter=max_iter, verbose=verbose_em,
-                                        target_series=target_series,
-                                        panel=panel, metadata=meta,
-                                    )
-                                    if theta_problema(r_pca["theta"]) is None:
-                                        theta = r_pca["theta"]
-                                        last_em_month = month
-                                        n_em += 1
-                                        if save and out_dir:
-                                            _save_theta(out_dir, as_of_iso, spec,
-                                                        variant, theta,
-                                                        r_pca["n_iter"],
-                                                        r_pca["converged"], "pca")
-                                        reestimate = False
-                                        liv = r_pca["nowcast_livello"]
-                                        bea, z = r_pca["nowcast_bea"], r_pca["nowcast_z"]
-                                        sd, n_it = r_pca["sd_z"], r_pca["n_iter"]
-                                        conv, reest = r_pca["converged"], True
-                                        status = (f"warm fallito ({type(exc).__name__}), "
-                                                  f"ripartito da PCA")
-                                        risolto = True
-                                except Exception:
-                                    pass    # nemmeno a freddo: si scende al livello 2
-
-                            # ── LIVELLO 2: il theta precedente, solo filtro ───
-                            # Ricaduta: se e' fallita la RI-STIMA EM ma abbiamo un
-                            # theta da una stima precedente, filtriamo con quello
-                            # invece di emettere NaN — la traiettoria resta continua
-                            # e i parametri restano dell'ultima stima riuscita.  La
-                            # ri-stima NON viene segnata come fatta (last_em_month
-                            # invariato), quindi si ritenta la settimana dopo.
-                            if risolto:
-                                pass
-                            elif reestimate and theta is not None:
-                                try:
-                                    r = nowcast(
-                                        as_of, q, spec, variant, theta=theta,
-                                        max_iter=max_iter, verbose=verbose_em,
-                                        target_series=target_series,
-                                        panel=panel, metadata=meta,
-                                    )
-                                    liv = r["nowcast_livello"]
-                                    bea, z = r["nowcast_bea"], r["nowcast_z"]
-                                    sd, n_it = r["sd_z"], r["n_iter"]
-                                    conv, reest = r["converged"], False
-                                    status = (f"EM fallito, filtro col theta "
-                                              f"precedente ({type(exc).__name__})")
-                                except Exception as exc2:
-                                    liv = bea = z = sd = float("nan")
-                                    n_it, conv, reest = -1, False, False
-                                    status = f"ERRORE ({type(exc2).__name__}: {exc2})"
-                                    _note_err(spec, variant, exc2)
-                            else:
-                                liv = bea = z = sd = float("nan")
-                                n_it, conv, reest = -1, False, False
-                                status = f"ERRORE ({type(exc).__name__}: {exc})"
-                                _note_err(spec, variant, exc)
-
-                        real_lvl, real_bea = _realised(panel, q, target_series)
-                        rows.append({
-                            "as_of": as_of_iso,
-                            "target_quarter": q,
-                            "horizon_week": horizon_week(as_of, q),
-                            "spec": spec,
-                            "variant": variant,
-                            "nowcast_bea": bea,
-                            "nowcast_livello": liv,
-                            "nowcast_z": z,
-                            "sd_z": sd,
-                            "realizzato_bea": real_bea,
-                            "realizzato_livello": real_lvl,
-                            "errore_bea": bea - real_bea,
-                            "gdp_release_date": str(gdp_release_date(
-                                q, target_series, meta).date()),
-                            "n_releases": n_rel,
-                            "n_iter": n_it,
-                            "converged": conv,
-                            "reestimated": reest,
-                        })
-                        done.add(key)
+                    for riga, (q, status, dt) in zip(esito.rows, esito.stati):
+                        rows.append(riga)
+                        done.add((as_of_iso, q, spec, variant))
                         _persist()
-
-                        dt = time.perf_counter() - t0
-                        flag = "EM " if reest else "   "
-                        print(f"  {as_of_iso}  {q}  h{horizon_week(as_of, q):+3d}  "
-                              f"{flag}{dt:6.1f}s  {status:<14} "
-                              f"nowcast={bea:+7.3f}%  realizzato={real_bea:+7.3f}%")
+                        print(riga_di_stato(as_of_iso, q, as_of, riga, status, dt))
 
                 # Fine di una cella: confine naturale, e la piu' lunga distanza
                 # possibile fra due salvataggi forzati.

@@ -135,6 +135,14 @@ def main() -> int:
     p.add_argument("--n-ahead", type=int, default=1,
                    help="trimestri oltre quello corrente")
     p.add_argument("--max-iter", type=int, default=250)
+    p.add_argument("--workers", type=int, default=1,
+                   help="processi per QUESTA cella (default 1 = come sempre). "
+                        "Le settimane a parametri congelati sono funzioni pure "
+                        "e girano in parallelo, la catena delle ri-stime no: "
+                        "i numeri restano identici bit per bit. Oltre "
+                        "src.forecast.pipeline.WORKER_UTILI (4) una cella non "
+                        "ha piu' lavoro da dare e i processi in piu' restano "
+                        "fermi. Non vale per --benchmark.")
     p.add_argument("--verbose-em", action="store_true")
     p.add_argument("--fresh", action="store_true",
                    help="cancella il CSV della cella e ristima da zero. "
@@ -152,6 +160,10 @@ def main() -> int:
         if a.spec or a.variant:
             p.error("--benchmark non vuole --spec ne' --variant: "
                     "i benchmark non dipendono da nessuna delle due.")
+        if a.workers > 1:
+            p.error("--workers non vale per --benchmark: l'AR(2) e la media "
+                    "espandente non hanno una catena di theta da spezzare, "
+                    "quindi non c'e' niente da parallelizzare.")
     elif not a.spec or not a.variant:
         p.error("servono --spec e --variant (oppure --benchmark, oppure --list).")
 
@@ -191,14 +203,27 @@ def main() -> int:
                       "ripresa le conta come fatte.")
                 print("  per ripararle serve  --fresh  (ristima l'intera cella).")
 
-    df = run_weekly_nowcast(
-        a.start, a.end,
-        specs=() if a.benchmark else (a.spec,),
-        variants=() if a.benchmark else (a.variant,),
-        em_frequency=a.em_frequency, n_ahead=a.n_ahead, max_iter=a.max_iter,
-        benchmarks=benchmarks, output_dir=cell_dir, save=True,
-        verbose_em=a.verbose_em,
-    )
+    if a.workers > 1:
+        # LE STESSE SETTIMANE, IN UN ALTRO ORDINE.  `pipeline` chiama la stessa
+        # `esegui_settimana` del ciclo sequenziale — una copia sola della
+        # cascata di ripieghi — e tiene la catena delle ri-stime nello stesso
+        # ordine.  Verificato bit per bit su diag3/student_t_ar1, 991 venerdi'.
+        from src.forecast.pipeline import run_cell_pipeline
+        df = run_cell_pipeline(
+            a.spec, a.variant, a.start, a.end,
+            out_dir=cell_dir, workers=a.workers, n_ahead=a.n_ahead,
+            em_frequency=a.em_frequency, max_iter=a.max_iter,
+            save=True, verbose_em=a.verbose_em,
+        )
+    else:
+        df = run_weekly_nowcast(
+            a.start, a.end,
+            specs=() if a.benchmark else (a.spec,),
+            variants=() if a.benchmark else (a.variant,),
+            em_frequency=a.em_frequency, n_ahead=a.n_ahead, max_iter=a.max_iter,
+            benchmarks=benchmarks, output_dir=cell_dir, save=True,
+            verbose_em=a.verbose_em,
+        )
 
     rotte = [h for h in cell_health(df) if h["rotta"]]
     if rotte:

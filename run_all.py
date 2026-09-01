@@ -34,6 +34,31 @@ START = "2007-01-01"
 END = "2025-12-31"
 MAX_PROCESSES = 224
 
+# Processi DENTRO ogni cella DFM. Le settimane a parametri congelati sono
+# funzioni pure di (as_of, target, theta) e girano in parallelo; la catena delle
+# ri-stime resta in fila. I numeri sono identici bit per bit -- verificato su
+# diag3/student_t_ar1, 991 venerdi', contro la passata sequenziale.
+#
+# SENZA QUESTO NON CAMBIA NIENTE. Le 15 celle erano gia' parallele fra loro, ma
+# ognuna percorreva i suoi 991 venerdi' in fila, e il tempo di parete era quello
+# della cella piu' lenta per intero. Rilanciare la passata senza passare
+# --workers darebbe esattamente i tempi di prima.
+#
+# QUATTRO E' IL TETTO UTILE, non un limite. Dopo una ri-stima una cella ha in
+# volo le ~3 settimane congelate del mese piu' la ri-stima del mese dopo:
+# quattro lavori, e il quinto dipende da un theta che non esiste ancora. Il
+# guadagno massimo per cella e' quindi il rapporto fra tempo totale e tempo
+# della sola catena (~3x su student_t_ar1). Alzarlo e' lecito e non rompe
+# niente -- i processi in piu' restano fermi -- e ha senso solo se un giorno la
+# cadenza di ri-stima diventasse piu' rada di quella mensile.
+#
+# ATTENZIONE AL CONTO DEI PROCESSI: con 4, le 15 celle valgono 60 processi
+# invece di 15, quindi il picco reale supera MAX_PROCESSES di ~45. Misurato che
+# la contesa degrada con grazia (a doppia sovrascrizione dei core il costo per
+# compito raddoppia e la produttivita' continua a salire), ma su una macchina
+# piu' piccola conviene abbassare MAX_PROCESSES invece di questo.
+DFM_WORKERS = int(os.environ.get("DFM_WORKERS", "4"))
+
 # The codebase's measured policy is parallel processes with one numerical
 # thread each. More BLAS threads make the optimization-heavy jobs slower.
 CHILD_ENV = {
@@ -189,6 +214,7 @@ def main() -> int:
     jobs = [
         Job(f"dfm_{spec}_{variant}",
             ("scripts/run_dfm.py", "--spec", spec, "--variant", variant,
+             "--workers", str(DFM_WORKERS),
              "--start", START, "--end", END))
         for spec, variant in cells
     ]
