@@ -464,6 +464,120 @@ def _drop_thin_methods(d: pd.DataFrame, min_coverage: float
     return d[~d["metodo"].isin(fuori)], sorted(thin, key=lambda x: x[1])
 
 
+def _campione_note(d0: pd.DataFrame, tenuti: list[str], scartati: list[str],
+                   non_votanti: list[str]) -> str:
+    """
+    La riga che DICHIARA il campione: quanti trimestri, quali, e chi lo stringe.
+
+    DUE SPECIE DI SCARTO, che non vanno confuse.
+
+      DI BORDO   il trimestre sta prima del primo tenuto o dopo l'ultimo.  Ha
+                 l'asse tagliato perche' la finestra comincia o finisce li': lo
+                 scarta il CALENDARIO, ed e' il comportamento normale.
+
+      INTERNO    il trimestre sta in mezzo ai tenuti e viene scartato lo
+                 stesso.  Allora l'asse non ce l'ha per un BUCO NEI DATI, e il
+                 buco ha un nome: il metodo cui mancano le settimane.
+
+    La distinzione conta perche' i due casi si leggono in modo opposto.  Uno e'
+    la regola che funziona; l'altro e' un pezzo di passata che non ha girato, e
+    finche' non gira le tabelle riportano numeri piu' bassi senza che si veda
+    perche'.  Misurato il 2026-09-01: sul 2007-2025 il campione congiunto e' 63
+    invece di 66 perche' `lbvar/-` non ha 2020Q3 — il rimbalzo Covid, +34.9 —
+    e la sua assenza abbassa l'RMSE di tutti i metodi del ~20%.  Un numero cosi'
+    non puo' comparire senza la sua ragione accanto.
+    """
+    if not tenuti:
+        return "campione vuoto"
+    testa = f"campione {len(tenuti)} trimestri ({tenuti[0]}..{tenuti[-1]})"
+    if not scartati:
+        return testa
+    interni = [q for q in scartati if tenuti[0] < q < tenuti[-1]]
+    asse = cm.standard_axis(d0)
+    escluso = set(non_votanti)
+
+    def _chi_manca(q: str) -> tuple[str, int] | None:
+        g = d0[d0["target_quarter"] == q]
+        mancanti = {m: len(asse - set(sub["horizon_week"]))
+                    for m, sub in g.groupby("metodo")
+                    if m not in escluso and not asse <= set(sub["horizon_week"])}
+        return max(mancanti.items(), key=lambda kv: kv[1]) if mancanti else None
+
+    # UNA SETTIMANA SOLA E' IL CALENDARIO, NON UN BUCO.  `horizon_week` si conta
+    # dall'inizio del trimestre target, e un trimestre entra in volo all'inizio
+    # di quello precedente: se quello aveva quattordici venerdi' invece di
+    # tredici, il suo asse parte da -13 e non da -12.  Capita a una manciata di
+    # trimestri interni e sani — 2011Q1, 2011Q2, 2017Q1, 2017Q2 sul 2007-2019 —
+    # ed e' gia' documentato in `compute_metrics.standard_axis`.  Segnalarli
+    # come anomalia annegherebbe quelli veri: sul 2007-2025 sono otto contro
+    # tre, e i tre sono l'unica cosa da guardare.
+    buchi = [(q, _chi_manca(q)) for q in interni]
+    veri = [(q, c) for q, c in buchi if c and c[1] > 1]
+    calendario = len(buchi) - len(veri)
+    testa += (f", {len(scartati)} fuori dall'asse standard"
+              f" ({len(scartati) - len(interni)} di bordo"
+              + (f", {calendario} per un venerdi' di calendario" if calendario else "")
+              + ")")
+    if not veri:
+        return testa
+    dettaglio = "; ".join(
+        f"{q} (a {m} mancano {n} settimane)" for q, (m, n) in veri)
+    return (testa + "\n" + " " * 6
+            + f"ATTENZIONE — {len(veri)} trimestri INTERNI mancano per un buco "
+              f"nei dati, non per il calendario:\n"
+            + " " * 8 + dettaglio)
+
+
+def _non_votanti(d: pd.DataFrame) -> list[str]:
+    """
+    I metodi che sul campione NON votano: l'asse standard non ce l'hanno.
+
+    E' la generalizzazione della regola gia' scritta per la NY Fed.  Il criterio
+    e' "non ha l'asse MAI, su nessun trimestre della finestra": chi l'asse non
+    lo produce per costruzione non l'ha perso, e chiederglielo svuoterebbe il
+    campione di tutti.  Chi invece l'asse ce l'ha altrove e lo perde su un
+    trimestre solo ha un BUCO — e quello deve stringere il campione, perche' e'
+    esattamente l'informazione che manca a tutti.
+
+    L'UNICO CLIENTE REALE E' LA NY FED, ed e' misurato (2026-09-01): lei copre
+    28 settimane, da -5 a +22; noi 31, da -13 a +17.  Le otto settimane -13..-6
+    non le ha PERSE — non le pubblica affatto, il suo forecast non parte cosi'
+    presto.  (Dall'altro lato lei arriva a +22 e noi ci fermiamo a +17, ma li'
+    e' `last_before_release` a scartare i suoi backcast pubblicati dopo
+    l'advance del BEA: vedi l'intestazione di `compare_nyfed`.)
+
+    GLI ALTRI DUE CASI SONO RETI, NON DATI.  Nella passata vera tutti e 21 i
+    metodi coprono -13..+17, backcast compreso: nessuno e' strutturalmente
+    corto, nessuno e' rado.  Le due condizioni restano perche' sono i due modi
+    noti in cui questa tabella si rompe, e `test_common_sample` li costruisce
+    apposta — un `qbvar` finto che si ferma alla settimana 13, un `lbvar` finto
+    presente su un trimestre solo.  Sono finzioni del test, non osservazioni.
+
+    Il caso vero e' il terzo, ed e' l'opposto: `lbvar/-` non copre 2020Q3
+    perche' quel blocco non ha girato, ma copre l'asse ovunque altro.  Resta
+    votante, e giustamente toglie 2020Q3 a tutti — la congiunta non puo'
+    punteggiare un trimestre che uno dei metodi non ha.
+    """
+    fuori = {_NYFED}
+    asse = cm.standard_axis(d)
+    if asse:
+        per = d.groupby("metodo")["horizon_week"].apply(set)
+        fuori |= {m for m, weeks in per.items() if not asse <= weeks}
+
+    # E NEANCHE I METODI TROPPO RADI, per la stessa ragione per cui esiste
+    # `_drop_thin_methods`: un metodo presente su un trimestre su dodici
+    # imporrebbe quel trimestre a tutti gli altri.  La differenza e' il momento:
+    # `_drop_thin_methods` agisce DENTRO la fase, quando il campione dei
+    # trimestri e' gia' stato deciso; qui si decide quel campione, e senza
+    # questa riga un metodo rado lo deciderebbe da solo.  Stessa soglia, cosi'
+    # le due guardie non possono dire cose diverse sullo stesso metodo.
+    n_q = d["target_quarter"].nunique()
+    if n_q:
+        quota = d.groupby("metodo")["target_quarter"].nunique() / n_q
+        fuori |= set(quota.index[quota < _MIN_PHASE_COVERAGE])
+    return sorted(fuori)
+
+
 def _binding_method(d: pd.DataFrame) -> tuple[str, int, int] | None:
     """
     Chi STRINGE il campione comune: il metodo la cui esclusione lo allargherebbe
@@ -523,19 +637,44 @@ def comparison_by_phase(dfm: pd.DataFrame, bvar: pd.DataFrame,
     if both.empty:
         return pd.DataFrame(), "  (nessun dato)"
 
-    # QUI NON SI USA `cm.window_sample`, E LA RAGIONE E' STRUTTURALE.  Quella
-    # regola chiede che OGNI metodo copra l'asse standard, ed e' giusta dove i
-    # metodi l'asse ce l'hanno tutti uguale — le tabelle per famiglia.  Qui no:
-    # questa tabella mette insieme famiglie con assi diversi PER COSTRUZIONE,
-    # la NY Fed prima di tutte (comincia a -3/-4: le settimane profonde non le
-    # pubblica, non le ha perse).  Pretendere da lei l'asse intero svuoterebbe
-    # il campione di tutti.  L'asimmetria dei bordi, qui, la governano gia'
-    # `_drop_thin_methods` e `common_points`, che sono fatti apposta per metodi
-    # con copertura diversa.  Vedi la guardia in `test_common_sample`, che
+    # UNA REGOLA SOLA PER FIGURE, TABELLE PER FAMIGLIA E TABELLE CONGIUNTE.
+    #
+    # Qui si tagliava su `as_of`, e la ragione scritta era che questa tabella
+    # mette insieme famiglie con assi diversi PER COSTRUZIONE — la NY Fed prima
+    # di tutte, che comincia a -3/-4 perche' le settimane profonde non le
+    # pubblica, non le ha perse.  La ragione era vera ma provava troppo:
+    # giustifica di non PRETENDERE l'asse intero da ogni metodo, non di far
+    # entrare TRIMESTRI FUORI FINESTRA.  Sono due cose diverse, e il taglio su
+    # `as_of` le confondeva in una sola.
+    #
+    # `window_sample` le tiene separate gia' di suo: `skip` esclude dal VOTO
+    # sul campione i metodi che l'asse non ce l'hanno per costruzione, e li
+    # lascia nelle tabelle.  Tutto il resto non cambia — `_drop_thin_methods` e
+    # `common_points` continuano a governare l'asimmetria delle coperture
+    # esattamente come prima.  Vedi la guardia in `test_common_sample`, che
     # costruisce apposta un q-BVAR senza backcast.
+    #
+    # COSA COSTAVA, misurato il 2026-09-01.  Sul 2007-2019 il taglio su `as_of`
+    # faceva entrare 2020Q1 — realizzato -5.2, 195 righe di sola previsione
+    # agli orizzonti -12..0 — e la finestra contava 54 trimestri invece di 46.
+    # L'RMSE ne usciva gonfiato dal +2.9% (diag3/gaussian_ar1) al +5.6%
+    # (bbvar), e NON in modo uniforme: il margine fra le due famiglie si
+    # spostava dell'8% in una tabella che esiste apposta per confrontarle.
+    #
+    # VERIFICATO CHE QUI LA REGOLA NON SVUOTA NIENTE, che era il timore del
+    # commento vecchio: sul frame congiunto l'asse standard esce -12..+17 per
+    # ENTRAMBE le famiglie, e i trimestri tenuti sul 2007-2019 sono 46 — lo
+    # stesso numero delle tabelle per famiglia e della figura per orizzonte.
+    # Sul 2007-2025 sono 63 contro i 66 del solo DFM, e i tre di scarto sono il
+    # blocco L-BVAR del Covid che manca: e' la regola che fa il suo mestiere
+    # ("il campione e' quello del metodo peggio coperto"), non un difetto.
+    # Finche' quel blocco manca, congiunte e per-famiglia riportano numeri
+    # diversi sulla stessa finestra, e va detto invece che scoperto.
     rows, notes = [], []
     for w in windows:
-        d = layout.slice_window(both, w, column="as_of")
+        d0 = layout.slice_window(both, w, column="as_of")
+        non_votanti = _non_votanti(d0)
+        d, tenuti, scartati = cm.window_sample(both, w, skip=non_votanti)
         # La Fed esce PRIMA del calcolo, non dopo.  Toglierla a valle
         # lascerebbe gli altri metodi misurati sul campione che LEI stringeva
         # — sulle finestre di zoom la sua riga sparisce ma le settimane -12..-5
@@ -545,7 +684,8 @@ def comparison_by_phase(dfm: pd.DataFrame, bvar: pd.DataFrame,
             d = d[d["metodo"] != _NYFED]
         if d.empty:
             continue
-        notes.append(f"\n  --- {w} ---")
+        notes.append(f"\n  --- {w} ---  "
+                     + _campione_note(d0, tenuti, scartati, non_votanti))
         for ph in cm._PHASE_ORDER:
             p = d[d["fase"] == ph]
             if p.empty:
@@ -608,11 +748,16 @@ def comparison_matrices(dfm: pd.DataFrame, bvar: pd.DataFrame,
     """
     both = _both_families(dfm, bvar)
 
-    # Come sopra: assi diversi per costruzione, quindi taglio su `as_of` e
-    # campione comune punto per punto — non `cm.window_sample`.
+    # Stessa regola di `comparison_by_phase`, e per la stessa ragione: il
+    # campione lo decide `window_sample` sui trimestri che coprono l'asse
+    # standard, con la NY Fed che resta nelle tabelle ma non vota (`skip`).
+    # Il campione comune punto per punto (`common_points`) viene DOPO e resta
+    # identico: e' l'altra meta' del lavoro, non un'alternativa.
     rows, notes = [], []
     for w in windows:
-        d = layout.slice_window(both, w, column="as_of")
+        d0 = layout.slice_window(both, w, column="as_of")
+        non_votanti = _non_votanti(d0)
+        d, tenuti, scartati = cm.window_sample(both, w, skip=non_votanti)
         if d.empty:
             continue
         c = common_points(d)
@@ -622,6 +767,10 @@ def comparison_matrices(dfm: pd.DataFrame, bvar: pd.DataFrame,
         t = cm.table_by_method(c)
         t.insert(0, "window", w)
         rows.append(t)
+        notes.append(
+            f"  {w}: " + _campione_note(d0, tenuti, scartati, non_votanti)
+            + f"; {c.groupby(['target_quarter', 'horizon_week']).ngroups} punti "
+              f"comuni fra {c['metodo'].nunique()} metodi")
 
         # Che cosa c'e' DAVVERO dietro la colonna.  Senza questa riga la
         # matrice mostra otto punti di novembre 2008 sotto un'intestazione
