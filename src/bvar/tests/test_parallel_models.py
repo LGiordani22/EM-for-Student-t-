@@ -182,6 +182,137 @@ def check_failed_estimate_falls_back_to_reuse() -> None:
         evaluate._growth_rows = original_rows
 
 
+def check_pathological_estimate_is_not_adopted() -> None:
+    """Una stima che RIESCE ma produce numeri fuori scala non si adotta.
+
+    E' il modo di fallire peggiore, e quello che le altre guardie non vedono.
+    Al vintage 2020-07-31 `_path_within_support` ha rifiutato 24 estrazioni su
+    250 e 220 cammini su 251 sono passati dal ripiego a precisione — tutte e
+    due le guardie hanno lavorato — ma 24 < 25 e i cammini stavano entro il
+    supporto, quindi `fit()` non ha sollevato.  La stima e' uscita con sd
+    1e+101 e nowcast +327%, i parametri esplosivi sono finiti in cache, e le
+    altre dodici settimane del blocco li avrebbero riusati senza che nel CSV
+    si vedesse niente.
+
+    Si verificano gli stessi tre esiti del ripiego, perche' la guardia deve
+    innestarsi su quella macchina e non costruirne una seconda:
+
+      (a) con una cache -> riuso, `reestimated=False`
+      (b) senza cache   -> `EstimationFailed`, che il chiamante sa gestire
+      (c) una stima sana -> adottata, ramo normale intatto
+    """
+    rng = np.random.default_rng(0)
+    original_full = evaluate._full_estimate
+    original_reuse = evaluate._reuse_estimate
+    original_rows = evaluate._growth_rows
+
+    class _Res:
+        def __init__(self, scala):
+            self.scala = scala
+
+        def growth(self, target):
+            return self.scala
+
+    # `_growth_rows` legge la "scala" che _Res porta con se': cosi' il test
+    # controlla la DECISIONE, non il calcolo della crescita.
+    evaluate._growth_rows = lambda g, q: rng.normal(3.0, 2.0, 250) * g
+    riusi: list[str] = []
+
+    def piena(scala):
+        def fn(model, as_of, **kw):
+            return _Res(scala), evaluate.ModelCache(
+                B=np.zeros((1, 1)), estimated_at=pd.Timestamp(as_of))
+        return fn
+
+    def reuse_ok(model, cache, **kw):
+        riusi.append(model)
+        return _Res(1.0)
+
+    try:
+        evaluate._reuse_estimate = reuse_ok
+        for model in ("cbvar", "bbvar", "lbvar"):
+            vecchia = evaluate.ModelCache(
+                B=np.zeros((1, 1)), estimated_at=pd.Timestamp("2020-05-01"))
+
+            # (a) patologica ma con una cache: non si adotta, si riusa
+            evaluate._full_estimate = piena(1e34)
+            n_prima = len(riusi)
+            per_q, cache, estimated = evaluate.run_model(
+                model, pd.Timestamp("2020-07-31"), ["2020Q3"], vecchia,
+                full=True, spec=None, raw=None, rng=rng, n_draws=4)
+            assert not estimated, f"{model}: una stima patologica non si adotta"
+            assert len(riusi) == n_prima + 1, f"{model}: doveva riusare"
+            assert cache.estimated_at == pd.Timestamp("2020-05-01"),                 f"{model}: la cache doveva restare quella vecchia"
+            assert np.std(per_q["2020Q3"], ddof=1) < evaluate.MAX_SD_ESTRAZIONI
+
+            # (b) patologica e senza cache: solleva, e dice perche'
+            try:
+                evaluate.run_model(model, pd.Timestamp("2020-07-31"),
+                                   ["2020Q3"], evaluate.ModelCache(),
+                                   full=True, spec=None, raw=None, rng=rng,
+                                   n_draws=4)
+                raise AssertionError(f"{model}: doveva sollevare")
+            except evaluate.EstimationFailed as exc:
+                # La CAUSA deve dire che era patologica, non generica: e' la
+                # sola cosa che, nel log della passata, distingue "la stima e'
+                # crollata" da "la stima e' uscita e non si poteva usare".
+                assert isinstance(exc.cause, evaluate.StimaPatologica),                     f"{model}: causa {type(exc.cause).__name__}"
+                assert "sd delle estrazioni" in str(exc.cause)
+
+            # (c) sana: si adotta, e la cache si aggiorna
+            evaluate._full_estimate = piena(1.0)
+            n_prima = len(riusi)
+            _, cache, estimated = evaluate.run_model(
+                model, pd.Timestamp("2020-07-31"), ["2020Q3"], vecchia,
+                full=True, spec=None, raw=None, rng=rng, n_draws=4)
+            assert estimated and len(riusi) == n_prima,                 f"{model}: una stima sana deve passare intatta"
+            assert cache.estimated_at == pd.Timestamp("2020-07-31")
+    finally:
+        evaluate._full_estimate = original_full
+        evaluate._reuse_estimate = original_reuse
+        evaluate._growth_rows = original_rows
+
+    # ── E IL Q, che ha un percorso tutto suo ────────────────────────────────
+    # Il Q-BVAR non passa da `_reuse_estimate`: il suo nowcast si ricava SEMPRE
+    # dalla cache, via `qbvar_growth(cache.extra["fit"])`.  Il ramo di rifiuto
+    # quindi non e' lo stesso degli altri tre e va esercitato a parte, o
+    # resterebbe l'unico dei quattro modelli non coperto.
+    orig_qg = evaluate.qbvar_growth
+    visti: list[str] = []
+
+    def finta_qg(fit, quarters, as_of, **kw):
+        visti.append(fit)
+        scala = 1e34 if fit == "nuovo" else 1.0
+        return {q: rng.normal(3.0, 2.0, 250) * scala for q in quarters}
+
+    def piena_q(model, as_of, **kw):
+        return None, evaluate.ModelCache(B=np.zeros((1, 1)),
+                                         estimated_at=pd.Timestamp(as_of),
+                                         extra={"fit": "nuovo"})
+    try:
+        evaluate.qbvar_growth = finta_qg
+        evaluate._full_estimate = piena_q
+        vecchia = evaluate.ModelCache(B=np.zeros((1, 1)),
+                                      estimated_at=pd.Timestamp("2020-05-01"),
+                                      extra={"fit": "vecchio"})
+        per_q, cache, estimated = evaluate.run_model(
+            "qbvar", pd.Timestamp("2020-07-31"), ["2020Q3"], vecchia,
+            full=True, spec=None, raw=None, rng=rng, n_draws=4)
+        assert not estimated, "qbvar: una stima patologica non si adotta"
+        assert visti == ["nuovo", "vecchio"], f"qbvar: fit usati {visti}"
+        assert cache.estimated_at == pd.Timestamp("2020-05-01")
+        assert np.std(per_q["2020Q3"], ddof=1) < evaluate.MAX_SD_ESTRAZIONI
+    finally:
+        evaluate.qbvar_growth = orig_qg
+        evaluate._full_estimate = original_full
+
+    # E la soglia deve restare lontana da cio' che i modelli producono davvero.
+    # Il vincolo lo detta il C-BVAR, non l'L: le tre dispersioni piu' alte mai
+    # osservate sono sue (321.79, 197.77, 56.87) e hanno nowcast sensati.
+    # Stringere sotto quelle vorrebbe dire rifiutare stime buone.
+    assert evaluate.MAX_SD_ESTRAZIONI > 322.0,         "soglia sotto il massimo legittimo osservato (cbvar 2011-01-21, 321.79)"
+
+
 def check_previous_full_week_is_a_real_release() -> None:
     """`previous_full_week` trova un trigger VERO, non la prima riga di griglia.
 
@@ -306,6 +437,7 @@ def main() -> None:
     check_unusable_dk_falls_back_to_precision()
     check_runaway_path_is_rejected()
     check_failed_estimate_falls_back_to_reuse()
+    check_pathological_estimate_is_not_adopted()
     check_previous_full_week_is_a_real_release()
     check_head_from_a0_roundtrip()
     check_failed_sweep_preserves_last_valid_state()
@@ -315,6 +447,7 @@ def main() -> None:
           "and only then")
     print("  OK  a runaway drawn path is rejected on both branches")
     print("  OK  a failed full estimate falls back to reuse, for every model")
+    print("  OK  an estimate that succeeds with runaway draws is not adopted")
     print("  OK  previous_full_week finds a real GDP release")
     print("  OK  head_from_a0 inverts the companion stacking")
     print("  OK  a failed numerical sweep preserves the last valid chain state")

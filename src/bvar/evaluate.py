@@ -607,6 +607,94 @@ def qbvar_growth(fit, quarters: list[str], as_of, *,
     return {q: _growth_rows(g, q) for q in quarters}
 
 
+#: Sopra questa dispersione (sd delle estrazioni, in punti di crescita
+#: annualizzata) una stima si dichiara patologica e non si adotta.
+#:
+#: IL CONTROLLO STA SULL'USCITA E NON DENTRO IL CAMPIONATORE, e la soglia e'
+#: misurata sui 9078 nowcast BVAR gia' su disco — diciannove anni, tutti e
+#: quattro i modelli, Covid compreso:
+#:
+#:     mediana 2.39   p99 11.95   p99.9 24.06   MASSIMO 321.79
+#:
+#: contro il vintage 2020-07-31, dove il VAR stimato e' esplosivo:
+#:
+#:     sd delle estrazioni : 1.9e+35  e  3.3e+101
+#:
+#: Fra i due non c'e' un continuo: ci sono trentadue ordini di grandezza di
+#: vuoto.  Mille sta 3.1 volte sopra il massimo legittimo mai osservato e 1e32
+#: sotto cio' che va fermato.
+#:
+#: ⚠️  NON ABBASSARLA "per sicurezza": rifiuterebbe stime BUONE.  Le righe con
+#: sd alta sono quasi tutte del C-BVAR, che ha code spesse per costruzione, e
+#: hanno nowcast del tutto sensati:
+#:
+#:     2011-01-21  2011Q1  cbvar   nowcast +4.08   sd 321.79
+#:     2009-07-17  2009Q3  cbvar   nowcast -0.89   sd 197.77
+#:     2008-10-03  2009Q1  cbvar   nowcast -1.11   sd  56.87
+#:
+#: A 100 se ne perderebbero due, a 200 una: la guardia comincerebbe a fare
+#: esattamente il danno che esiste per evitare.  (Attenzione a non ripetere il
+#: mio errore di misura: sul solo L-BVAR il massimo e' 13.3, e sembra che ci
+#: sia molto piu' margine di quanto ce n'e'.)
+MAX_SD_ESTRAZIONI = 1e3
+
+
+class StimaPatologica(RuntimeError):
+    """La stima e' arrivata in fondo ma cio' che produce non e' utilizzabile.
+
+    NON E' UN'ECCEZIONE DEL CAMPIONATORE: il campionatore non ha sollevato
+    niente.  Serve un tipo proprio perche' il chiamante la tratti come una
+    stima fallita — riusare i parametri precedenti e rifiltrare il bordo —
+    invece di adottarla.  E' l'analogo di `ThetaDegenere` per il DFM.
+
+    PERCHE' SERVE, e perche' le guardie che c'erano non bastavano.
+    `_path_within_support` (`lbvar.py`) rifiuta le ESTRAZIONI fuori scala e
+    `MAX_CONSECUTIVE_NUMERICAL_REJECTIONS` ferma la catena che si incastra:
+    tutte e due guardano il singolo passo, e tutte e due hanno funzionato al
+    vintage 2020-07-31 — 24 transizioni rifiutate su 250, 220 cammini su 251
+    presi dal ripiego a precisione.  Ma 24 < 25 e i cammini stavano entro il
+    supporto, quindi `fit()` NON ha sollevato: la stima e' uscita, con nowcast
+    +327.5% contro un realizzato di +34.9 e sd 1e+101.
+
+    E' il modo di fallire peggiore dei due.  Prima il blocco crollava e si
+    vedeva; cosi' riesce, i parametri esplosivi finiscono in cache, le altre
+    dodici settimane li riusano, e nel CSV non c'e' niente che distingua quelle
+    righe da una stima buona.  Misurato: farebbe passare l'RMSE dell'L-BVAR da
+    5.15 — il migliore dei quattro — a 25.7, per trenta righe su 2277.
+
+    A quel vintage non c'e' matematica che tenga: i dati Covid rendono il VAR
+    stimato esplosivo, il modello come pubblicato non impone stazionarieta',
+    e nessun simulation smoother corretto puo' estrarre un cammino sensato da
+    una companion sopra il cerchio unitario su 340 mesi.  L'unica uscita e'
+    non aggiornare i parametri quel mese.
+    """
+
+
+def stima_patologica(per_q: dict) -> str | None:
+    """`None` se le estrazioni si possono usare, altrimenti la ragione.
+
+    Guarda solo cio' che la stima PRODUCE, non come l'ha prodotto: e' cio' che
+    la rende indipendente dal modello e senza taratura.  Le estrazioni non
+    finite bastano da sole; per il resto decide la dispersione, che e' la
+    grandezza su cui sano e patologico si separano di trentadue ordini di
+    grandezza (vedi `MAX_SD_ESTRAZIONI`) — mentre la mediana no, perche' a un
+    vintage Covid un nowcast di -42 e' legittimo.
+    """
+    for q, draws in per_q.items():
+        if draws is None:
+            continue
+        x = np.asarray(draws, dtype=float)
+        if x.size and not np.isfinite(x).all():
+            n = int((~np.isfinite(x)).sum())
+            return f"{q}: {n}/{x.size} estrazioni non finite"
+        if x.size >= 2:
+            sd = float(np.std(x, ddof=1))
+            if not np.isfinite(sd) or sd > MAX_SD_ESTRAZIONI:
+                return (f"{q}: sd delle estrazioni {sd:.3e} oltre "
+                        f"{MAX_SD_ESTRAZIONI:.0e} (mediana {np.median(x):+.2f})")
+    return None
+
+
 class EstimationFailed(RuntimeError):
     """Una stima piena e' fallita e NON c'era niente da riusare.
 
@@ -729,6 +817,10 @@ def run_model(model: str, as_of, quarters: list[str], cache: ModelCache, *,
     want_full = full or not cache.ready
     estimated = False
     res = None
+    # La cache PRIMA della stima piena: `_full_estimate` sovrascrive `cache`, e
+    # senza questa non ci sarebbe piu' niente su cui ripiegare se cio' che la
+    # stima produce non si potesse usare.
+    cache_prima = cache
 
     if want_full:
         try:
@@ -744,21 +836,44 @@ def run_model(model: str, as_of, quarters: list[str], cache: ModelCache, *,
                 f"{pd.Timestamp(cache.estimated_at).date()}",
                 RuntimeWarning, stacklevel=2)
 
-    if model == "qbvar":
-        # La baseline.  I parametri si ristimano solo alle settimane piene; il
-        # BORDO invece si ricostruisce ogni settimana, perche' e' li' che il
-        # flusso dati entra — e' la stessa divisione di C, B e L.
-        #
-        # nel riuso il campione di stima resta quello dell'ultima stima piena:
-        # e' la stessa approssimazione degli autori, applicata al Q.
-        return (qbvar_growth(cache.extra["fit"], quarters, as_of, rng=rng,
-                             raw=raw, horizon_q=horizon // 3), cache, estimated)
+    def _nowcast(c: ModelCache, r) -> dict:
+        """Le estrazioni per i trimestri chiesti, da una cache e una stima."""
+        if model == "qbvar":
+            # La baseline.  I parametri si ristimano solo alle settimane piene;
+            # il BORDO invece si ricostruisce ogni settimana, perche' e' li' che
+            # il flusso dati entra — e' la stessa divisione di C, B e L.
+            #
+            # nel riuso il campione di stima resta quello dell'ultima stima
+            # piena: e' la stessa approssimazione degli autori, applicata al Q.
+            return qbvar_growth(c.extra["fit"], quarters, as_of, rng=rng,
+                                raw=raw, horizon_q=horizon // 3)
+        if r is None:
+            r = _reuse_estimate(model, c, spec=spec, horizon=horizon, kw=kw)
+        g = r.growth(TARGET)                # una volta, non una per obiettivo
+        return {q: _growth_rows(g, q) for q in quarters}
 
-    if res is None:
-        res = _reuse_estimate(model, cache, spec=spec, horizon=horizon, kw=kw)
+    per_q = _nowcast(cache, res)
 
-    g = res.growth(TARGET)                      # una volta, non una per obiettivo
-    return {q: _growth_rows(g, q) for q in quarters}, cache, estimated
+    # ── LA STIMA E' RIUSCITA, MA CIO' CHE PRODUCE SI PUO' USARE? ─────────────
+    # Sta QUI, sopra la scelta del modello, per la stessa ragione del ripiego
+    # poco sopra: un blocco avvelenato e' un blocco avvelenato qualunque sia il
+    # modello che l'ha prodotto.  E si controlla solo cio' che la stima PRODUCE,
+    # non come: il campionatore resta quello degli autori, estrazione per
+    # estrazione.
+    if estimated:
+        perche = stima_patologica(per_q)
+        if perche is not None:
+            if not cache_prima.ready:
+                raise EstimationFailed(model, as_of, StimaPatologica(perche))
+            warnings.warn(
+                f"{model} @ {pd.Timestamp(as_of).date()}: stima PATOLOGICA "
+                f"({perche}); non si adotta, si riusano i parametri del "
+                f"{pd.Timestamp(cache_prima.estimated_at).date()}",
+                RuntimeWarning, stacklevel=2)
+            cache, estimated = cache_prima, False
+            per_q = _nowcast(cache, None)
+
+    return per_q, cache, estimated
 
 
 # ─── 4. Le metriche di densita' ───────────────────────────────────────────────
