@@ -29,6 +29,15 @@ a cui questo file risponde sono tre, e vanno tenute distinte:
      non e' la matrice, e' la LEGGE delle estrazioni.  Si verifica per
      Monte Carlo che vec(B - b_bar) abbia covarianza Sigma (x) omega_bar,
      che e' la (A.9) e la promessa nella docstring di `draw`.
+
+  4. `_spd_solve` DA' LO STESSO NUMERO DELLA LU?   E' la domanda gemella,
+     arrivata dopo: `_spd_solve` ha sostituito `np.linalg.solve` in
+     `niw_posterior` perche' su questa macchina il percorso LU di OpenBLAS e'
+     patologico (858 ms contro 5.2 ms, 165x).  La sua docstring promette due
+     cose — stesso risultato a ~1e-9 relativo, e ripiego sulla LU quando la
+     Cholesky si arrende — e nessuno le verificava.  Sono la promessa piu'
+     facile da rompere per sbaglio: basta invertire un `lower=` nei due
+     `solve_triangular` e il numero esce plausibile e sbagliato.
 """
 
 from __future__ import annotations
@@ -36,7 +45,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.linalg import cholesky
 
-from src.bvar.niw import NIWPosterior, draw, robust_sqrt
+from src.bvar.niw import NIWPosterior, _spd_solve, draw, robust_sqrt
 
 OK, KO = "  OK  ", "  ROTTO"
 _fail = 0
@@ -154,6 +163,48 @@ def main() -> int:
           B.shape == (50, k, n_var) and S_out.shape == (50, n_var, n_var))
     check("le Sigma estratte sono simmetriche e definite positive",
           all(np.linalg.eigvalsh(0.5 * (s + s.T)).min() > 0 for s in S_out))
+
+    # ── 6. `_spd_solve`: stesso numero della LU, e il ripiego quando serve ───
+    # La strada veloce e quella vecchia devono coincidere DOVE ENTRAMBE VANNO.
+    # Non bit a bit — arrotondano in ordine diverso — ma alla tolleranza che la
+    # docstring dichiara.  Si prova su una `prec` mal condizionata come quelle
+    # vere, dove `Omega` spazia su dodici ordini di grandezza.
+    #
+    # LA TOLLERANZA SCALA COL CONDIZIONAMENTO, e non e' indulgenza.  Cholesky e
+    # LU sono entrambe stabili all'indietro: su un sistema con numero di
+    # condizionamento k sbagliano ENTRAMBE di ~k*eps, e quindi differiscono di
+    # altrettanto.  Una soglia costante boccerebbe il codice giusto appena k
+    # cresce — provato: a k=1e10 lo scarto e' 1e-7, cioe' venti volte SOTTO il
+    # limite teorico 2.2e-6, e una soglia fissa a 1e-7 lo dichiarava rotto.
+    # Il fattore 20 lascia margine allo stimatore di k senza rendere il
+    # controllo vuoto: a k=1e3 pretende ancora 4e-12.
+    for cond, nome in ((1e3, "ben condizionata"), (1e10, "mal condizionata")):
+        A = spd(60, np.random.default_rng(7), cond=cond)
+        Bm = np.random.default_rng(8).standard_normal((60, 37))
+        tol = 20 * cond * np.finfo(float).eps
+        veloce, vecchia = _spd_solve(A, Bm), np.linalg.solve(A, Bm)
+        scarto = (np.abs(veloce - vecchia).max()
+                  / max(np.abs(vecchia).max(), 1e-300))
+        check(f"_spd_solve == np.linalg.solve  ({nome})", scarto < tol,
+              f"scarto relativo {scarto:.2e}, limite {tol:.2e}")
+        # E deve RISOLVERE, non solo somigliare alla LU: A @ x == B.
+        res = np.abs(A @ veloce - Bm).max() / max(np.abs(Bm).max(), 1e-300)
+        check(f"_spd_solve risolve davvero A x = B  ({nome})", res < tol,
+              f"residuo relativo {res:.2e}, limite {tol:.2e}")
+
+    # Il ripiego: su una matrice NON definita positiva la Cholesky si arrende e
+    # deve rispondere la LU.  Se questo ramo sparisse, la marginal likelihood si
+    # fermerebbe invece di degradare — e fermarla ferma il Metropolis, non solo
+    # l'estrazione di (B, Sigma).
+    A = spd(20, np.random.default_rng(9))
+    A[3, 3] = -abs(A[3, 3])                      # rompe la definitezza positiva
+    Bm = np.random.default_rng(10).standard_normal((20, 4))
+    try:
+        got = _spd_solve(A, Bm)
+        ok = np.allclose(got, np.linalg.solve(A, Bm))
+    except Exception:                                             # noqa: BLE001
+        ok = False
+    check("su una matrice non definita positiva ripiega sulla LU", ok)
 
     print("=" * 74)
     if _fail:
