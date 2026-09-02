@@ -96,7 +96,7 @@ import argparse
 import os
 import time
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -503,6 +503,125 @@ def theta_problema(theta: dict | None) -> str | None:
     return None
 
 
+# ─── La guardia sulla ripartenza PCA ──────────────────────────────────────────
+
+#: Rifiuti CONSECUTIVI della ripartenza PCA oltre i quali la si adotta comunque.
+#: Un rifiuto segna il mese come fatto, quindi tre rifiuti valgono un TRIMESTRE
+#: di theta fermo: oltre, un parametro vecchio di tre mesi e' peggio del salto
+#: che si sta evitando.  Serve a rendere impossibile il caso limite "si tiene lo
+#: stesso theta per sempre", non a governare il caso normale — sui dati veri la
+#: guardia ha rifiutato una volta e il mese dopo era gia' risolta.
+_MAX_RIFIUTI_PCA = 3
+
+
+def obiettivo_a_theta_fermo(as_of, q: str, spec: str, variant: str,
+                            theta: dict, panel: pd.DataFrame,
+                            metadata: pd.DataFrame) -> float:
+    """
+    Loglik + correzione ELBO di `theta` su UN vintage, senza M-step.
+
+    E' ESATTAMENTE CIO' CHE L'EM MASSIMIZZA (`use_full_elbo=True` e' il default
+    di `run_em`), quindi due theta valutati qui sono confrontabili sulla stessa
+    scala del criterio che li ha prodotti.  Un E-step solo: nessuna stima.
+    """
+    from src.em.em_main import compute_elbo_correction
+    from src.forecast.nowcast_engine import filter_only, prepare_vintage
+
+    v = prepare_vintage(as_of, q, spec, variant, panel=panel, metadata=metadata)
+    Y = v["Y_std_df"].to_numpy()
+    eso = filter_only(v, theta)
+    r = int(np.asarray(theta["A"]).shape[0])
+    return float(eso["loglik"]) + float(
+        compute_elbo_correction(eso, theta, r, Y))
+
+
+def guardia_pca(as_of, q: str, spec: str, variant: str,
+                theta_prec: dict | None, theta_pca: dict,
+                panel: pd.DataFrame, metadata: pd.DataFrame,
+                rifiuti_consecutivi: int = 0) -> tuple[bool, str]:
+    """
+    Il theta appena ripartito da PCA si adotta?  `(adotta, motivo in chiaro)`.
+
+    PERCHE' ESISTE.  Il LIVELLO 1 riparte a freddo perche' il theta EREDITATO e'
+    il primo sospetto, e ripartire dalla PCA rompe la catena.  Ma la guardia che
+    decideva se adottare il risultato era `theta_problema()`, che chiede solo
+    "e' valido?" — non "e' meglio di quello che avevamo".  Misurato il
+    2026-09-01 su `diag3/student_t_ar1`, vintage 2021-01-01: il theta da PCA
+    aveva un obiettivo 188 punti PEGGIORE del precedente e portava il backcast di
+    2020Q4 da +1,1 a +12,1 (realizzato +4,6), con un gradino verticale nelle
+    ultime quattro settimane — proprio la regione in cui il DFM sta al livello
+    della NY Fed.
+
+    COSA DECIDE, E COSA NO.  Non decide a priori chi ha ragione: MISURA.  Se il
+    theta vecchio e' davvero deteriorato, sul vintage corrente esce peggiore, la
+    PCA vince e viene adottata come sempre.  Il default resta il comportamento
+    di oggi e ci si scosta solo con una prova a carico: sui pari vince la PCA.
+
+    LE QUATTRO VIE D'USCITA A FAVORE DELLA PCA sono deliberate.  La guardia puo'
+    solo NON adottare un theta nuovo; non deve poter far fallire una passata,
+    ne' bloccare una cella:
+
+      * nessun theta precedente (prima stima assoluta): niente da confrontare;
+      * `rifiuti_consecutivi` ha toccato `_MAX_RIFIUTI_PCA`: si adotta e si
+        dichiara, perche' un theta fermo da un trimestre e' il male peggiore;
+      * il confronto stesso solleva: il fallimento del giudice non ferma il
+        processo;
+      * obiettivo maggiore o uguale: e' il caso normale.
+
+    IL COSTO e' due E-step per ripartenza, cioe' 1-3 volte su 228 stime.
+    Misurato sulla cella intera: ~11 minuti su 61.
+
+    IL PREZZO DEL RIFIUTO, da sapere.  Tenersi il theta precedente vuol dire
+    tenersi il sospetto: la ri-stima del mese DOPO puo' fallire di nuovo e far
+    ripartire la PCA.  E' successo davvero (2021-02-05), e si e' risolto da
+    solo: la PCA ha rigirato, ha vinto il confronto ed e' stata adottata.  Il
+    contatore e `_MAX_RIFIUTI_PCA` esistono per il caso in cui non si risolva.
+    """
+    if theta_prec is None:
+        return True, "prima stima della cella: nessun theta da confrontare"
+    if rifiuti_consecutivi >= _MAX_RIFIUTI_PCA:
+        return True, (f"ADOTTATA D'UFFICIO: {rifiuti_consecutivi} rifiuti "
+                      f"consecutivi, il theta e' fermo da troppo")
+    try:
+        a = obiettivo_a_theta_fermo(as_of, q, spec, variant, theta_prec,
+                                    panel, metadata)
+        b = obiettivo_a_theta_fermo(as_of, q, spec, variant, theta_pca,
+                                    panel, metadata)
+    except Exception as exc:                                      # noqa: BLE001
+        return True, (f"confronto non riuscito ({type(exc).__name__}): "
+                      f"si adotta la PCA")
+    if b >= a:
+        return True, f"obiettivo pca={b:.2f} >= prec={a:.2f}"
+    return False, f"obiettivo pca={b:.2f} < prec={a:.2f}"
+
+
+def referto_guardia(spec: str, variant: str,
+                    decisioni: list[tuple[str, str, str, str]]) -> list[str]:
+    """
+    Le righe da stampare a fine cella sulle decisioni della guardia PCA.
+
+    PERCHE' NEL REFERTO E NON NEI LOG.  Una ripartenza PCA rifiutata esce nel
+    CSV come `reestimated=False`, cioe' INDISTINGUIBILE da una normale settimana
+    a theta congelato.  Senza queste righe la guardia lavorerebbe in silenzio, e
+    un theta fermo da mesi sarebbe invisibile fino a quando qualcuno non aprisse
+    i `.npz` a mano.  Lista vuota (il caso normale) = nessuna riga stampata.
+    """
+    if not decisioni:
+        return []
+    rifiuti = [d for d in decisioni if d[2] == "ripiego"]
+    forzate = [d for d in decisioni if d[2] == "pca-forzata"]
+    out = ["", f"  GUARDIA PCA - {spec}/{variant}: {len(decisioni)} ripartenze "
+           f"valutate, {len(rifiuti)} rifiutate"
+           + (f", {len(forzate)} ADOTTATE D'UFFICIO" if forzate else "")]
+    for as_of, q, origine, perche in decisioni:
+        out.append(f"    {as_of}  {q}  -> {origine:<11} {perche}")
+    if forzate:
+        out.append(f"    ATTENZIONE: {_MAX_RIFIUTI_PCA} rifiuti consecutivi "
+                   f"raggiunti — il theta era fermo da un trimestre e la PCA "
+                   f"e' stata adottata comunque.")
+    return out
+
+
 @dataclass
 class EsitoSettimana:
     """Quel che UN venerdi' produce, per UNA cella.
@@ -515,11 +634,17 @@ class EsitoSettimana:
     rows: list[dict]
     theta: dict | None
     adottato: bool          # una ri-stima e' stata adottata in questa settimana
-    origine: str | None     # 'warm' | 'cold' | 'pca', se adottato
+    origine: str | None     # se adottato: 'warm' | 'cold' | 'pca' |
+    #                         'ripiego' (guardia: PCA rifiutata, tenuto il
+    #                         theta precedente) | 'pca-forzata' (guardia:
+    #                         adottata d'ufficio dopo troppi rifiuti)
     n_iter: int
     converged: bool
     errori: list[BaseException]
     stati: list[tuple[str, str, float]]   # (target, status, secondi)
+    #: Le decisioni della guardia PCA prese in questa settimana, per il referto
+    #: di cella: (as_of, target, origine, motivo).  Quasi sempre vuota.
+    stati_guardia: list[tuple[str, str, str, str]] = field(default_factory=list)
 
 
 def esegui_settimana(as_of, targets: list[str], spec: str, variant: str,
@@ -527,7 +652,8 @@ def esegui_settimana(as_of, targets: list[str], spec: str, variant: str,
                      panel: pd.DataFrame, metadata: pd.DataFrame,
                      target_series: str, max_iter: int = 250,
                      verbose_em: bool = False,
-                     da_saltare: frozenset[str] = frozenset()) -> EsitoSettimana:
+                     da_saltare: frozenset[str] = frozenset(),
+                     rifiuti_consecutivi: int = 0) -> EsitoSettimana:
     """
     UN venerdi' di UNA cella: tutti i suoi target, con la cascata di ripieghi.
 
@@ -547,6 +673,11 @@ def esegui_settimana(as_of, targets: list[str], spec: str, variant: str,
     cadenza, il theta assente) sta nel chiamante, che e' l'unico a conoscere
     `last_em_month`.
 
+    `rifiuti_consecutivi` e' quante volte DI FILA la guardia PCA ha gia'
+    rifiutato in questa cella.  Arriva da fuori perche' questa funzione e' pura:
+    il conteggio e' stato della cella, e lo tiene chi orchestra.  Zero (il
+    default) e' il valore giusto per ogni chiamante che la guardia non la usa.
+
     `da_saltare` sono i trimestri gia' presenti nel CSV: si saltano, esattamente
     come faceva il `continue` su `done`.  Attenzione all'interazione con
     `reestimate`: se il primo target e' gia' fatto, e' il secondo a ri-stimare —
@@ -557,6 +688,7 @@ def esegui_settimana(as_of, targets: list[str], spec: str, variant: str,
     errori: list[BaseException] = []
     stati: list[tuple[str, str, float]] = []
     adottato, origine, n_iter_ad, conv_ad = False, None, 0, False
+    stati_guardia: list[tuple[str, str, str, str]] = []
 
     for q in targets:
         if q in da_saltare:
@@ -630,17 +762,54 @@ def esegui_settimana(as_of, targets: list[str], spec: str, variant: str,
                         panel=panel, metadata=metadata,
                     )
                     if theta_problema(r_pca["theta"]) is None:
-                        theta = r_pca["theta"]
-                        adottato, origine = True, "pca"
-                        n_iter_ad = int(r_pca["n_iter"])
-                        conv_ad = bool(r_pca["converged"])
-                        reestimate = False
-                        liv = r_pca["nowcast_livello"]
-                        bea, z = r_pca["nowcast_bea"], r_pca["nowcast_z"]
-                        sd, n_it = r_pca["sd_z"], r_pca["n_iter"]
-                        conv, reest = r_pca["converged"], True
-                        status = (f"warm fallito ({type(exc).__name__}), "
-                                  f"ripartito da PCA")
+                        # LA GUARDIA.  `theta_problema` ha detto che il theta da
+                        # PCA e' VALIDO; resta da chiedere se e' MEGLIO di
+                        # quello che avevamo.  Sono due controlli in serie, non
+                        # uno che sostituisce l'altro.
+                        adotta, perche_g = guardia_pca(
+                            as_of, q, spec, variant, theta_prima,
+                            r_pca["theta"], panel, metadata,
+                            rifiuti_consecutivi=rifiuti_consecutivi)
+                        if adotta:
+                            theta = r_pca["theta"]
+                            adottato = True
+                            origine = ("pca-forzata"
+                                       if rifiuti_consecutivi >= _MAX_RIFIUTI_PCA
+                                       and theta_prima is not None else "pca")
+                            n_iter_ad = int(r_pca["n_iter"])
+                            conv_ad = bool(r_pca["converged"])
+                            reestimate = False
+                            liv = r_pca["nowcast_livello"]
+                            bea, z = r_pca["nowcast_bea"], r_pca["nowcast_z"]
+                            sd, n_it = r_pca["sd_z"], r_pca["n_iter"]
+                            conv, reest = r_pca["converged"], True
+                            status = (f"warm fallito ({type(exc).__name__}), "
+                                      f"ripartito da PCA")
+                        else:
+                            # RIFIUTATA: il theta precedente diventa il theta
+                            # DEL MESE.  `adottato=True` non e' un abuso — dice
+                            # al chiamante "il mese e' deciso", che e' cio' che
+                            # impedisce di ripagare EM caldo + PCA a freddo ogni
+                            # venerdi' dello stesso mese, buttandoli via ogni
+                            # volta e mostrando nel CSV solo un innocuo
+                            # `reestimated=False`.
+                            r_rip = nowcast(
+                                as_of, q, spec, variant, theta=theta_prima,
+                                max_iter=max_iter, verbose=verbose_em,
+                                target_series=target_series,
+                                panel=panel, metadata=metadata,
+                            )
+                            theta = theta_prima
+                            adottato, origine = True, "ripiego"
+                            n_iter_ad, conv_ad = 0, True
+                            reestimate = False
+                            liv = r_rip["nowcast_livello"]
+                            bea, z = r_rip["nowcast_bea"], r_rip["nowcast_z"]
+                            sd, n_it = r_rip["sd_z"], r_rip["n_iter"]
+                            conv, reest = r_rip["converged"], False
+                            status = "PCA rifiutata, theta precedente"
+                        stati_guardia.append((str(pd.Timestamp(as_of).date()),
+                                              q, origine, perche_g))
                         risolto = True
                 except Exception:
                     pass    # nemmeno a freddo: si scende al livello 2
@@ -702,7 +871,7 @@ def esegui_settimana(as_of, targets: list[str], spec: str, variant: str,
         stati.append((q, status, time.perf_counter() - t0))
 
     return EsitoSettimana(rows, theta, adottato, origine, n_iter_ad, conv_ad,
-                          errori, stati)
+                          errori, stati, stati_guardia)
 
 
 def riga_di_stato(as_of_iso: str, q: str, as_of, riga: dict, status: str,
@@ -900,6 +1069,12 @@ def run_weekly_nowcast(
                 theta = None          # theta corrente della cella (None = da stimare)
                 last_em_month = None
                 prev_week = None
+                # Rifiuti CONSECUTIVI della guardia PCA.  E' stato della cella:
+                # `esegui_settimana` e' pura e non puo' tenerlo.  L'altra strada
+                # (`pipeline.run_cell_pipeline`) ne tiene una copia identica —
+                # e' la ragione per cui esiste `test_parallel_cell.py`.
+                rifiuti_pca = 0
+                decisioni_pca: list[tuple[str, str, str, str]] = []
 
                 print(f"\n{'=' * 78}\n  {spec} / {variant}\n{'=' * 78}")
 
@@ -930,8 +1105,16 @@ def run_weekly_nowcast(
                         da_saltare=frozenset(
                             q for q in targets
                             if (as_of_iso, q, spec, variant) in done),
+                        rifiuti_consecutivi=rifiuti_pca,
                     )
                     theta = esito.theta
+                    if esito.stati_guardia:
+                        decisioni_pca.extend(esito.stati_guardia)
+                    # CONSECUTIVI: si azzera a ogni ri-stima adottata che NON
+                    # sia un ripiego, cioe' appena la catena riprende a muoversi.
+                    if esito.adottato:
+                        rifiuti_pca = (rifiuti_pca + 1
+                                       if esito.origine == "ripiego" else 0)
                     if esito.adottato:
                         last_em_month = month
                         n_em += 1
@@ -947,6 +1130,9 @@ def run_weekly_nowcast(
                         done.add((as_of_iso, q, spec, variant))
                         _persist()
                         print(riga_di_stato(as_of_iso, q, as_of, riga, status, dt))
+
+                for riga in referto_guardia(spec, variant, decisioni_pca):
+                    print(riga)
 
                 # Fine di una cella: confine naturale, e la piu' lunga distanza
                 # possibile fra due salvataggi forzati.

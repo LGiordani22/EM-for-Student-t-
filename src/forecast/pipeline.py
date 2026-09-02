@@ -95,7 +95,8 @@ from src.forecast.release_calendar import (
 )
 from src.forecast.weekly_nowcast import (
     COLUMNS, _KEY, _atomic_write, _csv_path, _load_existing, _row_key,
-    _save_theta, esegui_settimana, report_health, riga_di_stato,
+    _save_theta, esegui_settimana, referto_guardia, report_health,
+    riga_di_stato,
 )
 
 
@@ -129,14 +130,15 @@ def _init_worker() -> None:
 
 
 def _lavora(as_of, targets, spec, variant, theta, reestimate, n_rel,
-            max_iter, verbose_em, da_saltare):
+            max_iter, verbose_em, da_saltare, rifiuti_consecutivi=0):
     """Il job che gira nel worker: solo un ponte verso `esegui_settimana`."""
     global _PANEL, _META, _TARGET
     if _PANEL is None:                      # esecuzione in-process (workers=1)
         _init_worker()
     return esegui_settimana(as_of, targets, spec, variant, theta, reestimate,
                             n_rel, _PANEL, _META, _TARGET, max_iter=max_iter,
-                            verbose_em=verbose_em, da_saltare=da_saltare)
+                            verbose_em=verbose_em, da_saltare=da_saltare,
+                            rifiuti_consecutivi=rifiuti_consecutivi)
 
 
 # ─── La firma: perche' un CSV vecchio non si riusi per sbaglio ────────────────
@@ -233,6 +235,10 @@ class _Lavoro:
     tipo: str            # 'stima' | 'congelata'
     i: int               # indice del venerdi' nel piano
     theta: dict | None
+    #: Rifiuti CONSECUTIVI della guardia PCA al momento del RILASCIO.  Viaggia
+    #: qui, accanto al theta, per la stessa ragione del theta: e' stato della
+    #: cella congelato quando il lavoro viene emesso, non quando viene eseguito.
+    rifiuti: int = 0
 
 
 def run_cell_pipeline(spec: str, variant: str, start: str, end: str, *,
@@ -295,6 +301,11 @@ def run_cell_pipeline(spec: str, variant: str, start: str, end: str, *,
     # ── Lo stato della cella: vive SOLO qui ──────────────────────────────────
     theta: dict | None = None
     last_em_month: tuple[int, int] | None = None
+    # La copia del contatore della guardia PCA.  L'altra sta nel ciclo di
+    # `run_weekly_nowcast`: `test_parallel_cell.py` esiste perche' le due non
+    # possano divergere in silenzio.
+    rifiuti_pca = 0
+    decisioni_pca: list[tuple[str, str, str, str]] = []
     prossimo = 0
     in_volo = 0
     per_settimana: dict[int, list[dict]] = {}
@@ -339,17 +350,24 @@ def run_cell_pipeline(spec: str, variant: str, start: str, end: str, *,
             due = (em_frequency == "weekly") or (mese != last_em_month)
             stima = due or (theta is None)
             (pronte_stime if stima else pronte_congelate).append(
-                _Lavoro("stima" if stima else "congelata", i, theta))
+                _Lavoro("stima" if stima else "congelata", i, theta,
+                        rifiuti_pca))
             in_volo += 1
             prossimo += 1
             if stima:
                 return      # BLOCCA: tutto il resto dipende da questo theta
 
     def _commit(i: int, esito) -> None:
-        nonlocal theta, last_em_month, n_em
+        nonlocal theta, last_em_month, n_em, rifiuti_pca
         as_of, _ = piano[i]
         as_of_iso = str(as_of.date())
         theta = esito.theta
+        if esito.stati_guardia:
+            decisioni_pca.extend(esito.stati_guardia)
+        # CONSECUTIVI: si azzera a ogni ri-stima adottata che non sia un
+        # ripiego, cioe' appena la catena riprende a muoversi.
+        if esito.adottato:
+            rifiuti_pca = rifiuti_pca + 1 if esito.origine == "ripiego" else 0
         if esito.adottato:
             last_em_month = (as_of.year, as_of.month)
             n_em += 1
@@ -373,7 +391,8 @@ def run_cell_pipeline(spec: str, variant: str, start: str, end: str, *,
         return (as_of, targets, spec, variant, lav.theta,
                 lav.tipo == "stima", n_rel[lav.i], max_iter, verbose_em,
                 frozenset(q for q in targets
-                          if (as_of_iso, q, spec, variant) in done))
+                          if (as_of_iso, q, spec, variant) in done),
+                lav.rifiuti)
 
     try:
         _release()
@@ -428,6 +447,8 @@ def run_cell_pipeline(spec: str, variant: str, start: str, end: str, *,
     if verbose:
         print(f"\n  {len(df)} righe, {df['as_of'].nunique()} venerdi', "
               f"{n_em} stime EM in {dt:.1f}s ({dt / 60:.1f} min)")
+        for riga in referto_guardia(spec, variant, decisioni_pca):
+            print(riga)
         report_health(df, err_msgs)
     return df
 

@@ -14,8 +14,9 @@ python check_progress.py
 ```
 
 `run_all.py` scopre le celle e i blocchi dagli entry point sotto, separa anche
-i quattro modelli di ogni blocco BVAR e usa fino a 224 processi indipendenti
-con un thread BLAS ciascuno. Poi riunisce i quattro shard di ogni blocco e
+i quattro modelli di ogni blocco BVAR e ne tiene fino a **224 in volo insieme**,
+con un thread BLAS ciascuno — 224 *lavori*, che non sono 224 processi: il conto
+vero è più sotto. Poi riunisce i quattro shard di ogni blocco e
 lancia tutte le figure e tabelle. Un lavoro fallito non interrompe gli altri:
 viene elencato nel riepilogo finale e il suo dettaglio resta in
 `output/_logs/run_all/`.
@@ -60,12 +61,22 @@ mutabile con gli altri. `run_all.py` li scrive sotto radici temporanee diverse,
 così checkpoint e file non collidono, e pubblica il blocco normale solo quando
 tutti e quattro sono presenti. I benchmark vengono calcolati dal solo Q-BVAR.
 
-**Il DFM no, e il limite è a 15.** Dentro una cella i 991 venerdì sono
-**sequenziali**, perché ogni ri-stima parte dal θ del vintage precedente. Il
-tempo di parete di una passata parallela è quindi quello della **cella più
-lenta**, non la media: le varianti `_ar1` stanno un ordine di grandezza sopra
-le altre, e nella passata di agosto `diag3/student_t_ar1` da sola ha preso
-circa 150 ore in un processo solo.
+**Il DFM è parallelo due volte: fra le celle, e dentro ognuna.** Delle 991
+settimane di una cella solo quelle di **ri-stima** sono in catena — ognuna parte
+dal θ del vintage precedente. Le altre, il 58-76% del lavoro, sono funzioni pure
+di (θ del mese, vintage, trimestre) e girano in parallelo: `--workers` le manda
+in un pool, a numeri **identici bit per bit** (verificato su
+`diag3/student_t_ar1`, 991 venerdì, contro la passata sequenziale).
+
+**Quattro è il tetto utile, non un limite arbitrario.** Dopo una ri-stima una
+cella ha in volo le ~3 settimane congelate del mese più la ri-stima del mese
+dopo: quattro lavori, e il quinto dipende da un θ che non esiste ancora.
+Misurato su `diag3/student_t_ar1`: **155,4 → 62,1 minuti**. Alzarlo è lecito e
+non rompe niente — i processi in più restano fermi — e servirebbe solo se la
+cadenza di ri-stima diventasse più rada di quella mensile.
+
+Il tempo di parete di una passata resta quello della **cella più lenta**, non
+la media: le varianti `_ar1` stanno sopra le altre.
 
 **I benchmark sono la sedicesima unità, non un passeggero.** AR(2) e media
 espandente non dipendono da spec né da variante: si calcolano una volta sola.
@@ -118,8 +129,41 @@ niente, perché la ripresa è garantita: se la passata muore per memoria esaurit
 al blocco 50, si rilancia con meno processi e i 50 finiti restano dove sono. I
 blocchi restano 77 in ogni caso — cambia solo in quante ondate.
 
-Il picco non supera comunque il numero di lavori: **al massimo 77 processi**
-per il BVAR e **16** per il DFM.
+## Il conto dei processi, per intero
+
+Due numeri diversi che è facile confondere: i **lavori** (le unità che la coda
+distribuisce) e i **processi** (quello che il sistema operativo vede davvero).
+Non coincidono, perché una cella DFM è un lavoro solo che ne apre quattro.
+
+| | lavori | processi per lavoro | processi |
+|---|---:|---:|---:|
+| shard BVAR — 4 modelli × 77 blocchi | **308** | 1 | **308** |
+| celle DFM — 15 celle | **15** | **4** (`DFM_WORKERS`) | **60** |
+| benchmark DFM | **1** | 1 | **1** |
+| **totale** | **324** | | **369** |
+
+Il benchmark è a un processo per costruzione, non per scelta di configurazione:
+`run_dfm.py` **rifiuta** `--workers` insieme a `--benchmark`, perché l'AR(2) e la
+media espandente non hanno né catena di θ né settimane da riusare.
+
+**Ma 369 non girano mai insieme.** `run_all.py` mette i 324 lavori in un pool da
+`min(MAX_PROCESSES, core disponibili)`, con `MAX_PROCESSES = 224`, e li sottomette
+in quest'ordine: prima il benchmark, poi le 15 celle, poi i 308 shard. I primi
+224 lavori in volo sono quindi 1 benchmark + 15 celle + 208 shard, cioè
+
+```
+1 + 15×4 + 208 = 269 processi su 224 core = 1,20×
+```
+
+I 100 shard restanti aspettano un posto. **La sovrascrizione è quei 45 processi
+in più** (15 celle × 3 worker oltre il loro slot), e dura solo finché le celle
+DFM sono vive — al massimo le prime ~4 ore, dopo di che restano solo shard BVAR
+uno per slot. È misurata benigna: a doppia sovrascrizione dei core il costo per
+compito raddoppia ma la produttività continua a salire.
+
+**Su una macchina più piccola si abbassa `MAX_PROCESSES`, non `DFM_WORKERS`**:
+il primo è la valvola vera, il secondo toglierebbe l'unico parallelismo che il
+cammino critico del DFM abbia.
 
 ## Ripresa
 
