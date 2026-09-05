@@ -1,0 +1,11 @@
+{
+ "spec": "diag4",
+ "variant": "gaussian_ar1",
+ "start": "2007-01-01",
+ "end": "2025-12-31",
+ "em_frequency": "monthly",
+ "n_ahead": 1,
+ "max_iter": 250,
+ "panel": "d02be3715cec2af5",
+ "git": "38f1675"
+}
