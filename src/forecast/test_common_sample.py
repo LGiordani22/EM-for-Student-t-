@@ -22,8 +22,8 @@ diverso a seconda che il vincolo funzioni o no.
 Costa un secondo e va lanciato PRIMA della passata, accanto a `test_windows`:
 la passata dura ore e queste tabelle escono alla fine.
 
-I QUATTRO CONTROLLI
--------------------
+I CINQUE CONTROLLI
+------------------
   1. la matrice aggregata di `comparison/` restringe all'intersezione;
   2. le tabelle di famiglia riportano `n` e `n_com` e il comune e' quello vero
      — e' la coppia di colonne su cui si legge il confronto con la NY Fed;
@@ -31,7 +31,22 @@ I QUATTRO CONTROLLI
      quando uno ne e' privo.  E' il controllo che conta di piu': sull'insieme,
      un modello senza bordo cancellava il backcast a tutti;
   4. un modello troppo rado in una fase esce da QUELLA fase invece di
-     decimarne il campione, e viene dichiarato nella nota.
+     decimarne il campione, e viene dichiarato nella nota;
+  5. le stesse invarianti sui DATI VERI, quando la passata e' sul disco.
+
+...E PERCHE' IL QUINTO GIRA INVECE SUI DATI VERI
+------------------------------------------------
+Perche' il 2026-09-06 sono usciti due difetti che i sintetici non potevano
+mostrare, e li ha trovati una domanda a mano, non questa guardia.  Stavano
+esattamente dove il fixture e' piu' pulito del mondo: la Fed pubblicava due
+volte nella stessa settimana-orizzonte (2021Q1 a -1, per le feste di Natale) e
+ne usciva con un `n_com` piu' alto di tutti gli altri; e sul 2007-2025, dove la
+sua riga NON viene mostrata, restringeva lo stesso il campione comune di tutti
+da 1983 punti a 1371.  Il fixture del punto 2 fa della Fed un sottoinsieme
+PERFETTO delle mie settimane, e sotto quell'ipotesi nessuno dei due puo'
+accadere.  Il quinto controllo rilegge le stesse invarianti dove l'ipotesi non
+e' garantita; se la passata non c'e' sul disco si salta, restando una guardia e
+non un test unitario.
 """
 
 from __future__ import annotations
@@ -344,6 +359,61 @@ def check_logscore() -> int:
     return bad
 
 
+def check_reali() -> int:
+    """
+    Le stesse invarianti, ma sui DATI VERI della passata.
+
+    PERCHE' SERVE, visto che `check_family` gia' le controlla.  Perche' le
+    controlla su un fixture in cui la Fed e' un sottoinsieme PERFETTO delle mie
+    settimane, e i due difetti trovati il 2026-09-06 stavano proprio dove il
+    fixture e' piu' pulito del mondo:
+
+      1. la Fed pubblicava DUE volte nella stessa settimana-orizzonte (2021Q1
+         a -1: venerdi' 18 e mercoledi' 24 dicembre 2020, per le feste), e ne
+         usciva con un `n_com` piu' alto di tutti gli altri;
+      2. sul 2007-2025, dove la sua riga NON e' mostrata, restringeva lo stesso
+         il campione comune di tutti da 1983 punti a 1371.
+
+    Nessuno dei due poteva comparire fra dati costruiti a mano.  Se la passata
+    non c'e' sul disco il controllo si salta: e' una guardia, non un test
+    unitario, e non deve far fallire chi lavora senza artefatti.
+    """
+    print("\n--- 5. le stesse invarianti sui DATI VERI ---")
+    try:
+        from src.forecast.nyfed_nowcast import load_long as _fed_long
+        dfm = mt.load_dfm()
+        fed_raw = _fed_long()
+    except (FileNotFoundError, OSError, KeyError, ValueError) as exc:
+        print(f"  --     passata non disponibile ({type(exc).__name__}); salto")
+        return 0
+    if dfm.empty or fed_raw.empty:
+        print("  --     passata vuota; salto")
+        return 0
+
+    k = ["target_quarter", "horizon_week"]
+    dup = int(fed_raw.duplicated(k).sum())
+    bad = _esito(dup == 0,
+                 "la Fed ha UNA riga per (trimestre, settimana)",
+                 f"{dup} coppie con piu' di una pubblicazione")
+
+    fed = mt.load_nyfed(dfm)
+    m, _ = mt.family_tables(pd.concat([dfm, fed], ignore_index=True),
+                            "fed_overlap")
+    for w, g in m.groupby("window"):
+        n_com = set(int(x) for x in g["n_com"].dropna())
+        bad += _esito(len(n_com) <= 1,
+                      f"[{w}] tutte le righe mostrate hanno lo stesso n_com",
+                      f"n_com = {sorted(n_com)}")
+        if mt._NYFED not in set(g["metodo"]):
+            libero = set(int(x) for x in g["n"].dropna())
+            bad += _esito(n_com == libero,
+                          f"[{w}] senza la Fed in tabella, nessuno restringe "
+                          "il comune",
+                          f"n = {sorted(libero)}, n_com = {sorted(n_com)} "
+                          "(se divergono, un metodo non mostrato sta votando)")
+    return bad
+
+
 def main() -> int:
     print("GUARDIA SUL CAMPIONE COMUNE — dati sintetici, insiemi diversi "
           "apposta")
@@ -356,7 +426,7 @@ def main() -> int:
 
     bad = (check_matrix(dfm, bvar) + check_family(dfm, bvar)
            + check_phase(dfm, bvar) + check_thin(dfm, bvar)
-           + check_logscore())
+           + check_logscore() + check_reali())
     print("\nCAMPIONE COMUNE OK" if not bad else f"\n{bad} CONTROLLI ROTTI")
     return bad
 

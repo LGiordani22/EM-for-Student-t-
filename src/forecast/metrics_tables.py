@@ -302,7 +302,21 @@ def family_tables(df: pd.DataFrame, family: str,
         # La Fed non vota sul campione: comincia a -3/-4 per scelta editoriale,
         # non per un buco, e chiederle l'asse intero lo svuoterebbe per tutti.
         # Resta pero' nella tabella, misurata sugli stessi trimestri.
-        d, tenuti, _ = cm.window_sample(sub, w, skip=[_NYFED])
+        #
+        # DOVE NON E' MOSTRATA, NON ENTRA AFFATTO.  `_drop_nyfed_outside` toglie
+        # la sua riga dalle finestre fuori da NYFED_COMPARISON_PASSES, ma lo fa
+        # ALLA FINE: se la lasciassimo nel frame fin qui, continuerebbe a
+        # restringere `common_points` da dentro una tabella in cui il lettore
+        # non la vede.  Non e' teorico: sul 2007-2025 tagliava il campione
+        # comune da 1983 punti a 1371, un terzo, e i punti tolti sono le
+        # settimane profonde in cui OGNI metodo fa peggio — cioe' le colonne
+        # `_com` uscivano migliori di quel che sono, per opera di una riga
+        # invisibile.  Delle tre condotte possibili (non farla votare, oppure
+        # mostrarla, oppure toglierla dopo il voto) l'ultima e' la sola che non
+        # si puo' spiegare in didascalia.
+        sub_w = (sub if w in layout.NYFED_COMPARISON_PASSES
+                 else sub[sub["metodo"] != _NYFED])
+        d, tenuti, _ = cm.window_sample(sub_w, w, skip=[_NYFED])
         if d.empty:
             continue
         c = common_points(d)

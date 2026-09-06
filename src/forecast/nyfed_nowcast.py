@@ -366,6 +366,27 @@ def load_long(paths: list[str] | None = None) -> pd.DataFrame:
     df["is_reconstruction"] = df["target_quarter"].map(
         lambda q: quarter_end(q) <= last_rec)
 
+    # ── DUE PUBBLICAZIONI NELLA STESSA SETTIMANA: SI TIENE LA PRIMA ──────────
+    # `horizon_week` mette in uno stesso paniere tutte le loro date della
+    # medesima settimana rispetto al trimestre.  Quasi sempre ce n'e' una, il
+    # venerdi'; alle feste no.  Sul campione attuale il caso e' UNO SOLO:
+    # 2021Q1 alla settimana -1 ha il venerdi' 18 dicembre 2020 e il giovedi' 24,
+    # la Fed avendo anticipato al 24 la pubblicazione che sarebbe caduta a
+    # Natale.  Senza questa riga quel punto entra DUE VOLTE, pesa doppio nella
+    # loro RMSE e sballa il campione comune: la Fed esce con un `n_com` di uno
+    # piu' alto di tutti gli altri, il che rompe l'invariante che
+    # `test_common_sample` dichiara ("Fed e DFM hanno lo STESSO n_com").
+    #
+    # SI TIENE LA PIU' VECCHIA, non la piu' recente, ed e' la stessa logica di
+    # `pre_release` poche righe sopra: la seconda data porta giorni di dati
+    # mensili in piu' che il mio nowcast di quella settimana non ha visto, e
+    # premiarla significherebbe chiamare "modello migliore" cio' che e' solo
+    # "modello piu' aggiornato".  Il costo e' nullo (si scarta una riga su
+    # oltre mille), l'asimmetria che eviterebbe no.
+    df = (df.sort_values(["target_quarter", "horizon_week", "forecast_date"])
+            .drop_duplicates(subset=["target_quarter", "horizon_week"],
+                             keep="first"))
+
     return (df.sort_values(["target_quarter", "forecast_date"])
               .reset_index(drop=True)[
                   ["forecast_date", "reference_quarter", "horizon_label",
