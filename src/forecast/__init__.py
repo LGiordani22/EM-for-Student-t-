@@ -8,6 +8,7 @@ src/forecast/ — nowcast settimanale del PIL sul pannello `final` (37 serie).
     benchmarks.py        i metri di paragone univariati
     weekly_nowcast.py    il ciclo settimanale su tutte le celle
     compute_metrics.py   accuratezza
+    predictive_accuracy.py  i test: DM-HLN, Clark-West, Model Confidence Set
     figures.py           la figura in stile Cascaldi-Garcia 8a
     nyfed_nowcast.py     il nowcast NY Fed, allineato al mio metro di orizzonte
     compare_nyfed.py     io contro la NY Fed e i benchmark (valutazione a valle)

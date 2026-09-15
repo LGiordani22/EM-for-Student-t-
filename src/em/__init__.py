@@ -67,4 +67,11 @@ Due assi trasversali, richiamati da tutti i moduli:
 
 selftest_fixture fornisce la fixture unica ai self-test __main__ dei moduli;
 test_idio_ar1 e' il gate algebrico dell'Asse B.
+
+A valle della stima, e non parte del loop:
+
+    likelihood_ratio    il test LR fra celle annidate sull'ELBO finale, con la
+                        nulla di Chernoff perche' nu -> inf sta sul BORDO.
+                        Il gemello fuori campione e'
+                        `forecast/predictive_accuracy.py`.
 """
