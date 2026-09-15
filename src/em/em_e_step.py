@@ -770,7 +770,10 @@ def ecm_inner_loop(
     loop inside the E-step that alternates the two updates with
     theta held fixed:
 
-      k = 0:  initialise  w^eps = w^u = 1  (prior means)
+      k = 0:  initialise from ``w_init`` when the caller supplies it
+              (the default in em_main: the previous outer iteration's
+              converged weights), and from w^eps = w^u = 1 (the prior
+              means) otherwise.  See "Key invariants" below.
       k >= 1:
         (F-update)  Kalman(theta, w^u_{k-1}, w^eps_{k-1})
                     -> smoothed moments {f_{t|T}^[k], P^[k], P_lag^[k]}
@@ -794,10 +797,10 @@ def ecm_inner_loop(
       (thesis line ~5497).
     - W_list (selection matrices) is built once from Y and reused
       across all inner iterations.
-    - Weights are reinitialised to 1 at the START of every call
-      (i.e. every outer EM iteration); the previous outer iteration's
-      converged weights are NOT carried forward, because theta has
-      changed.
+    - Weights start from ``w_init`` when the caller supplies it (the
+      default in em_main: the previous outer iteration's converged
+      weights) and from 1 otherwise.  The fixed point is the same
+      either way; the warm start only gets there in fewer passes.
     - run_kalman reconstructs Q_tilde and R_tilde at every call,
       because their time-varying entries depend on the current weights.
 
@@ -1293,13 +1296,17 @@ def run_e_step(
     em_main), which iterates until the OUTER log-likelihood stops
     increasing.
 
-    **Weights are NOT carried across outer iterations.**
-    :func:`ecm_inner_loop` reinitialises ``w^eps = w^u = 1`` at every
-    call, by design (thesis line ~5472-5473): theta has just changed,
-    so the previous outer iteration's converged weights are no longer
-    the right warm-start.  This is invisible to the caller; we mention
-    it here only because it explains why ``run_e_step`` has no
-    "warm-start" argument.
+    **Weights ARE carried across outer iterations (warm start).**
+    ``w_init`` is forwarded to :func:`ecm_inner_loop` as the starting
+    point of the fixed-point map.  ``em_main.run_em`` passes the
+    weights converged at the previous outer iteration unless
+    ``theta["cold_start_inner"]`` is set, in which case the loop
+    restarts from ``w^eps = w^u = 1``.  Both starting points reach the
+    same fixed point (the stopping test is unchanged), but theta moves
+    very little between outer iterations, so the previous weights are
+    almost right and the loop settles in far fewer passes; the warm
+    start also makes every pass an improvement on q^(j) itself, which
+    is what lets a truncated inner loop keep the ELBO monotone.
 
     **nu_eps and nu_u are held fixed within the E-step.**
     Both degrees-of-freedom parameters are fixed at their current
