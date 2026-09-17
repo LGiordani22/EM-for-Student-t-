@@ -25,7 +25,8 @@ I PASSI, NELL'ORDINE (che e' obbligato)
                       vincolo di campione comune scatta davvero
     2  raccolta       le celle di `dfm/_cells/` diventano i CSV di `dfm/csv/`
     3  celle          i quindici CSV del DFM contengono nowcast, non eccezioni
-    4  figure         traiettorie DFM e BVAR, una per finestra forecast
+    4  figure         traiettorie DFM e BVAR, una per finestra forecast,
+                      poi la guardia sul bordo: trimestri interi, e solo quelli
     5  nyfed          confronto con la Fed + figure RMSE per orizzonte (DFM)
     6  bvar-metrics   tabelle BVAR + LA figura coi quattro modelli insieme
     7  tabelle        famiglie, matrici di confronto, il PER FASE, il backcast
@@ -96,6 +97,11 @@ def _steps(n_cells: int) -> list[dict]:
     for w in _FIG_WINDOWS:
         figure.append(["-m", "src.forecast.figures", "--window", w])
         figure.append(["-m", "src.bvar.figures", "--window", w])
+    # Dopo aver disegnato, si verifica COSA si e' disegnato: che ogni
+    # traiettoria arrivi al suo rilascio e nessuna entri come moncone.  Il
+    # difetto che questa guardia sorveglia non e' numerico — era
+    # l'inquadratura — e nessuna delle altre poteva vederlo.
+    figure.append(["-m", "src.forecast.test_figure_windows"])
 
     return [
         {"nome": "guardie", "cmds": [

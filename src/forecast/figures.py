@@ -52,12 +52,21 @@ trimestre (senza backcast) usa `--nascondi-backcast`.
 
 E' una figura di PUNTO, non di densita': nessuna banda di quantili.
 
-FINESTRE E CARTELLE STANNO IN `src/output_layout.py`
-----------------------------------------------------
-`--window 2014-2016` ritaglia il CSV sull'intervallo di date di quella
-finestra e nomina la figura con quel nome; le cartelle di destinazione
-(`dfm/<spec>/<variant>/`) vengono dallo stesso modulo.  Qui non c'e' nessuna
-data e nessun percorso cablato.
+LA FINESTRA E' UN INTERVALLO DI TRIMESTRI, NON DI VINTAGE
+---------------------------------------------------------
+`--window 2014-2016` non ritaglia le righe con `as_of` dentro il 2014-2016:
+sceglie i TRIMESTRI TARGET che finiscono li' dentro, e di ognuno disegna tutta
+la vita — dal primo forecast fino al pallino del rilascio.  L'asse x sfora
+percio' la finestra nominale di un trimestre a sinistra e di un mese a destra,
+ed e' voluto: il titolo della figura dichiara trimestri, non vintage.  Vedi
+`slice_target_quarters`, che spiega anche i tre artefatti di bordo che il
+vecchio ritaglio sui vintage produceva.  Le METRICHE restano ritagliate sui
+vintage da `layout.slice_window`: li' la finestra e' un campione di
+valutazione, qui e' un'inquadratura.
+
+Le cartelle di destinazione (`dfm/<spec>/<variant>/`) vengono da
+`src/output_layout.py`, che tiene anche i bordi delle finestre.  Qui non c'e'
+nessuna data e nessun percorso cablato.
 
 LA SCALA E' PER FINESTRA, NON GLOBALE
 -------------------------------------
@@ -460,6 +469,111 @@ def _line_rows(rows: pd.DataFrame, q: str, nascondi_backcast: bool) -> pd.DataFr
     return rows[rows["as_of_dt"] < release] if pd.notna(release) else rows
 
 
+# ─── La finestra sceglie i TRIMESTRI, e li disegna interi ─────────────────────
+#
+#  Prima la finestra tagliava sui VINTAGE: dentro finivano tutte le righe con
+#  `as_of` fra il 1 gennaio del primo anno e il 31 dicembre dell'ultimo.  Ma la
+#  figura non parla di vintage, parla di TRIMESTRI TARGET — lo dice il suo
+#  stesso titolo — e selezionare per vintage mentre si disegna per trimestre
+#  produce tre artefatti, tutti al bordo:
+#
+#    - la linea dell'ultimo trimestre veniva tagliata a fine dicembre, cioe'
+#      gli si amputava proprio il BACKCAST, e il suo pallino restava staccato
+#      di quattro settimane invece che di una;
+#    - i trimestri gia' in volo al bordo entravano come MONCONI di poche
+#      settimane, che si leggono come una curva rotta;
+#    - il pallino di un trimestre la cui vita cade quasi tutta fuori finestra
+#      restava in figura da solo, mesi oltre l'ultima linea, allungando l'asse
+#      x su una fascia vuota.
+#
+#  Nessuno dei tre e' un errore di calcolo: erano tutti effetti del ritaglio.
+#  Ma un lettore che non lo sa vede una figura rotta, e smette di fidarsi anche
+#  del resto.  La regola ora e' una sola frase: nella figura entra un trimestre
+#  target la cui fine cade nella finestra, e ci entra INTERO.
+
+#: Tolleranza sul bordo della vita di un trimestre.  La griglia e' di venerdi',
+#: quindi la prima as_of cade fino a sei giorni dopo l'inizio teorico e
+#: l'ultima fino a sei giorni prima del rilascio.
+_TOLLERANZA = pd.Timedelta(days=7)
+
+
+def _prima_as_of_attesa(q: str) -> pd.Timestamp:
+    """
+    La data da cui il trimestre `q` e' IN VOLO: l'inizio del trimestre
+    precedente.
+
+    E' la regola di `targets_in_flight` con `n_ahead=1`, letta al contrario: a
+    ogni data sono vivi il trimestre corrente, quello prima non ancora
+    pubblicato e quello dopo, quindi `q` entra quando comincia `q-1`.
+    `MonthBegin(-6)` e non `(-4)` per lo stesso conto di `horizon_week`:
+    partendo da una data di FINE trimestre il primo passo all'indietro cade sul
+    primo del mese stesso, e ne servono sei per arrivare all'inizio del
+    trimestre precedente.
+    """
+    return quarter_end(q) + pd.offsets.MonthBegin(-6)
+
+
+def _vita_completa(rows: pd.DataFrame) -> bool:
+    """
+    Vero se di questo trimestre c'e' TUTTA la vita: dal primo forecast fino
+    all'ultimo venerdi' prima del rilascio.
+
+    Incompleti sono solo i trimestri al bordo del CAMPIONE — quelli gia' in
+    volo quando la passata comincia, quelli ancora in volo quando finisce.  Su
+    2007-01-01 .. 2025-12-31 sono quattro in tutto (2006Q4 e 2007Q1 in testa,
+    2025Q4 e 2026Q1 in coda) e valgono per ogni cella, DFM e BVAR.  Li' non e'
+    la finestra a tagliare: e' il campione a non averli mai avuti, e una figura
+    che li disegnasse mostrerebbe un moncone senza poterne dare la ragione.
+    """
+    release = pd.Timestamp(rows["release_dt"].iloc[0])
+    if pd.isna(release):
+        return False
+    q = str(rows["target_quarter"].iloc[0])
+    return bool(rows["as_of_dt"].min() - _prima_as_of_attesa(q) <= _TOLLERANZA
+                and release - rows["as_of_dt"].max() <= _TOLLERANZA)
+
+
+def slice_target_quarters(df: pd.DataFrame, window_name: str,
+                          verbose: bool = True) -> pd.DataFrame:
+    """
+    Le righe di una finestra: i trimestri target che le appartengono, INTERI.
+
+    Un trimestre entra se la sua FINE cade nella finestra e se la sua vita e'
+    completa nel CSV; quando entra, entrano tutte le sue righe, comprese quelle
+    con `as_of` fuori dai bordi dichiarati.  L'asse x sfora percio' la finestra
+    nominale: di un trimestre a sinistra (il forecast di 2014Q1 comincia in
+    ottobre 2013) e di un mese a destra (il PIL di 2016Q4 esce in gennaio
+    2017).  E' il prezzo, ed e' il verso giusto in cui pagarlo: il titolo della
+    figura dichiara un intervallo di TRIMESTRI, e adesso l'asse gli corrisponde.
+
+    Sostituisce `layout.slice_window`, che resta la regola delle METRICHE: li'
+    la finestra e' un campione di valutazione e il ritaglio sui vintage e'
+    quello giusto.  Qui la finestra e' un'inquadratura.  Le due cose portavano
+    lo stesso nome e non erano la stessa cosa.
+
+    Il conto e' per (cella, trimestre): una cella che di un trimestre ha meno
+    settimane delle altre lo perde da sola, invece di esibire una linea rotta.
+    """
+    start, end = (pd.Timestamp(x) for x in layout.window(window_name))
+    tenuti: list[pd.DataFrame] = []
+    scartati: list[str] = []
+
+    for (_cella, q), rows in df.groupby(["cella", "target_quarter"], sort=True):
+        if not (start <= quarter_end(str(q)) <= end):
+            continue
+        if not _vita_completa(rows):
+            scartati.append(str(q))
+            continue
+        tenuti.append(rows)
+
+    if verbose and scartati:
+        print(f"  [bordo del campione] fuori figura, vita incompleta: "
+              f"{', '.join(sorted(set(scartati)))}")
+    if not tenuti:
+        return df.iloc[:0]
+    return pd.concat(tenuti).sort_values(["cella", "target_quarter", "as_of_dt"])
+
+
 # ─── La figura delle traiettorie (stile Cascaldi-Garcia 8a) ───────────────────
 
 def _draw_trajectories(ax: plt.Axes, df_cell: pd.DataFrame,
@@ -748,7 +862,8 @@ def main() -> None:
                    help="scala y fissa; default: automatica sulla finestra")
     p.add_argument("--window", default=None,
                    help="nome di una finestra di output_layout, es. 2014-2016: "
-                        "ritaglia il CSV e nomina le figure con quel nome")
+                        "tiene i trimestri target che finiscono li' dentro, "
+                        "interi, e nomina le figure con quel nome")
     p.add_argument("--nascondi-backcast", action="store_true",
                    help="taglia la linea a fine trimestre (con lo stacco di "
                         "~4 settimane fino al pallino). Default: la "
@@ -761,10 +876,11 @@ def main() -> None:
     ylim = tuple(a.ylim) if a.ylim else None
 
     if a.window:
-        df = layout.slice_window(df, a.window)
+        df = slice_target_quarters(df, a.window)
         if df.empty:
             raise SystemExit(
-                f"Nessuna riga dei {len(paths)} CSV cade nella finestra "
+                f"Nessuna riga: nei {len(paths)} CSV non c'e' nessun trimestre "
+                f"target con la vita completa che finisca nella finestra "
                 f"{a.window} {layout.window(a.window)}.")
 
     # Default: il nuovo albero (dfm/<spec>/<variant>), non piu' figures/<spec>.

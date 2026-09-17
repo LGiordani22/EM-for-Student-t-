@@ -184,14 +184,19 @@ def main() -> None:
                    metavar=("MIN", "MAX"),
                    help="scala fissa (default: automatica sulla finestra)")
     p.add_argument("--window", default=None,
-                   help="nome di una finestra di output_layout, es. 2014-2016")
+                   help="nome di una finestra di output_layout, es. 2014-2016: "
+                        "tiene i trimestri target che finiscono li' dentro, interi")
     a = p.parse_args()
 
     df = load(a.csv)
     if a.window:
-        df = layout.slice_window(df, a.window)
+        # La finestra sceglie i TRIMESTRI TARGET, interi, non le righe col
+        # vintage dentro i bordi: e' la regola del DFM, e vale anche qui
+        # perche' la figura e' la stessa.  Vedi `dfm.slice_target_quarters`.
+        df = dfm.slice_target_quarters(df, a.window)
         if df.empty:
-            raise SystemExit(f"Nessuna riga nella finestra {a.window} "
+            raise SystemExit(f"Nessuna riga: nessun trimestre target con la "
+                             f"vita completa finisce nella finestra {a.window} "
                              f"{layout.window(a.window)}.")
     print(f"  {len(df)} righe, {df['target_quarter'].nunique()} trimestri, "
           f"celle: {sorted(df['cella'].unique())}")
