@@ -48,6 +48,7 @@ _archive_second_stage/
 _archive_mcmc/
 _archive_mc_diagnostics/
 _archive_notebooks/
+_archive_presentazione_pptx/
 
 # ── docs/: vive in locale. Solo tre file vanno in repo ────────────────────────
 # `docs/*` e non `docs/`, altrimenti git non scende e le eccezioni non valgono.
