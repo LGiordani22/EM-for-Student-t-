@@ -141,9 +141,26 @@ def tabella_dfm(meta: pd.DataFrame, specs: dict) -> str:
     testa = [
         r"\begin{tabular}{@{}l l l c c l cccc cccc ccc@{}}",
         r"\toprule",
-        r"& & & & & & \multicolumn{4}{c}{\textcolor{specA}{\textbf{fed\_overlap}}}"
-        r" & \multicolumn{4}{c}{\textcolor{specB}{\textbf{diag4}}}"
-        r" & \multicolumn{3}{c}{\textcolor{specC}{\textbf{diag3}}} \\",
+        # Le tre strutture si chiamano come nel testo, non come nel config:
+        # accanto a una tabella scritta in inglese `fed_overlap` era l'unica
+        # cosa in monospace.  I nomi del config restano nella NOTA, che e'
+        # scritta a mano in appendix_data.tex.
+        #
+        # SU DUE RIGHE, E IL MOTIVO E' LA LARGHEZZA.  La tabella misura
+        # 598,5pt e in landscape ce ne sono 650,4 (`lscape` non cambia
+        # \textwidth: la larghezza utile e' \textheight), quindi il margine e'
+        # 51,9pt.  I tre gruppi offrono 49,0 / 49,0 / 36,75pt, cioe' quanto
+        # occupano le colonne di croci sotto.  Su una riga sola
+        # "Block-diagonal (4 factors)" ne chiede 73 e sfonda di 8pt; spezzata,
+        # la riga piu' larga e' "Block-diagonal" a 58,3 e il conto torna a
+        # +30,9pt in tutto, con 21pt di margine che restano.
+        # `\shortstack` e' del kernel: nessun pacchetto in piu' nel preambolo.
+        r"& & & & & & \multicolumn{4}{c}{\textcolor{specA}{\textbf{"
+        r"\shortstack{Overlapping\\(4 factors)}}}}"
+        r" & \multicolumn{4}{c}{\textcolor{specB}{\textbf{"
+        r"\shortstack{Block-diagonal\\(4 factors)}}}}"
+        r" & \multicolumn{3}{c}{\textcolor{specC}{\textbf{"
+        r"\shortstack{Block-diagonal\\(3 factors)}}}} \\",
         r"\cmidrule(lr){7-10}\cmidrule(lr){11-14}\cmidrule(lr){15-17}",
         r"Data series & Code & Source & Freq & Start & Units"
         r" & G & S & R & L & S & R & L & N & A & N & L \\",

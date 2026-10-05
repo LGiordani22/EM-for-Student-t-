@@ -471,6 +471,16 @@ def figura_bok2(
     gap_pavimento: float = 1.35,
 
     titolo: str | None = None,
+
+    # Corpi della legenda. I default sono quelli della figura in tesi; la
+    # presentazione li alza (la slide riduce la figura a circa un quarto).
+    #
+    legenda_size: float = 11.5,
+    legenda_ncol: int = 4,
+    legenda_y: float = 0.022,
+    testata_size: float = 10.5,
+    cb_tick_size: float = 8.5,
+    bottom: float = 0.085,
 ):
 
     # ======================================================================
@@ -1156,7 +1166,7 @@ def figura_bok2(
     )
 
     cb.ax.tick_params(
-        labelsize=8.5,
+        labelsize=cb_tick_size,
         colors=INK,
         length=2,
         pad=2,
@@ -1173,7 +1183,7 @@ def figura_bok2(
     #
     cb.ax.set_title(
         "Standard deviations from mean",
-        fontsize=10.5,
+        fontsize=testata_size,
         color=INK,
         pad=6,
         fontweight="bold",
@@ -1217,7 +1227,7 @@ def figura_bok2(
 
         prop={
             "weight": "bold",
-            "size": 10.5,
+            "size": testata_size,
         },
     )
 
@@ -1301,10 +1311,10 @@ def figura_bok2(
         #
         bbox_to_anchor=(
             0.50,
-            0.022,
+            legenda_y,
         ),
 
-        ncol=4,
+        ncol=legenda_ncol,
 
         frameon=False,
 
@@ -1318,7 +1328,7 @@ def figura_bok2(
 
         prop={
             "weight": "bold",
-            "size": 11.5,
+            "size": legenda_size,
         },
     )
 
@@ -1364,7 +1374,7 @@ def figura_bok2(
         # bottom e top scendono insieme: il disegno trasla verso la legenda
         # senza cambiare scala (l'altezza del riquadro resta 1.043).
         #
-        bottom=0.085,
+        bottom=bottom,
         top=1.128,
     )
 
